@@ -1,0 +1,10 @@
+{
+  "Name": "GiftReveal",
+  "Author": "LinHan",
+  "Version": "1.0.0",
+  "Description": "自动揭示所有NPC的礼物偏好",
+  "UniqueID": "LinHan.GiftReveal",
+  "EntryDll": "GiftReveal.dll",
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": []
+}

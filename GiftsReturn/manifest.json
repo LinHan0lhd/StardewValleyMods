@@ -1,0 +1,10 @@
+{
+  "Name": "GiftsReturn",
+  "Author": "LinHan",
+  "Version": "2.0.0",
+  "Description": "NPC回礼 + 不喜欢礼物退还",
+  "UniqueID": "LinHan.GiftsReturn",
+  "EntryDll": "GiftsReturn.dll",
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": []
+}

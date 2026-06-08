@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "dgSpecHash": "PueGprx0998=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\admin\\Documents\\ModEntry\\InfiniteGifts\\InfiniteGifts.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\admin\\.nuget\\packages\\pathoschild.stardew.modbuildconfig\\4.4.0\\pathoschild.stardew.modbuildconfig.4.4.0.nupkg.sha512",
+    "C:\\Users\\admin\\.nuget\\packages\\microsoft.aspnetcore.app.ref\\6.0.32\\microsoft.aspnetcore.app.ref.6.0.32.nupkg.sha512",
+    "C:\\Users\\admin\\.nuget\\packages\\microsoft.netcore.app.ref\\6.0.32\\microsoft.netcore.app.ref.6.0.32.nupkg.sha512",
+    "C:\\Users\\admin\\.nuget\\packages\\microsoft.windowsdesktop.app.ref\\6.0.32\\microsoft.windowsdesktop.app.ref.6.0.32.nupkg.sha512"
+  ],
+  "logs": []
+}
