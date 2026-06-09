@@ -43,11 +43,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\admin\\Documents\\ModEntry\\GiftsReturn\\GiftsReturn.csproj",
+      "projectUniqueName": "C:\\Users\\admin\\Documents\\StardewValleyMods\\GiftsReturn\\GiftsReturn.csproj",
       "projectName": "GiftsReturn",
-      "projectPath": "C:\\Users\\admin\\Documents\\ModEntry\\GiftsReturn\\GiftsReturn.csproj",
+      "projectPath": "C:\\Users\\admin\\Documents\\StardewValleyMods\\GiftsReturn\\GiftsReturn.csproj",
       "packagesPath": "C:\\Users\\admin\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\admin\\Documents\\ModEntry\\GiftsReturn\\obj\\",
+      "outputPath": "C:\\Users\\admin\\Documents\\StardewValleyMods\\GiftsReturn\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\admin\\AppData\\Roaming\\NuGet\\NuGet.Config"

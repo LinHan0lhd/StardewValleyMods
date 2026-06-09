@@ -43,11 +43,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\admin\\Documents\\ModEntry\\InfiniteGifts\\InfiniteGifts.csproj",
+      "projectUniqueName": "C:\\Users\\admin\\Documents\\StardewValleyMods\\InfiniteGifts\\InfiniteGifts.csproj",
       "projectName": "InfiniteGifts",
-      "projectPath": "C:\\Users\\admin\\Documents\\ModEntry\\InfiniteGifts\\InfiniteGifts.csproj",
+      "projectPath": "C:\\Users\\admin\\Documents\\StardewValleyMods\\InfiniteGifts\\InfiniteGifts.csproj",
       "packagesPath": "C:\\Users\\admin\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\admin\\Documents\\ModEntry\\InfiniteGifts\\obj\\",
+      "outputPath": "C:\\Users\\admin\\Documents\\StardewValleyMods\\InfiniteGifts\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\admin\\AppData\\Roaming\\NuGet\\NuGet.Config"

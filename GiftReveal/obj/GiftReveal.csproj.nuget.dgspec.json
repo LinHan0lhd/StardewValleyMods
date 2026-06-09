@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\admin\\Documents\\ModEntry\\GiftReveal\\GiftReveal.csproj": {}
+    "C:\\Users\\admin\\Documents\\StardewValleyMods\\GiftReveal\\GiftReveal.csproj": {}
   },
   "projects": {
-    "C:\\Users\\admin\\Documents\\ModEntry\\GiftReveal\\GiftReveal.csproj": {
+    "C:\\Users\\admin\\Documents\\StardewValleyMods\\GiftReveal\\GiftReveal.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\admin\\Documents\\ModEntry\\GiftReveal\\GiftReveal.csproj",
+        "projectUniqueName": "C:\\Users\\admin\\Documents\\StardewValleyMods\\GiftReveal\\GiftReveal.csproj",
         "projectName": "GiftReveal",
-        "projectPath": "C:\\Users\\admin\\Documents\\ModEntry\\GiftReveal\\GiftReveal.csproj",
+        "projectPath": "C:\\Users\\admin\\Documents\\StardewValleyMods\\GiftReveal\\GiftReveal.csproj",
         "packagesPath": "C:\\Users\\admin\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\admin\\Documents\\ModEntry\\GiftReveal\\obj\\",
+        "outputPath": "C:\\Users\\admin\\Documents\\StardewValleyMods\\GiftReveal\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\admin\\AppData\\Roaming\\NuGet\\NuGet.Config"

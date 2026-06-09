@@ -1,13 +1,13 @@
 {
   "version": 2,
-  "dgSpecHash": "Ym90qzWjw1g=",
+  "dgSpecHash": "+hwRQSbbOr0=",
   "success": true,
-  "projectFilePath": "C:\\Users\\admin\\Documents\\ModEntry\\GiftReveal\\GiftReveal.csproj",
+  "projectFilePath": "C:\\Users\\admin\\Documents\\StardewValleyMods\\GiftReveal\\GiftReveal.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\admin\\.nuget\\packages\\pathoschild.stardew.modbuildconfig\\4.4.0\\pathoschild.stardew.modbuildconfig.4.4.0.nupkg.sha512",
-    "C:\\Users\\admin\\.nuget\\packages\\microsoft.aspnetcore.app.ref\\6.0.32\\microsoft.aspnetcore.app.ref.6.0.32.nupkg.sha512",
     "C:\\Users\\admin\\.nuget\\packages\\microsoft.netcore.app.ref\\6.0.32\\microsoft.netcore.app.ref.6.0.32.nupkg.sha512",
-    "C:\\Users\\admin\\.nuget\\packages\\microsoft.windowsdesktop.app.ref\\6.0.32\\microsoft.windowsdesktop.app.ref.6.0.32.nupkg.sha512"
+    "C:\\Users\\admin\\.nuget\\packages\\microsoft.windowsdesktop.app.ref\\6.0.32\\microsoft.windowsdesktop.app.ref.6.0.32.nupkg.sha512",
+    "C:\\Users\\admin\\.nuget\\packages\\microsoft.aspnetcore.app.ref\\6.0.32\\microsoft.aspnetcore.app.ref.6.0.32.nupkg.sha512"
   ],
   "logs": []
 }

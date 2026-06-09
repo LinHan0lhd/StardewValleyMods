@@ -4,19 +4,22 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using StardewModdingAPI;
-using StardewModdingAPI.Events;
 using StardewValley;
 
 namespace GiftReveal
 {
     public class ModEntry : Mod
     {
-        private Dictionary<string, List<string>> _npcGifts = new();
-        private Dictionary<string, List<string>> _universalGifts = new();
+        private ModConfig Config = null!;
+        private Dictionary<string, Dictionary<int, List<string>>> _npcPositiveGifts = new();
+        private Dictionary<string, HashSet<string>> _npcNegativeGifts = new();
+        private Dictionary<int, List<string>> _universalPositiveGifts = new();
         private bool _initialized = false;
 
         public override void Entry(IModHelper helper)
         {
+            Config = helper.ReadConfig<ModConfig>();
+
             helper.Events.GameLoop.SaveLoaded += (_, _) =>
             {
                 if (!Context.IsMainPlayer) return;
@@ -27,16 +30,14 @@ namespace GiftReveal
             {
                 if (!Context.IsMainPlayer) return;
                 if (!_initialized) LoadGiftData();
-                if (_initialized) WriteFullGiftsToAllPlayers();
+                if (_initialized) WriteGiftsToAllPlayers();
             };
 
             helper.Events.Multiplayer.PeerConnected += (_, _) =>
             {
                 if (!Context.IsMainPlayer || !_initialized) return;
-                WriteFullGiftsToAllPlayers();
+                WriteGiftsToAllPlayers();
             };
-
-            Monitor.Log("GiftReveal 已加载", LogLevel.Info);
         }
 
         private void LoadGiftData()
@@ -45,36 +46,63 @@ namespace GiftReveal
             {
                 if (Game1.NPCGiftTastes == null || Game1.NPCGiftTastes.Count == 0)
                 {
-                    Monitor.Log("NPCGiftTastes 为空，等待下次尝试", LogLevel.Warn);
+                    Monitor.Log("NPCGiftTastes 为空 > 等待下次尝试", LogLevel.Warn);
                     return;
                 }
 
-                _npcGifts.Clear();
-                _universalGifts.Clear();
+                _npcPositiveGifts.Clear();
+                _npcNegativeGifts.Clear();
+                _universalPositiveGifts.Clear();
 
                 foreach (var kvp in Game1.NPCGiftTastes)
                 {
                     string name = kvp.Key;
+                    string raw = kvp.Value;
+                    if (string.IsNullOrWhiteSpace(raw)) continue;
+
                     if (name.StartsWith("Universal_"))
                     {
-                        string category = name.Substring("Universal_".Length);
-                        var ids = ParseGiftItems(kvp.Value);
-                        if (ids.Count > 0)
-                            _universalGifts[category] = ids;
+                        if (name == "Universal_Love")
+                            ExtractUniversalItems(raw, 5);
+                        else if (name == "Universal_Like")
+                            ExtractUniversalItems(raw, 2);
                     }
                     else
                     {
-                        var ids = ParseGiftItems(kvp.Value);
-                        if (ids.Count > 0)
-                            _npcGifts[name] = ids;
+                        var posDict = new Dictionary<int, List<string>>();
+                        var negSet = new HashSet<string>();
+
+                        // 顺序：最爱、喜欢、一般、讨厌、最讨厌
+                        string[] sections = raw.Split('/');
+
+                        for (int i = 0; i < sections.Length; i++)
+                        {
+                            string section = sections[i].Trim();
+                            if (string.IsNullOrWhiteSpace(section)) continue;
+
+                            // 跳过纯文本行
+                            if (!ContainsAnyItemId(section)) continue;
+
+                            if (i == 0) // 最爱
+                                AddItemsToTier(posDict, 5, section);
+                            else if (i == 1) // 喜欢
+                                AddItemsToTier(posDict, 2, section);
+                            else if (i == 3 || i == 4) // 讨厌/最讨厌
+                                CollectItemsToSet(negSet, section);
+                        }
+
+                        if (posDict.Count > 0)
+                            _npcPositiveGifts[name] = posDict;
+                        if (negSet.Count > 0)
+                            _npcNegativeGifts[name] = negSet;
                     }
                 }
 
-                _initialized = _npcGifts.Count > 0 && _universalGifts.Count > 0;
+                _initialized = _npcPositiveGifts.Count > 0 || _universalPositiveGifts.Count > 0;
                 if (_initialized)
-                    Monitor.Log($"加载完成：{_npcGifts.Count} 个NPC，{_universalGifts.Count} 个通用类别", LogLevel.Info);
+                    Monitor.Log($"加载完成：{_npcPositiveGifts.Count} 个NPC，{_universalPositiveGifts.Sum(x => x.Value.Count)} 个通用物品", LogLevel.Info);
                 else
-                    Monitor.Log("加载不完整，将在明天重试", LogLevel.Error);
+                    Monitor.Log("加载不完整 > 将在明天重试", LogLevel.Error);
             }
             catch (Exception ex)
             {
@@ -82,12 +110,77 @@ namespace GiftReveal
             }
         }
 
-        private void WriteFullGiftsToAllPlayers()
+        private bool ContainsAnyItemId(string text)
         {
-            if (!_initialized) return;
+            foreach (string token in text.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (int.TryParse(token, out _) || Regex.IsMatch(token, @"^[a-zA-Z_][a-zA-Z0-9_]*$"))
+                    return true;
+            }
+            return false;
+        }
+
+        private void ExtractUniversalItems(string raw, int tier)
+        {
+            var ids = ParseItemIds(raw);
+            if (ids.Count > 0)
+            {
+                if (!_universalPositiveGifts.ContainsKey(tier))
+                    _universalPositiveGifts[tier] = new List<string>();
+                _universalPositiveGifts[tier].AddRange(ids);
+            }
+        }
+
+        private void AddItemsToTier(Dictionary<int, List<string>> dict, int tier, string content)
+        {
+            var ids = ParseItemIds(content);
+            if (ids.Count > 0)
+            {
+                if (!dict.ContainsKey(tier))
+                    dict[tier] = new List<string>();
+                dict[tier].AddRange(ids);
+            }
+        }
+
+        private void CollectItemsToSet(HashSet<string> set, string content)
+        {
+            var ids = ParseItemIds(content);
+            foreach (var id in ids)
+                set.Add(id);
+        }
+
+        private List<string> ParseItemIds(string raw)
+        {
+            var set = new HashSet<string>();
+            if (string.IsNullOrWhiteSpace(raw)) return new List<string>();
+
+            string[] tokens = raw.Split(new[] { ' ', '\t', '/' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (string token in tokens)
+            {
+                string t = token.Trim();
+                if (t.Length == 0 || t.Length > 50) continue;
+                if (int.TryParse(t, out _) || Regex.IsMatch(t, @"^[a-zA-Z_][a-zA-Z0-9_]*$"))
+                    set.Add(t);
+            }
+            return set.ToList();
+        }
+
+        private void WriteGiftsToAllPlayers()
+        {
+            if (!_initialized || !Config.Enabled) return;
+
             int totalAdded = 0;
             foreach (Farmer farmer in Game1.getAllFarmers())
+            {
+                long uid = farmer.UniqueMultiplayerID;
+                if (Config.RevealedPlayerIDs.Contains(uid))
+                    continue;
+
                 totalAdded += WriteGiftsForPlayer(farmer);
+                Config.RevealedPlayerIDs.Add(uid);
+            }
+
+            Helper.WriteConfig(Config);
 
             if (totalAdded > 0)
                 Monitor.Log($"本轮新增 {totalAdded} 个礼物标记", LogLevel.Info);
@@ -100,33 +193,50 @@ namespace GiftReveal
 
             int addedCount = 0;
 
-            foreach (var npcKvp in _npcGifts)
+            foreach (string npcName in _npcPositiveGifts.Keys)
             {
-                string npcName = npcKvp.Key;
                 if (!player.giftedItems.TryGetValue(npcName, out var innerDict))
                 {
                     innerDict = new SerializableDictionary<string, int>();
                     player.giftedItems[npcName] = innerDict;
                 }
 
-                // 专属喜好
-                foreach (string id in npcKvp.Value)
+                // NPC 专属爱/喜欢
+                if (_npcPositiveGifts.TryGetValue(npcName, out var npcPositives))
                 {
-                    if (!innerDict.ContainsKey(id))
+                    foreach (var tierKvp in npcPositives)
                     {
-                        innerDict[id] = 1;
-                        addedCount++;
+                        int tier = tierKvp.Key;
+                        foreach (string id in tierKvp.Value)
+                        {
+                            if (!innerDict.ContainsKey(id))
+                            {
+                                innerDict[id] = tier;
+                                addedCount++;
+                            }
+                            else if (innerDict[id] < tier)
+                            {
+                                innerDict[id] = tier; // 升级等级
+                            }
+                        }
                     }
                 }
 
-                // 通用喜好
-                foreach (var universalKvp in _universalGifts)
+                // 通用爱/喜欢（排除该 NPC 讨厌物品）
+                if (_universalPositiveGifts.Count > 0)
                 {
-                    foreach (string id in universalKvp.Value)
+                    _npcNegativeGifts.TryGetValue(npcName, out var negativeSet);
+
+                    foreach (var universalKvp in _universalPositiveGifts)
                     {
-                        if (!innerDict.ContainsKey(id))
+                        int universalTier = universalKvp.Key;
+                        foreach (string id in universalKvp.Value)
                         {
-                            innerDict[id] = 1;
+                            if (negativeSet != null && negativeSet.Contains(id))
+                                continue;
+                            if (innerDict.ContainsKey(id))
+                                continue;
+                            innerDict[id] = universalTier;
                             addedCount++;
                         }
                     }
@@ -134,32 +244,6 @@ namespace GiftReveal
             }
 
             return addedCount;
-        }
-
-        private List<string> ParseGiftItems(string raw)
-        {
-            var set = new HashSet<string>();
-            if (string.IsNullOrWhiteSpace(raw)) return new List<string>();
-
-            foreach (string section in raw.Split('/'))
-            {
-                string trimmed = section.Trim();
-                if (trimmed.Length == 0) continue;
-
-                int colonIndex = trimmed.IndexOf(':');
-                if (colonIndex >= 0)
-                    trimmed = trimmed.Substring(colonIndex + 1).Trim();
-
-                string[] tokens = trimmed.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-                foreach (string token in tokens)
-                {
-                    if (token.Length > 50) continue;
-                    if (int.TryParse(token, out _) || Regex.IsMatch(token, @"^[a-zA-Z_][a-zA-Z0-9_]*$"))
-                        set.Add(token);
-                }
-            }
-
-            return set.ToList();
         }
     }
 }

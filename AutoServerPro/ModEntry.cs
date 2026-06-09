@@ -101,6 +101,12 @@ namespace AutoServerPro
                 Monitor.Log("配置文件已重新加载", LogLevel.Info);
             });
 
+            // 停止服务器命令
+            helper.ConsoleCommands.Add("stop", "停止服务器", (cmd, args) =>
+            {
+                Game1.quit = true;
+            });
+
             // Harmony 补丁（聊天记录）
             try
             {
@@ -205,7 +211,7 @@ namespace AutoServerPro
             SetLanguage();
             string? latestSave = GetLatestSave();
             if (string.IsNullOrEmpty(latestSave)) { Monitor.Log("未找到任何存档", LogLevel.Warn); return; }
-            Monitor.Log($"正在自动加载存档：{latestSave}", LogLevel.Info);
+            Monitor.Log($"加载存档：{latestSave}", LogLevel.Info);
             LoadSave(latestSave!);
             Game1.multiplayerMode = 2;
             Monitor.Log("游戏模式已设置为网络联机模式", LogLevel.Info);
@@ -563,7 +569,7 @@ namespace AutoServerPro
             bool isInOwnHome = false;
             if (Game1.currentLocation is FarmHouse house)
             {
-                isInOwnHome = (house.owner == Game1.player);
+                isInOwnHome = house.owner == Game1.player;
             }
 
             if (!isInOwnHome)

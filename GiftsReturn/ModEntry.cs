@@ -1,7 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using HarmonyLib;
+using System.Text.RegularExpressions;
+using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
@@ -11,147 +12,210 @@ namespace GiftsReturn
 {
     public class ModEntry : Mod
     {
-        internal static ModConfig? Config;
-        internal static Dictionary<string, bool> NpcReturnedToday = new();
-        internal static Dictionary<string, int> PreGiftPoints = new();
+        private ModConfig Config = null!;
+        private readonly Dictionary<string, int> _lastGiftsToday = new();
+        private readonly Dictionary<string, bool> _npcReturnedToday = new();
+        private bool _initialized = false;
+
+        // 缓存标签对应的物品列表，避免重复遍历所有物品
+        private readonly Dictionary<string, List<string>> _tagItemCache = new();
 
         public override void Entry(IModHelper helper)
         {
             Config = helper.ReadConfig<ModConfig>();
-
-            Harmony harmony = new Harmony(ModManifest.UniqueID);
-            harmony.PatchAll();
-
             helper.Events.GameLoop.DayStarted += OnDayStarted;
-            Monitor.Log("GiftsReturn 已加载", LogLevel.Info);
+            helper.Events.GameLoop.OneSecondUpdateTicked += OnOneSecondUpdateTicked;
+            Monitor.Log("GiftsReturn 已加载（支持上下文标签）", LogLevel.Info);
         }
 
         private void OnDayStarted(object? sender, DayStartedEventArgs e)
         {
             if (!Context.IsMainPlayer) return;
-            NpcReturnedToday.Clear();
-            PreGiftPoints.Clear();
+            _npcReturnedToday.Clear();
+            _lastGiftsToday.Clear();
+            _initialized = false;
+            // 标签缓存不清空，因为游戏物品不会变
         }
 
-        internal static List<string> GetLovedLikedItems(NPC npc)
+        private void OnOneSecondUpdateTicked(object? sender, OneSecondUpdateTickedEventArgs e)
         {
-            if (Config == null) return new List<string>();
-            var ids = new List<string>();
-            if (!Game1.NPCGiftTastes.TryGetValue(npc.Name, out string tasteStr))
-                return ids;
+            if (!Context.IsMainPlayer) return;
 
-            foreach (string section in tasteStr.Split('/'))
+            if (!_initialized)
             {
-                string trimmed = section.Trim();
-                bool isLove = trimmed.StartsWith("Love");
-                bool isLike = trimmed.StartsWith("Like");
-                if (!isLove && !isLike) continue;
-
-                int colonIndex = trimmed.IndexOf(':');
-                if (colonIndex == -1) continue;
-                string idPart = trimmed.Substring(colonIndex + 1).Trim();
-                if (string.IsNullOrEmpty(idPart)) continue;
-
-                foreach (string token in idPart.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                foreach (Farmer farmer in Game1.getOnlineFarmers())
                 {
-                    if (token.Length > 30 || token.Contains('*') || token.Contains('@') || token.Contains('$'))
-                        continue;
-                    ids.Add(token);
+                    if (farmer.friendshipData?.Pairs == null) continue;
+                    foreach (var pair in farmer.friendshipData.Pairs)
+                    {
+                        string key = $"{farmer.UniqueMultiplayerID}_{pair.Key}";
+                        _lastGiftsToday[key] = pair.Value.GiftsToday;
+                    }
                 }
-            }
-            return ids.Distinct().ToList();
-        }
-
-        internal static Item? GetReturnGiftByPrice(NPC npc, int targetPrice)
-        {
-            if (Config == null) return null;
-            if (targetPrice < Config.MinReturnPrice) return null;
-
-            var lovedLiked = GetLovedLikedItems(npc);
-
-            if (Config.EnableGlobalSearch && lovedLiked.Count > 0)
-            {
-                int maxFavoritePrice = 0;
-                foreach (string id in lovedLiked)
-                {
-                    int price = GetItemPrice(id);
-                    if (price > maxFavoritePrice) maxFavoritePrice = price;
-                }
-
-                if (maxFavoritePrice < targetPrice * Config.GlobalSearchThreshold &&
-                    targetPrice > Config.MinPriceForGlobalSearch)
-                {
-                    return GetClosestItemByPrice(targetPrice, null);
-                }
+                _initialized = true;
+                Monitor.Log("轮询初始化完成，开始监控…", LogLevel.Debug);
+                return;
             }
 
-            var bestInFavorite = GetClosestItemByPrice(targetPrice, lovedLiked);
-            if (bestInFavorite != null) return bestInFavorite;
-
-            if (lovedLiked.Count == 0 && Config.EnableGlobalSearch)
-                return GetClosestItemByPrice(targetPrice, null);
-
-            return null;
-        }
-
-        private static int GetItemPrice(string itemId)
-        {
-            if (int.TryParse(itemId, out int intId))
-                itemId = intId.ToString();
-
-            if (Game1.objectData.TryGetValue(itemId, out ObjectData? data))
-                return data.Price;
-            return 0;
-        }
-
-        private static Item? GetClosestItemByPrice(int targetPrice, List<string>? idPool)
-        {
-            IEnumerable<string> query;
-            if (idPool != null && idPool.Count > 0)
+            foreach (Farmer farmer in Game1.getOnlineFarmers())
             {
-                query = idPool;
+                if (farmer.friendshipData?.Pairs == null) continue;
+                foreach (var pair in farmer.friendshipData.Pairs)
+                {
+                    string npcName = pair.Key;
+                    int current = pair.Value.GiftsToday;
+                    string key = $"{farmer.UniqueMultiplayerID}_{npcName}";
+
+                    int previous = _lastGiftsToday.TryGetValue(key, out int v) ? v : 0;
+                    if (current > previous)
+                    {
+                        Monitor.Log($"检测到送礼：{farmer.Name} -> {npcName} ({previous} -> {current})", LogLevel.Info);
+                        _lastGiftsToday[key] = current;
+                        ProcessGift(farmer, npcName, pair.Value);
+                    }
+                    else
+                    {
+                        _lastGiftsToday[key] = current;
+                    }
+                }
+            }
+        }
+
+        private void ProcessGift(Farmer giver, string npcName, Friendship friendship)
+        {
+            Monitor.Log($"[ProcessGift] 处理 {giver.Name} 送 {npcName}", LogLevel.Debug);
+
+            if (_npcReturnedToday.ContainsKey(npcName))
+            {
+                Monitor.Log($"[ProcessGift] {npcName} 今日已回礼，跳过", LogLevel.Debug);
+                return;
+            }
+
+            NPC? npc = Game1.getCharacterFromName(npcName) as NPC;
+            if (npc == null)
+            {
+                Monitor.Log($"[ProcessGift] 找不到NPC对象: {npcName}", LogLevel.Warn);
+                return;
+            }
+
+            float chance = Config.LoveReturnChance;
+            if (Game1.random.NextDouble() > chance)
+            {
+                Monitor.Log("[ProcessGift] 随机数未命中", LogLevel.Debug);
+                return;
+            }
+
+            // 物品选取：普通 → 喜欢 → 最爱（按等级回退）
+            var rawItems = GetItemsByTaste(npc, 2);
+            if (rawItems.Count == 0) rawItems = GetItemsByTaste(npc, 1);
+            if (rawItems.Count == 0) rawItems = GetItemsByTaste(npc, 0);
+
+            if (rawItems.Count == 0)
+            {
+                Monitor.Log($"[ProcessGift] {npcName} 没有任何可回礼的物品", LogLevel.Warn);
+                return;
+            }
+
+            // 解析标签和数字ID，构建最终的有效物品ID列表
+            var resolvedItems = new List<string>();
+            foreach (string rawId in rawItems)
+            {
+                string? resolved = ResolveItemId(rawId);
+                if (resolved != null)
+                    resolvedItems.Add(resolved);
+            }
+
+            if (resolvedItems.Count == 0)
+            {
+                Monitor.Log($"[ProcessGift] 无法解析任何有效物品ID", LogLevel.Warn);
+                return;
+            }
+
+            string finalId = resolvedItems[Game1.random.Next(resolvedItems.Count)];
+            Item? gift = ItemRegistry.Create(finalId, 1, 0);
+            if (gift == null)
+            {
+                Monitor.Log($"[ProcessGift] 物品创建失败: {finalId}", LogLevel.Error);
+                return;
+            }
+
+            Monitor.Log($"[ProcessGift] 准备赠送 {gift.Name} (ID:{finalId})", LogLevel.Debug);
+
+            if (giver.addItemToInventoryBool(gift))
+            {
+                Game1.showGlobalMessage($"{npcName} 回赠了 {giver.Name} 一个 {gift.Name}！");
+                Monitor.Log($"回礼入包：{npcName} -> {giver.Name}：{gift.Name}", LogLevel.Info);
             }
             else
             {
-                query = Game1.objectData.Keys
-                    .Where(key =>
-                    {
-                        if (!Game1.objectData.TryGetValue(key, out ObjectData? data)) return false;
-                        if (data.Type is "Quest" or "Arch" or "asdf" or "Litter") return false;
-                        if (data.Price <= 0) return false;
-                        return true;
-                    });
+                int dir = (int)giver.facingDirection.Value;
+                Game1.createItemDebris(gift, new Vector2(giver.Position.X, giver.Position.Y + 64), dir, giver.currentLocation, (int)giver.UniqueMultiplayerID);
+                Game1.showGlobalMessage($"{npcName} 的回礼掉在了 {giver.Name} 的脚下！");
+                Monitor.Log($"私有掉落：{npcName} -> {giver.Name}：{gift.Name}", LogLevel.Info);
             }
 
-            string bestId = "";
-            int bestDiff = int.MaxValue;
-
-            foreach (string id in query)
-            {
-                int price = GetItemPrice(id);
-                if (price <= 0) continue;
-
-                int diff = Math.Abs(price - targetPrice);
-                if (diff < bestDiff || (diff == bestDiff && price > GetItemPrice(bestId)))
-                {
-                    bestDiff = diff;
-                    bestId = id;
-                }
-            }
-
-            if (string.IsNullOrEmpty(bestId)) return null;
-            return ItemRegistry.Create(bestId, 1, 0);
+            _npcReturnedToday[npcName] = true;
         }
-    }
 
-    public class ModConfig
-    {
-        public float LoveReturnChance { get; set; } = 0.3f;
-        public float LikeReturnChance { get; set; } = 0.3f;
-        public float HateDeductChance { get; set; } = 0f;
-        public int MinReturnPrice { get; set; } = 50;
-        public bool EnableGlobalSearch { get; set; } = true;
-        public float GlobalSearchThreshold { get; set; } = 0.5f;
-        public int MinPriceForGlobalSearch { get; set; } = 500;
+        /// <summary>
+        /// 如果传入的是数字ID直接返回；如果是标签（如 doll_item），则从拥有该标签的物品中随机返回一个数字ID。
+        /// 找不到对应物品时返回 null。
+        /// </summary>
+        private string? ResolveItemId(string input)
+        {
+            // 是纯数字ID，直接返回
+            if (int.TryParse(input, out _))
+                return input;
+
+            // 是标签，需要解析
+            string tag = input.Trim();
+            if (string.IsNullOrEmpty(tag)) return null;
+
+            // 从缓存获取或构建物品列表
+            if (!_tagItemCache.TryGetValue(tag, out var idList))
+            {
+                idList = new List<string>();
+                foreach (var kvp in Game1.objectData)
+                {
+                    ObjectData data = kvp.Value;
+                    if (data.ContextTags?.Contains(tag, StringComparer.OrdinalIgnoreCase) == true)
+                    {
+                        idList.Add(kvp.Key);
+                    }
+                }
+                _tagItemCache[tag] = idList;
+                Monitor.Log($"解析标签 '{tag}': 找到 {idList.Count} 个物品", LogLevel.Debug);
+            }
+
+            if (idList.Count == 0) return null;
+            return idList[Game1.random.Next(idList.Count)];
+        }
+
+        // 从 NPC 礼物词条中提取指定等级的物品 ID（可能包含数字和标签）
+        private List<string> GetItemsByTaste(NPC npc, int taste)
+        {
+            if (!Game1.NPCGiftTastes.TryGetValue(npc.Name, out string? raw))
+                return new List<string>();
+            var sections = raw.Split('/');
+            int index = taste switch { 0 => 0, 1 => 1, 2 => 2, _ => -1 };
+            if (index < 0 || index >= sections.Length) return new List<string>();
+            return ParseItemIds(sections[index].Trim());
+        }
+
+        // 解析字符串，提取物品 ID（数字）和标签（英文标识符）
+        private static List<string> ParseItemIds(string raw)
+        {
+            var ids = new List<string>();
+            if (string.IsNullOrWhiteSpace(raw)) return ids;
+            foreach (string token in raw.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                string t = token.Trim();
+                if (t.Length == 0 || t.Length > 50) continue;
+                // 保留数字 ID 和可能的标签（字母开头、无特殊符号）
+                if (int.TryParse(t, out _) || Regex.IsMatch(t, @"^[a-zA-Z_][a-zA-Z0-9_]*$"))
+                    ids.Add(t);
+            }
+            return ids.Distinct().ToList();
+        }
     }
 }

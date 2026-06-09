@@ -2,7 +2,7 @@
   "Name": "GiftReveal",
   "Author": "LinHan",
   "Version": "1.0.0",
-  "Description": "自动揭示所有NPC的礼物偏好",
+  "Description": "Reveals all loved and liked gifts for every NPC, excluding universal gifts that the NPC hates.",
   "UniqueID": "LinHan.GiftReveal",
   "EntryDll": "GiftReveal.dll",
   "MinimumApiVersion": "4.0.0",

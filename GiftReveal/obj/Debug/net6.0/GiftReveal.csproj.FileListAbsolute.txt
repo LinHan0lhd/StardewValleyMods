@@ -6,3 +6,12 @@ C:\Users\admin\Documents\ModEntry\GiftReveal\obj\Debug\net6.0\GiftReveal.Assembl
 C:\Users\admin\Documents\ModEntry\GiftReveal\obj\Debug\net6.0\GiftReveal.AssemblyInfo.cs
 C:\Users\admin\Documents\ModEntry\GiftReveal\obj\Debug\net6.0\GiftReveal.csproj.CoreCompileInputs.cache
 C:\Users\admin\Documents\ModEntry\GiftReveal\obj\Debug\net6.0\GiftReveal.dll
+C:\Users\admin\Documents\StardewValleyMods\GiftReveal\bin\Debug\net6.0\GiftReveal.deps.json
+C:\Users\admin\Documents\StardewValleyMods\GiftReveal\bin\Debug\net6.0\GiftReveal.dll
+C:\Users\admin\Documents\StardewValleyMods\GiftReveal\obj\Debug\net6.0\GiftReveal.csproj.AssemblyReference.cache
+C:\Users\admin\Documents\StardewValleyMods\GiftReveal\obj\Debug\net6.0\GiftReveal.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\admin\Documents\StardewValleyMods\GiftReveal\obj\Debug\net6.0\GiftReveal.AssemblyInfoInputs.cache
+C:\Users\admin\Documents\StardewValleyMods\GiftReveal\obj\Debug\net6.0\GiftReveal.AssemblyInfo.cs
+C:\Users\admin\Documents\StardewValleyMods\GiftReveal\obj\Debug\net6.0\GiftReveal.csproj.CoreCompileInputs.cache
+C:\Users\admin\Documents\StardewValleyMods\GiftReveal\obj\Debug\net6.0\GiftReveal.sourcelink.json
+C:\Users\admin\Documents\StardewValleyMods\GiftReveal\obj\Debug\net6.0\GiftReveal.dll
