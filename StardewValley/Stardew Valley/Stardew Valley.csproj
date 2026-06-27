@@ -1,0 +1,1104 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">x64</Platform>
+    <ProjectGuid>{62288BAB-C49B-4A8A-B062-32B38E18E674}</ProjectGuid>
+    <OutputType>WinExe</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>Stardew Valley</RootNamespace>
+    <AssemblyName>Stardew Valley</AssemblyName>
+    <TargetFrameworkVersion>v6.0</TargetFrameworkVersion>
+    <TargetFrameworkIdentifier>.NETCoreApp</TargetFrameworkIdentifier>
+    <FileAlignment>512</FileAlignment>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Stardew Valley.ico</ApplicationIcon>
+    <StartupObject>StardewValley.Program</StartupObject>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x64' ">
+    <PlatformTarget>x64</PlatformTarget>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x64' ">
+    <PlatformTarget>x64</PlatformTarget>
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="BmFont">
+      <HintPath>..\..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\Stardew Valley\BmFont.dll</HintPath>
+    </Reference>
+    <Reference Include="GalaxyCSharp">
+      <HintPath>..\..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\Stardew Valley\GalaxyCSharp.dll</HintPath>
+    </Reference>
+    <Reference Include="Lidgren.Network">
+      <HintPath>..\..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\Stardew Valley\Lidgren.Network.dll</HintPath>
+    </Reference>
+    <Reference Include="MonoGame.Framework">
+      <HintPath>..\..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\Stardew Valley\MonoGame.Framework.dll</HintPath>
+    </Reference>
+    <Reference Include="SkiaSharp">
+      <HintPath>..\..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\Stardew Valley\SkiaSharp.dll</HintPath>
+    </Reference>
+    <Reference Include="StardewValley.GameData">
+      <HintPath>..\..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\Stardew Valley\StardewValley.GameData.dll</HintPath>
+    </Reference>
+    <Reference Include="Steamworks.NET">
+      <HintPath>..\..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\Stardew Valley\Steamworks.NET.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Collections">
+      <HintPath>..\..\..\..\..\..\..\Program Files\dotnet\shared\Microsoft.NETCore.App\6.0.19\System.Collections.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Collections.Concurrent">
+      <HintPath>..\..\..\..\..\..\..\Program Files\dotnet\shared\Microsoft.NETCore.App\6.0.19\System.Collections.Concurrent.dll</HintPath>
+    </Reference>
+    <Reference Include="System.ComponentModel">
+      <HintPath>..\..\..\..\..\..\..\Program Files\dotnet\shared\Microsoft.NETCore.App\6.0.19\System.ComponentModel.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Console">
+      <HintPath>..\..\..\..\..\..\..\Program Files\dotnet\shared\Microsoft.NETCore.App\6.0.19\System.Console.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Data.HashFunction.Interfaces">
+      <HintPath>..\..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\Stardew Valley\System.Data.HashFunction.Interfaces.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Data.HashFunction.xxHash">
+      <HintPath>..\..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\Stardew Valley\System.Data.HashFunction.xxHash.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Diagnostics.Process">
+      <HintPath>..\..\..\..\..\..\..\Program Files\dotnet\shared\Microsoft.NETCore.App\6.0.19\System.Diagnostics.Process.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Diagnostics.StackTrace">
+      <HintPath>..\..\..\..\..\..\..\Program Files\dotnet\shared\Microsoft.NETCore.App\6.0.19\System.Diagnostics.StackTrace.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Linq">
+      <HintPath>..\..\..\..\..\..\..\Program Files\dotnet\shared\Microsoft.NETCore.App\6.0.19\System.Linq.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Linq.Expressions">
+      <HintPath>..\..\..\..\..\..\..\Program Files\dotnet\shared\Microsoft.NETCore.App\6.0.19\System.Linq.Expressions.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Net.NameResolution">
+      <HintPath>..\..\..\..\..\..\..\Program Files\dotnet\shared\Microsoft.NETCore.App\6.0.19\System.Net.NameResolution.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Net.Primitives">
+      <HintPath>..\..\..\..\..\..\..\Program Files\dotnet\shared\Microsoft.NETCore.App\6.0.19\System.Net.Primitives.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Reflection.Emit">
+      <HintPath>..\..\..\..\..\..\..\Program Files\dotnet\shared\Microsoft.NETCore.App\6.0.19\System.Reflection.Emit.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Reflection.Emit.ILGeneration">
+      <HintPath>..\..\..\..\..\..\..\Program Files\dotnet\shared\Microsoft.NETCore.App\6.0.19\System.Reflection.Emit.ILGeneration.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Reflection.Emit.Lightweight">
+      <HintPath>..\..\..\..\..\..\..\Program Files\dotnet\shared\Microsoft.NETCore.App\6.0.19\System.Reflection.Emit.Lightweight.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Reflection.Primitives">
+      <HintPath>..\..\..\..\..\..\..\Program Files\dotnet\shared\Microsoft.NETCore.App\6.0.19\System.Reflection.Primitives.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Runtime">
+      <HintPath>..\..\..\..\..\..\..\Program Files\dotnet\shared\Microsoft.NETCore.App\6.0.19\System.Runtime.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Runtime.InteropServices">
+      <HintPath>..\..\..\..\..\..\..\Program Files\dotnet\shared\Microsoft.NETCore.App\6.0.19\System.Runtime.InteropServices.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Runtime.InteropServices.RuntimeInformation">
+      <HintPath>..\..\..\..\..\..\..\Program Files\dotnet\shared\Microsoft.NETCore.App\6.0.19\System.Runtime.InteropServices.RuntimeInformation.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Text.RegularExpressions">
+      <HintPath>..\..\..\..\..\..\..\Program Files\dotnet\shared\Microsoft.NETCore.App\6.0.19\System.Text.RegularExpressions.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Threading">
+      <HintPath>..\..\..\..\..\..\..\Program Files\dotnet\shared\Microsoft.NETCore.App\6.0.19\System.Threading.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Threading.Thread">
+      <HintPath>..\..\..\..\..\..\..\Program Files\dotnet\shared\Microsoft.NETCore.App\6.0.19\System.Threading.Thread.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Xml.ReaderWriter">
+      <HintPath>..\..\..\..\..\..\..\Program Files\dotnet\shared\Microsoft.NETCore.App\6.0.19\System.Xml.ReaderWriter.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Xml.XmlSerializer">
+      <HintPath>..\..\..\..\..\..\..\Program Files\dotnet\shared\Microsoft.NETCore.App\6.0.19\System.Xml.XmlSerializer.dll</HintPath>
+    </Reference>
+    <Reference Include="TextCopy">
+      <HintPath>..\..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\Stardew Valley\TextCopy.dll</HintPath>
+    </Reference>
+    <Reference Include="xTile">
+      <HintPath>..\..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\Stardew Valley\xTile.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <AppDesigner Include="Properties\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="ContentManifest\CHJsonParser.cs" />
+    <Compile Include="ContentManifest\ContentHashParser.cs" />
+    <Compile Include="ContentManifest\Internal\CHArray.cs" />
+    <Compile Include="ContentManifest\Internal\CHBoolean.cs" />
+    <Compile Include="ContentManifest\Internal\CHElement.cs" />
+    <Compile Include="ContentManifest\Internal\CHJson.cs" />
+    <Compile Include="ContentManifest\Internal\CHJsonParserContext.cs" />
+    <Compile Include="ContentManifest\Internal\CHNumber.cs" />
+    <Compile Include="ContentManifest\Internal\CHObject.cs" />
+    <Compile Include="ContentManifest\Internal\CHParsable.cs" />
+    <Compile Include="ContentManifest\Internal\CHString.cs" />
+    <Compile Include="ContentManifest\Internal\CHValue.cs" />
+    <Compile Include="ContentManifest\Internal\CHValueEnum.cs" />
+    <Compile Include="ContentManifest\Internal\CHValueUnion.cs" />
+    <Compile Include="DontLoadDefaultSetting.cs" />
+    <Compile Include="Force\DeepCloner\DeepClonerExtensions.cs" />
+    <Compile Include="Force\DeepCloner\Helpers\ClonerToExprGenerator.cs" />
+    <Compile Include="Force\DeepCloner\Helpers\DeepClonerCache.cs" />
+    <Compile Include="Force\DeepCloner\Helpers\DeepClonerExprGenerator.cs" />
+    <Compile Include="Force\DeepCloner\Helpers\DeepClonerGenerator.cs" />
+    <Compile Include="Force\DeepCloner\Helpers\DeepClonerSafeTypes.cs" />
+    <Compile Include="Force\DeepCloner\Helpers\DeepCloneState.cs" />
+    <Compile Include="Force\DeepCloner\Helpers\ReflectionHelper.cs" />
+    <Compile Include="Force\DeepCloner\Helpers\ShallowClonerGenerator.cs" />
+    <Compile Include="Force\DeepCloner\Helpers\ShallowObjectCloner.cs" />
+    <Compile Include="FrameRateCounter.cs" />
+    <Compile Include="Ionic\Crc\CRC32.cs" />
+    <Compile Include="Ionic\Crc\CrcCalculatorStream.cs" />
+    <Compile Include="Ionic\Zlib\Adler.cs" />
+    <Compile Include="Ionic\Zlib\BlockState.cs" />
+    <Compile Include="Ionic\Zlib\CompressionLevel.cs" />
+    <Compile Include="Ionic\Zlib\CompressionMode.cs" />
+    <Compile Include="Ionic\Zlib\CompressionStrategy.cs" />
+    <Compile Include="Ionic\Zlib\DeflateFlavor.cs" />
+    <Compile Include="Ionic\Zlib\DeflateManager.cs" />
+    <Compile Include="Ionic\Zlib\FlushType.cs" />
+    <Compile Include="Ionic\Zlib\GZipStream.cs" />
+    <Compile Include="Ionic\Zlib\InflateBlocks.cs" />
+    <Compile Include="Ionic\Zlib\InflateCodes.cs" />
+    <Compile Include="Ionic\Zlib\InflateManager.cs" />
+    <Compile Include="Ionic\Zlib\InfTree.cs" />
+    <Compile Include="Ionic\Zlib\InternalConstants.cs" />
+    <Compile Include="Ionic\Zlib\InternalInflateConstants.cs" />
+    <Compile Include="Ionic\Zlib\SharedUtils.cs" />
+    <Compile Include="Ionic\Zlib\StaticTree.cs" />
+    <Compile Include="Ionic\Zlib\Tree.cs" />
+    <Compile Include="Ionic\Zlib\ZlibBaseStream.cs" />
+    <Compile Include="Ionic\Zlib\ZlibCodec.cs" />
+    <Compile Include="Ionic\Zlib\ZlibConstants.cs" />
+    <Compile Include="Ionic\Zlib\ZlibException.cs" />
+    <Compile Include="Ionic\Zlib\ZlibStream.cs" />
+    <Compile Include="Ionic\Zlib\ZlibStreamFlavor.cs" />
+    <Compile Include="LWJGL\LZ4.cs" />
+    <Compile Include="Microsoft\CodeAnalysis\EmbeddedAttribute.cs" />
+    <Compile Include="Netcode\AbstractNetEvent1.cs" />
+    <Compile Include="Netcode\AbstractNetSerializable.cs" />
+    <Compile Include="Netcode\BinaryReaderWriterExtensions.cs" />
+    <Compile Include="Netcode\FieldChange.cs" />
+    <Compile Include="Netcode\ILoggingWriter.cs" />
+    <Compile Include="Netcode\INetObject.cs" />
+    <Compile Include="Netcode\INetRoot.cs" />
+    <Compile Include="Netcode\INetSerializable.cs" />
+    <Compile Include="Netcode\InterpolationCancellable.cs" />
+    <Compile Include="Netcode\NetArray.cs" />
+    <Compile Include="Netcode\NetBool.cs" />
+    <Compile Include="Netcode\NetByte.cs" />
+    <Compile Include="Netcode\NetClock.cs" />
+    <Compile Include="Netcode\NetCollection.cs" />
+    <Compile Include="Netcode\NetColor.cs" />
+    <Compile Include="Netcode\NetDictionary.cs" />
+    <Compile Include="Netcode\NetDouble.cs" />
+    <Compile Include="Netcode\NetEnum.cs" />
+    <Compile Include="Netcode\NetEvent0.cs" />
+    <Compile Include="Netcode\NetEvent1.cs" />
+    <Compile Include="Netcode\NetEvent1Field.cs" />
+    <Compile Include="Netcode\NetEventArg.cs" />
+    <Compile Include="Netcode\NetEventBinary.cs" />
+    <Compile Include="Netcode\NetExtendableRef.cs" />
+    <Compile Include="Netcode\NetField.cs" />
+    <Compile Include="Netcode\NetFieldBase.cs" />
+    <Compile Include="Netcode\NetFieldDictionary.cs" />
+    <Compile Include="Netcode\NetFields.cs" />
+    <Compile Include="Netcode\NetFloat.cs" />
+    <Compile Include="Netcode\NetGuid.cs" />
+    <Compile Include="Netcode\NetGuidDictionary.cs" />
+    <Compile Include="Netcode\NetHashSet.cs" />
+    <Compile Include="Netcode\NetHelper.cs" />
+    <Compile Include="Netcode\NetInt.cs" />
+    <Compile Include="Netcode\NetIntDelta.cs" />
+    <Compile Include="Netcode\NetIntHashSet.cs" />
+    <Compile Include="Netcode\NetIntList.cs" />
+    <Compile Include="Netcode\NetList.cs" />
+    <Compile Include="Netcode\NetLong.cs" />
+    <Compile Include="Netcode\NetLongList.cs" />
+    <Compile Include="Netcode\NetNullableEnum.cs" />
+    <Compile Include="Netcode\NetObjectArray.cs" />
+    <Compile Include="Netcode\NetObjectList.cs" />
+    <Compile Include="Netcode\NetObjectShrinkList.cs" />
+    <Compile Include="Netcode\NetPoint.cs" />
+    <Compile Include="Netcode\NetRectangle.cs" />
+    <Compile Include="Netcode\NetRef.cs" />
+    <Compile Include="Netcode\NetRefBase.cs" />
+    <Compile Include="Netcode\NetRefTypes.cs" />
+    <Compile Include="Netcode\NetRoot.cs" />
+    <Compile Include="Netcode\NetRootDictionary.cs" />
+    <Compile Include="Netcode\NetRotation.cs" />
+    <Compile Include="Netcode\NetString.cs" />
+    <Compile Include="Netcode\NetStringHashSet.cs" />
+    <Compile Include="Netcode\NetStringList.cs" />
+    <Compile Include="Netcode\NetVector2.cs" />
+    <Compile Include="Netcode\NetVector2HashSet.cs" />
+    <Compile Include="Netcode\NetVersion.cs" />
+    <Compile Include="Netcode\SerializationCollectionFacade.cs" />
+    <Compile Include="Netcode\SerializationFacade.cs" />
+    <Compile Include="Netcode\Validation\NetFieldValidator.cs" />
+    <Compile Include="Netcode\Validation\NetFieldValidatorEntry.cs" />
+    <Compile Include="Netcode\Validation\NotImplicitNetFieldAttribute.cs" />
+    <Compile Include="Netcode\Validation\NotNetFieldAttribute.cs" />
+    <Compile Include="ObjToStr.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Sickhead\Engine\Util\MemberInfoExtensions.cs" />
+    <Compile Include="StardewValley\AbortNetSynchronizerException.cs" />
+    <Compile Include="StardewValley\AnimalHouse.cs" />
+    <Compile Include="StardewValley\AnimatedSprite.cs" />
+    <Compile Include="StardewValley\ArgUtility.cs" />
+    <Compile Include="StardewValley\Audio\AudioCategoryWrapper.cs" />
+    <Compile Include="StardewValley\Audio\AudioCueModificationManager.cs" />
+    <Compile Include="StardewValley\Audio\AudioEngineWrapper.cs" />
+    <Compile Include="StardewValley\Audio\DummyAudioCategory.cs" />
+    <Compile Include="StardewValley\Audio\DummyAudioEngine.cs" />
+    <Compile Include="StardewValley\Audio\IAudioCategory.cs" />
+    <Compile Include="StardewValley\Audio\IAudioEngine.cs" />
+    <Compile Include="StardewValley\Audio\ISoundsHelper.cs" />
+    <Compile Include="StardewValley\Audio\LoopingCueManager.cs" />
+    <Compile Include="StardewValley\Audio\SoundContext.cs" />
+    <Compile Include="StardewValley\Audio\SoundsHelper.cs" />
+    <Compile Include="StardewValley\Background.cs" />
+    <Compile Include="StardewValley\BatTemporarySprite.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\AmbientLocationSounds.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\Bird.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\Birdie.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\Butterfly.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\CalderaMonkey.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\Cloud.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\CrabCritter.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\Critter.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\Crow.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\EmilysParrot.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\Firefly.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\Frog.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\Lexicon.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\MoneyDial.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\Opossum.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\OverheadParrot.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\Owl.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\ParrotPlatform.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\ParrotUpgradePerch.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\PerchingBirds.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\PlayerStatusList.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\Rabbit.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\SandDuggy.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\ScreenFade.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\ScreenSwipe.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\Seagull.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\SebsFrogs.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\SparklingText.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\SpriteText.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\Squirrel.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\SuspensionBridge.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\Train.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\TrainCar.cs" />
+    <Compile Include="StardewValley\BellsAndWhistles\Woodpecker.cs" />
+    <Compile Include="StardewValley\Buff.cs" />
+    <Compile Include="StardewValley\Buffs\BuffAttributeDisplay.cs" />
+    <Compile Include="StardewValley\Buffs\BuffEffects.cs" />
+    <Compile Include="StardewValley\Buffs\BuffManager.cs" />
+    <Compile Include="StardewValley\BuildingPaintColor.cs" />
+    <Compile Include="StardewValley\BuildingPainter.cs" />
+    <Compile Include="StardewValley\Buildings\Barn.cs" />
+    <Compile Include="StardewValley\Buildings\Building.cs" />
+    <Compile Include="StardewValley\Buildings\Coop.cs" />
+    <Compile Include="StardewValley\Buildings\FishPond.cs" />
+    <Compile Include="StardewValley\Buildings\GreenhouseBuilding.cs" />
+    <Compile Include="StardewValley\Buildings\IndoorsType.cs" />
+    <Compile Include="StardewValley\Buildings\JumpingFish.cs" />
+    <Compile Include="StardewValley\Buildings\JunimoHut.cs" />
+    <Compile Include="StardewValley\Buildings\Mill.cs" />
+    <Compile Include="StardewValley\Buildings\PetBowl.cs" />
+    <Compile Include="StardewValley\Buildings\PondFishSilhouette.cs" />
+    <Compile Include="StardewValley\Buildings\ShippingBin.cs" />
+    <Compile Include="StardewValley\Buildings\Stable.cs" />
+    <Compile Include="StardewValley\BundleGenerator.cs" />
+    <Compile Include="StardewValley\ButtonCollection.cs" />
+    <Compile Include="StardewValley\CachedMultiplayerMap.cs" />
+    <Compile Include="StardewValley\ChangeType.cs" />
+    <Compile Include="StardewValley\Character.cs" />
+    <Compile Include="StardewValley\CharacterEventArgs.cs" />
+    <Compile Include="StardewValley\Characters\Cat.cs" />
+    <Compile Include="StardewValley\Characters\Child.cs" />
+    <Compile Include="StardewValley\Characters\Dog.cs" />
+    <Compile Include="StardewValley\Characters\Horse.cs" />
+    <Compile Include="StardewValley\Characters\Junimo.cs" />
+    <Compile Include="StardewValley\Characters\JunimoHarvester.cs" />
+    <Compile Include="StardewValley\Characters\Pet.cs" />
+    <Compile Include="StardewValley\Characters\Raccoon.cs" />
+    <Compile Include="StardewValley\Characters\TrashBear.cs" />
+    <Compile Include="StardewValley\CharEnteredHandler.cs" />
+    <Compile Include="StardewValley\ChatCommands.cs" />
+    <Compile Include="StardewValley\Chunk.cs" />
+    <Compile Include="StardewValley\CollisionMask.cs" />
+    <Compile Include="StardewValley\Companions\Companion.cs" />
+    <Compile Include="StardewValley\Companions\FlyingCompanion.cs" />
+    <Compile Include="StardewValley\Companions\HoppingCompanion.cs" />
+    <Compile Include="StardewValley\Companions\HungryFrogCompanion.cs" />
+    <Compile Include="StardewValley\ConsoleAsync\AsyncOperationManager.cs" />
+    <Compile Include="StardewValley\ConsoleAsync\AsyncTaskOperation.cs" />
+    <Compile Include="StardewValley\ConsoleAsync\GenericOp.cs" />
+    <Compile Include="StardewValley\ConsoleAsync\GenericResult.cs" />
+    <Compile Include="StardewValley\ConsoleAsync\IAsyncOperation.cs" />
+    <Compile Include="StardewValley\Constants\AchievementIds.cs" />
+    <Compile Include="StardewValley\Constants\EventIds.cs" />
+    <Compile Include="StardewValley\Constants\StatKeys.cs" />
+    <Compile Include="StardewValley\CosmeticDebris.cs" />
+    <Compile Include="StardewValley\CraftingRecipe.cs" />
+    <Compile Include="StardewValley\Crop.cs" />
+    <Compile Include="StardewValley\CueWrapper.cs" />
+    <Compile Include="StardewValley\DataLoader.cs" />
+    <Compile Include="StardewValley\Debris.cs" />
+    <Compile Include="StardewValley\DebugCommands.cs" />
+    <Compile Include="StardewValley\DebugMetricsComponent.cs" />
+    <Compile Include="StardewValley\DebugTimings.cs" />
+    <Compile Include="StardewValley\DebugTools.cs" />
+    <Compile Include="StardewValley\DelayedAction.cs" />
+    <Compile Include="StardewValley\Delegates\ChatCommandHandlerDelegate.cs" />
+    <Compile Include="StardewValley\Delegates\DebugCommandHandlerDelegate.cs" />
+    <Compile Include="StardewValley\Delegates\EventCommandDelegate.cs" />
+    <Compile Include="StardewValley\Delegates\EventPreconditionDelegate.cs" />
+    <Compile Include="StardewValley\Delegates\FestivalCleanupDelegate.cs" />
+    <Compile Include="StardewValley\Delegates\FestivalDailySetupDelegate.cs" />
+    <Compile Include="StardewValley\Delegates\ForEachItemDelegate.cs" />
+    <Compile Include="StardewValley\Delegates\GameStateQueryContext.cs" />
+    <Compile Include="StardewValley\Delegates\GameStateQueryDelegate.cs" />
+    <Compile Include="StardewValley\Delegates\GetForEachItemPathDelegate.cs" />
+    <Compile Include="StardewValley\Delegates\MachineInteractDelegate.cs" />
+    <Compile Include="StardewValley\Delegates\MachineOutputDelegate.cs" />
+    <Compile Include="StardewValley\Delegates\ResolveItemQueryDelegate.cs" />
+    <Compile Include="StardewValley\Delegates\TriggerActionContext.cs" />
+    <Compile Include="StardewValley\Delegates\TriggerActionDelegate.cs" />
+    <Compile Include="StardewValley\DesktopClipboard.cs" />
+    <Compile Include="StardewValley\Dialogue.cs" />
+    <Compile Include="StardewValley\DialogueLine.cs" />
+    <Compile Include="StardewValley\DisposableList.cs" />
+    <Compile Include="StardewValley\DummyCue.cs" />
+    <Compile Include="StardewValley\DummySoundBank.cs" />
+    <Compile Include="StardewValley\Enchantments\AmethystEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\AquamarineEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\ArchaeologistEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\ArtfulEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\AttackEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\AutoHookEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\AxeEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\BaseEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\BaseWeaponEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\BottomlessEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\BugKillerEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\CritEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\CritPowerEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\CrusaderEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\DefenseEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\DiamondEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\EfficientToolEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\EmeraldEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\FisherEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\FishingRodEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\GalaxySoulEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\GenerousEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\HaymakerEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\HoeEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\JadeEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\LightweightEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\MagicEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\MasterEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\MilkPailEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\PanEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\PickaxeEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\PowerfulEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\PreservingEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\ReachingToolEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\RubyEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\ShavingEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\ShearsEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\SlimeGathererEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\SlimeSlayerEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\SwiftToolEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\TopazEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\VampiricEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\WateringCanEnchantment.cs" />
+    <Compile Include="StardewValley\Enchantments\WeaponSpeedEnchantment.cs" />
+    <Compile Include="StardewValley\Event.cs" />
+    <Compile Include="StardewValley\EventContext.cs" />
+    <Compile Include="StardewValley\EventScript_GreenTea.cs" />
+    <Compile Include="StardewValley\Events\BaseFarmEvent.cs" />
+    <Compile Include="StardewValley\Events\BirthingEvent.cs" />
+    <Compile Include="StardewValley\Events\DiaryEvent.cs" />
+    <Compile Include="StardewValley\Events\FairyEvent.cs" />
+    <Compile Include="StardewValley\Events\FarmEvent.cs" />
+    <Compile Include="StardewValley\Events\MovieTheaterScreeningEvent.cs" />
+    <Compile Include="StardewValley\Events\PlayerCoupleBirthingEvent.cs" />
+    <Compile Include="StardewValley\Events\QiPlaneEvent.cs" />
+    <Compile Include="StardewValley\Events\QuestionEvent.cs" />
+    <Compile Include="StardewValley\Events\SoundInTheNightEvent.cs" />
+    <Compile Include="StardewValley\Events\WitchEvent.cs" />
+    <Compile Include="StardewValley\Events\WorldChangeEvent.cs" />
+    <Compile Include="StardewValley\Extensions\CollectionExtensions.cs" />
+    <Compile Include="StardewValley\Extensions\FrameworkExtensions.cs" />
+    <Compile Include="StardewValley\Extensions\GameExtensions.cs" />
+    <Compile Include="StardewValley\Extensions\ItemExtensions.cs" />
+    <Compile Include="StardewValley\Extensions\ItemRegistryExtensions.cs" />
+    <Compile Include="StardewValley\Extensions\RandomExtensions.cs" />
+    <Compile Include="StardewValley\Extensions\ReflectionExtensions.cs" />
+    <Compile Include="StardewValley\Extensions\StringExtensions.cs" />
+    <Compile Include="StardewValley\Farm.cs" />
+    <Compile Include="StardewValley\FarmAnimal.cs" />
+    <Compile Include="StardewValley\Farmer.cs" />
+    <Compile Include="StardewValley\FarmerPair.cs" />
+    <Compile Include="StardewValley\FarmerRenderer.cs" />
+    <Compile Include="StardewValley\FarmerSprite.cs" />
+    <Compile Include="StardewValley\FarmerTeam.cs" />
+    <Compile Include="StardewValley\Fence.cs" />
+    <Compile Include="StardewValley\Friendship.cs" />
+    <Compile Include="StardewValley\FriendshipStatus.cs" />
+    <Compile Include="StardewValley\Game1.cs" />
+    <Compile Include="StardewValley\GameLocation.cs" />
+    <Compile Include="StardewValley\GameRunner.cs" />
+    <Compile Include="StardewValley\GameStateQuery.cs" />
+    <Compile Include="StardewValley\HairStyleMetadata.cs" />
+    <Compile Include="StardewValley\Hashing\HashUtility.cs" />
+    <Compile Include="StardewValley\Hashing\IHashUtility.cs" />
+    <Compile Include="StardewValley\HouseRenovation.cs" />
+    <Compile Include="StardewValley\HUDMessage.cs" />
+    <Compile Include="StardewValley\IAnimalLocation.cs" />
+    <Compile Include="StardewValley\ICue.cs" />
+    <Compile Include="StardewValley\ICustomEventScript.cs" />
+    <Compile Include="StardewValley\IHaveModData.cs" />
+    <Compile Include="StardewValley\IKeyboardSubscriber.cs" />
+    <Compile Include="StardewValley\InputButton.cs" />
+    <Compile Include="StardewValley\InputState.cs" />
+    <Compile Include="StardewValley\InstancedStatic.cs" />
+    <Compile Include="StardewValley\InstanceGame.cs" />
+    <Compile Include="StardewValley\InstanceStatics.cs" />
+    <Compile Include="StardewValley\InteriorDoor.cs" />
+    <Compile Include="StardewValley\InteriorDoorDictionary.cs" />
+    <Compile Include="StardewValley\Internal\ForEachItemContext.cs" />
+    <Compile Include="StardewValley\Internal\ForEachItemHelper.cs" />
+    <Compile Include="StardewValley\Internal\ItemQueryContext.cs" />
+    <Compile Include="StardewValley\Internal\ItemQueryResolver.cs" />
+    <Compile Include="StardewValley\Internal\ItemQueryResult.cs" />
+    <Compile Include="StardewValley\Internal\ItemQuerySearchMode.cs" />
+    <Compile Include="StardewValley\Internal\LogBuilder.cs" />
+    <Compile Include="StardewValley\Internal\OtherNamesAttribute.cs" />
+    <Compile Include="StardewValley\Internal\ShopBuilder.cs" />
+    <Compile Include="StardewValley\Internal\StaticDelegateBuilder.cs" />
+    <Compile Include="StardewValley\Inventories\IInventory.cs" />
+    <Compile Include="StardewValley\Inventories\Inventory.cs" />
+    <Compile Include="StardewValley\Inventories\InventoryIndex.cs" />
+    <Compile Include="StardewValley\Inventories\OnInventoryReplacedDelegate.cs" />
+    <Compile Include="StardewValley\Inventories\OnSlotChangedDelegate.cs" />
+    <Compile Include="StardewValley\ISalable.cs" />
+    <Compile Include="StardewValley\ISittable.cs" />
+    <Compile Include="StardewValley\IslandGemBird.cs" />
+    <Compile Include="StardewValley\ISoundBank.cs" />
+    <Compile Include="StardewValley\Item.cs" />
+    <Compile Include="StardewValley\ItemContextTagManager.cs" />
+    <Compile Include="StardewValley\ItemRegistry.cs" />
+    <Compile Include="StardewValley\ItemStockInformation.cs" />
+    <Compile Include="StardewValley\ItemTypeDefinitions\BaseItemDataDefinition.cs" />
+    <Compile Include="StardewValley\ItemTypeDefinitions\BigCraftableDataDefinition.cs" />
+    <Compile Include="StardewValley\ItemTypeDefinitions\BootsDataDefinition.cs" />
+    <Compile Include="StardewValley\ItemTypeDefinitions\FlooringDataDefinition.cs" />
+    <Compile Include="StardewValley\ItemTypeDefinitions\FurnitureDataDefinition.cs" />
+    <Compile Include="StardewValley\ItemTypeDefinitions\HatDataDefinition.cs" />
+    <Compile Include="StardewValley\ItemTypeDefinitions\IHaveItemTypeId.cs" />
+    <Compile Include="StardewValley\ItemTypeDefinitions\IItemDataDefinition.cs" />
+    <Compile Include="StardewValley\ItemTypeDefinitions\ItemMetadata.cs" />
+    <Compile Include="StardewValley\ItemTypeDefinitions\MannequinDataDefinition.cs" />
+    <Compile Include="StardewValley\ItemTypeDefinitions\ObjectDataDefinition.cs" />
+    <Compile Include="StardewValley\ItemTypeDefinitions\PantsDataDefinition.cs" />
+    <Compile Include="StardewValley\ItemTypeDefinitions\ParsedItemData.cs" />
+    <Compile Include="StardewValley\ItemTypeDefinitions\ShirtDataDefinition.cs" />
+    <Compile Include="StardewValley\ItemTypeDefinitions\ToolDataDefinition.cs" />
+    <Compile Include="StardewValley\ItemTypeDefinitions\TrinketDataDefinition.cs" />
+    <Compile Include="StardewValley\ItemTypeDefinitions\WallpaperDataDefinition.cs" />
+    <Compile Include="StardewValley\ItemTypeDefinitions\WeaponDataDefinition.cs" />
+    <Compile Include="StardewValley\KeyboardDispatcher.cs" />
+    <Compile Include="StardewValley\KeyboardInput.cs" />
+    <Compile Include="StardewValley\KeyEventArgs.cs" />
+    <Compile Include="StardewValley\KeyEventHandler.cs" />
+    <Compile Include="StardewValley\LegacyShims.cs" />
+    <Compile Include="StardewValley\LightSource.cs" />
+    <Compile Include="StardewValley\LocalizedContentManager.cs" />
+    <Compile Include="StardewValley\LocalMultiplayer.cs" />
+    <Compile Include="StardewValley\LocationContexts.cs" />
+    <Compile Include="StardewValley\LocationRequest.cs" />
+    <Compile Include="StardewValley\Locations\AbandonedJojaMart.cs" />
+    <Compile Include="StardewValley\Locations\AdventureGuild.cs" />
+    <Compile Include="StardewValley\Locations\BathHousePool.cs" />
+    <Compile Include="StardewValley\Locations\Beach.cs" />
+    <Compile Include="StardewValley\Locations\BeachNightMarket.cs" />
+    <Compile Include="StardewValley\Locations\BoatTunnel.cs" />
+    <Compile Include="StardewValley\Locations\BugLand.cs" />
+    <Compile Include="StardewValley\Locations\BusStop.cs" />
+    <Compile Include="StardewValley\Locations\Cabin.cs" />
+    <Compile Include="StardewValley\Locations\Caldera.cs" />
+    <Compile Include="StardewValley\Locations\Cellar.cs" />
+    <Compile Include="StardewValley\Locations\Club.cs" />
+    <Compile Include="StardewValley\Locations\CommunityCenter.cs" />
+    <Compile Include="StardewValley\Locations\DecoratableLocation.cs" />
+    <Compile Include="StardewValley\Locations\DecorationFacade.cs" />
+    <Compile Include="StardewValley\Locations\Desert.cs" />
+    <Compile Include="StardewValley\Locations\DesertFestival.cs" />
+    <Compile Include="StardewValley\Locations\DwarfGate.cs" />
+    <Compile Include="StardewValley\Locations\FarmCave.cs" />
+    <Compile Include="StardewValley\Locations\FarmHouse.cs" />
+    <Compile Include="StardewValley\Locations\FishShop.cs" />
+    <Compile Include="StardewValley\Locations\Forest.cs" />
+    <Compile Include="StardewValley\Locations\IslandEast.cs" />
+    <Compile Include="StardewValley\Locations\IslandFarmCave.cs" />
+    <Compile Include="StardewValley\Locations\IslandFarmHouse.cs" />
+    <Compile Include="StardewValley\Locations\IslandFieldOffice.cs" />
+    <Compile Include="StardewValley\Locations\IslandForestLocation.cs" />
+    <Compile Include="StardewValley\Locations\IslandHut.cs" />
+    <Compile Include="StardewValley\Locations\IslandLocation.cs" />
+    <Compile Include="StardewValley\Locations\IslandNorth.cs" />
+    <Compile Include="StardewValley\Locations\IslandSecret.cs" />
+    <Compile Include="StardewValley\Locations\IslandShrine.cs" />
+    <Compile Include="StardewValley\Locations\IslandSouth.cs" />
+    <Compile Include="StardewValley\Locations\IslandSouthEast.cs" />
+    <Compile Include="StardewValley\Locations\IslandSouthEastCave.cs" />
+    <Compile Include="StardewValley\Locations\IslandWest.cs" />
+    <Compile Include="StardewValley\Locations\IslandWestCave1.cs" />
+    <Compile Include="StardewValley\Locations\JojaMart.cs" />
+    <Compile Include="StardewValley\Locations\LibraryMuseum.cs" />
+    <Compile Include="StardewValley\Locations\ManorHouse.cs" />
+    <Compile Include="StardewValley\Locations\MermaidHouse.cs" />
+    <Compile Include="StardewValley\Locations\Mine.cs" />
+    <Compile Include="StardewValley\Locations\MineInfo.cs" />
+    <Compile Include="StardewValley\Locations\MineShaft.cs" />
+    <Compile Include="StardewValley\Locations\Mountain.cs" />
+    <Compile Include="StardewValley\Locations\MovieTheater.cs" />
+    <Compile Include="StardewValley\Locations\Racer.cs" />
+    <Compile Include="StardewValley\Locations\Railroad.cs" />
+    <Compile Include="StardewValley\Locations\SeedShop.cs" />
+    <Compile Include="StardewValley\Locations\Sewer.cs" />
+    <Compile Include="StardewValley\Locations\ShopLocation.cs" />
+    <Compile Include="StardewValley\Locations\Submarine.cs" />
+    <Compile Include="StardewValley\Locations\Summit.cs" />
+    <Compile Include="StardewValley\Locations\Town.cs" />
+    <Compile Include="StardewValley\Locations\VolcanoDungeon.cs" />
+    <Compile Include="StardewValley\Locations\Wisp.cs" />
+    <Compile Include="StardewValley\Locations\WizardHouse.cs" />
+    <Compile Include="StardewValley\Locations\Woods.cs" />
+    <Compile Include="StardewValley\LoggingBinaryWriter.cs" />
+    <Compile Include="StardewValley\Logging\CheatCommandChatLogger.cs" />
+    <Compile Include="StardewValley\Logging\DefaultLogger.cs" />
+    <Compile Include="StardewValley\Logging\IGameLogger.cs" />
+    <Compile Include="StardewValley\MachineDataUtility.cs" />
+    <Compile Include="StardewValley\MapSeat.cs" />
+    <Compile Include="StardewValley\MarriageDialogueReference.cs" />
+    <Compile Include="StardewValley\Menus\AboutMenu.cs" />
+    <Compile Include="StardewValley\Menus\AdvancedGameOptions.cs" />
+    <Compile Include="StardewValley\Menus\AnimalPage.cs" />
+    <Compile Include="StardewValley\Menus\AnimalQueryMenu.cs" />
+    <Compile Include="StardewValley\Menus\AnimationPreviewTool.cs" />
+    <Compile Include="StardewValley\Menus\Billboard.cs" />
+    <Compile Include="StardewValley\Menus\BobberBar.cs" />
+    <Compile Include="StardewValley\Menus\BuffsDisplay.cs" />
+    <Compile Include="StardewValley\Menus\BuildingPaintMenu.cs" />
+    <Compile Include="StardewValley\Menus\BuildingSkinMenu.cs" />
+    <Compile Include="StardewValley\Menus\Bundle.cs" />
+    <Compile Include="StardewValley\Menus\BundleIngredientDescription.cs" />
+    <Compile Include="StardewValley\Menus\ButtonTutorialMenu.cs" />
+    <Compile Include="StardewValley\Menus\CarpenterMenu.cs" />
+    <Compile Include="StardewValley\Menus\CharacterCustomization.cs" />
+    <Compile Include="StardewValley\Menus\ChatBox.cs" />
+    <Compile Include="StardewValley\Menus\ChatMessage.cs" />
+    <Compile Include="StardewValley\Menus\ChatSnippet.cs" />
+    <Compile Include="StardewValley\Menus\ChatTextBox.cs" />
+    <Compile Include="StardewValley\Menus\ChooseFromIconsMenu.cs" />
+    <Compile Include="StardewValley\Menus\ChooseFromListMenu.cs" />
+    <Compile Include="StardewValley\Menus\ClickableAnimatedComponent.cs" />
+    <Compile Include="StardewValley\Menus\ClickableComponent.cs" />
+    <Compile Include="StardewValley\Menus\ClickableTextureComponent.cs" />
+    <Compile Include="StardewValley\Menus\CollectionsPage.cs" />
+    <Compile Include="StardewValley\Menus\ColorPicker.cs" />
+    <Compile Include="StardewValley\Menus\ConfirmationDialog.cs" />
+    <Compile Include="StardewValley\Menus\CoopMenu.cs" />
+    <Compile Include="StardewValley\Menus\CraftingPage.cs" />
+    <Compile Include="StardewValley\Menus\DayTimeMoneyBox.cs" />
+    <Compile Include="StardewValley\Menus\DialogueBox.cs" />
+    <Compile Include="StardewValley\Menus\DigitEntryMenu.cs" />
+    <Compile Include="StardewValley\Menus\DiscreteColorPicker.cs" />
+    <Compile Include="StardewValley\Menus\DyeMenu.cs" />
+    <Compile Include="StardewValley\Menus\EmojiMenu.cs" />
+    <Compile Include="StardewValley\Menus\EmoteMenu.cs" />
+    <Compile Include="StardewValley\Menus\EmoteSelector.cs" />
+    <Compile Include="StardewValley\Menus\ExitPage.cs" />
+    <Compile Include="StardewValley\Menus\FarmerBoxButton.cs" />
+    <Compile Include="StardewValley\Menus\FarmersBox.cs" />
+    <Compile Include="StardewValley\Menus\FarmhandMenu.cs" />
+    <Compile Include="StardewValley\Menus\FieldOfficeMenu.cs" />
+    <Compile Include="StardewValley\Menus\ForgeMenu.cs" />
+    <Compile Include="StardewValley\Menus\GameMenu.cs" />
+    <Compile Include="StardewValley\Menus\GeodeMenu.cs" />
+    <Compile Include="StardewValley\Menus\IClickableMenu.cs" />
+    <Compile Include="StardewValley\Menus\ICreditsBlock.cs" />
+    <Compile Include="StardewValley\Menus\ImageCreditsBlock.cs" />
+    <Compile Include="StardewValley\Menus\InventoryMenu.cs" />
+    <Compile Include="StardewValley\Menus\InventoryPage.cs" />
+    <Compile Include="StardewValley\Menus\InviteCodeDialog.cs" />
+    <Compile Include="StardewValley\Menus\IScreenReadable.cs" />
+    <Compile Include="StardewValley\Menus\ItemExitBehavior.cs" />
+    <Compile Include="StardewValley\Menus\ItemGrabMenu.cs" />
+    <Compile Include="StardewValley\Menus\ItemListMenu.cs" />
+    <Compile Include="StardewValley\Menus\JojaCDMenu.cs" />
+    <Compile Include="StardewValley\Menus\JunimoNoteMenu.cs" />
+    <Compile Include="StardewValley\Menus\LanguageSelectionMenu.cs" />
+    <Compile Include="StardewValley\Menus\LetterViewerMenu.cs" />
+    <Compile Include="StardewValley\Menus\LevelUpMenu.cs" />
+    <Compile Include="StardewValley\Menus\LinkCreditsBlock.cs" />
+    <Compile Include="StardewValley\Menus\LoadGameMenu.cs" />
+    <Compile Include="StardewValley\Menus\LocalCoopJoinMenu.cs" />
+    <Compile Include="StardewValley\Menus\MapPage.cs" />
+    <Compile Include="StardewValley\Menus\MasteryTrackerMenu.cs" />
+    <Compile Include="StardewValley\Menus\MenuWithInventory.cs" />
+    <Compile Include="StardewValley\Menus\MineElevatorMenu.cs" />
+    <Compile Include="StardewValley\Menus\MuseumMenu.cs" />
+    <Compile Include="StardewValley\Menus\NamingMenu.cs" />
+    <Compile Include="StardewValley\Menus\NumberSelectionMenu.cs" />
+    <Compile Include="StardewValley\Menus\OptionsButton.cs" />
+    <Compile Include="StardewValley\Menus\OptionsCheckbox.cs" />
+    <Compile Include="StardewValley\Menus\OptionsDropDown.cs" />
+    <Compile Include="StardewValley\Menus\OptionsElement.cs" />
+    <Compile Include="StardewValley\Menus\OptionsInputListener.cs" />
+    <Compile Include="StardewValley\Menus\OptionsPage.cs" />
+    <Compile Include="StardewValley\Menus\OptionsPlusMinus.cs" />
+    <Compile Include="StardewValley\Menus\OptionsPlusMinusButton.cs" />
+    <Compile Include="StardewValley\Menus\OptionsSlider.cs" />
+    <Compile Include="StardewValley\Menus\OptionsTextEntry.cs" />
+    <Compile Include="StardewValley\Menus\PendingProposalDialog.cs" />
+    <Compile Include="StardewValley\Menus\PI_ItemList.cs" />
+    <Compile Include="StardewValley\Menus\PondQueryMenu.cs" />
+    <Compile Include="StardewValley\Menus\PowersTab.cs" />
+    <Compile Include="StardewValley\Menus\PrizeTicketMenu.cs" />
+    <Compile Include="StardewValley\Menus\ProfileItem.cs" />
+    <Compile Include="StardewValley\Menus\ProfileMenu.cs" />
+    <Compile Include="StardewValley\Menus\PurchaseAnimalsMenu.cs" />
+    <Compile Include="StardewValley\Menus\QuestContainerMenu.cs" />
+    <Compile Include="StardewValley\Menus\QuestLog.cs" />
+    <Compile Include="StardewValley\Menus\ReadyCheckDialog.cs" />
+    <Compile Include="StardewValley\Menus\RenovateMenu.cs" />
+    <Compile Include="StardewValley\Menus\SaveGameMenu.cs" />
+    <Compile Include="StardewValley\Menus\ServerConnectionDialog.cs" />
+    <Compile Include="StardewValley\Menus\ShippingMenu.cs" />
+    <Compile Include="StardewValley\Menus\ShopMenu.cs" />
+    <Compile Include="StardewValley\Menus\SkillsPage.cs" />
+    <Compile Include="StardewValley\Menus\SkipForClickableAggregation.cs" />
+    <Compile Include="StardewValley\Menus\SliderBar.cs" />
+    <Compile Include="StardewValley\Menus\SocialPage.cs" />
+    <Compile Include="StardewValley\Menus\SpecialCurrencyDisplay.cs" />
+    <Compile Include="StardewValley\Menus\SpecialOrdersBoard.cs" />
+    <Compile Include="StardewValley\Menus\StorageContainer.cs" />
+    <Compile Include="StardewValley\Menus\StrengthGame.cs" />
+    <Compile Include="StardewValley\Menus\TailoringMenu.cs" />
+    <Compile Include="StardewValley\Menus\TailorRecipeListTool.cs" />
+    <Compile Include="StardewValley\Menus\TextBox.cs" />
+    <Compile Include="StardewValley\Menus\TextBoxEvent.cs" />
+    <Compile Include="StardewValley\Menus\TextCreditsBlock.cs" />
+    <Compile Include="StardewValley\Menus\TextEntryMenu.cs" />
+    <Compile Include="StardewValley\Menus\TitleMenu.cs" />
+    <Compile Include="StardewValley\Menus\TitleTextInputMenu.cs" />
+    <Compile Include="StardewValley\Menus\Toolbar.cs" />
+    <Compile Include="StardewValley\Menus\TooManyFarmsMenu.cs" />
+    <Compile Include="StardewValley\Menus\TutorialMenu.cs" />
+    <Compile Include="StardewValley\Menus\WheelSpinGame.cs" />
+    <Compile Include="StardewValley\Minigames\AbigailGame.cs" />
+    <Compile Include="StardewValley\Minigames\BoatJourney.cs" />
+    <Compile Include="StardewValley\Minigames\CalicoJack.cs" />
+    <Compile Include="StardewValley\Minigames\CraneGame.cs" />
+    <Compile Include="StardewValley\Minigames\Darts.cs" />
+    <Compile Include="StardewValley\Minigames\FantasyBoardGame.cs" />
+    <Compile Include="StardewValley\Minigames\FishingGame.cs" />
+    <Compile Include="StardewValley\Minigames\GrandpaStory.cs" />
+    <Compile Include="StardewValley\Minigames\HaleyCowPictures.cs" />
+    <Compile Include="StardewValley\Minigames\IMinigame.cs" />
+    <Compile Include="StardewValley\Minigames\Intro.cs" />
+    <Compile Include="StardewValley\Minigames\MaruComet.cs" />
+    <Compile Include="StardewValley\Minigames\MineCart.cs" />
+    <Compile Include="StardewValley\Minigames\NetLeaderboards.cs" />
+    <Compile Include="StardewValley\Minigames\NetLeaderboardsEntry.cs" />
+    <Compile Include="StardewValley\Minigames\PlaneFlyBy.cs" />
+    <Compile Include="StardewValley\Minigames\RobotBlastoff.cs" />
+    <Compile Include="StardewValley\Minigames\Slots.cs" />
+    <Compile Include="StardewValley\Minigames\TargetGame.cs" />
+    <Compile Include="StardewValley\Minigames\TelescopeScene.cs" />
+    <Compile Include="StardewValley\Minigames\Test.cs" />
+    <Compile Include="StardewValley\Mods\ModDataDictionary.cs" />
+    <Compile Include="StardewValley\Mods\ModHooks.cs" />
+    <Compile Include="StardewValley\Mods\RenderSteps.cs" />
+    <Compile Include="StardewValley\Monsters\AngryRoger.cs" />
+    <Compile Include="StardewValley\Monsters\Bat.cs" />
+    <Compile Include="StardewValley\Monsters\BigSlime.cs" />
+    <Compile Include="StardewValley\Monsters\BlueSquid.cs" />
+    <Compile Include="StardewValley\Monsters\Bug.cs" />
+    <Compile Include="StardewValley\Monsters\DinoMonster.cs" />
+    <Compile Include="StardewValley\Monsters\Duggy.cs" />
+    <Compile Include="StardewValley\Monsters\DustSpirit.cs" />
+    <Compile Include="StardewValley\Monsters\DwarvishSentry.cs" />
+    <Compile Include="StardewValley\Monsters\Fly.cs" />
+    <Compile Include="StardewValley\Monsters\Ghost.cs" />
+    <Compile Include="StardewValley\Monsters\GreenSlime.cs" />
+    <Compile Include="StardewValley\Monsters\Grub.cs" />
+    <Compile Include="StardewValley\Monsters\HotHead.cs" />
+    <Compile Include="StardewValley\Monsters\LavaLurk.cs" />
+    <Compile Include="StardewValley\Monsters\Leaper.cs" />
+    <Compile Include="StardewValley\Monsters\MetalHead.cs" />
+    <Compile Include="StardewValley\Monsters\Monster.cs" />
+    <Compile Include="StardewValley\Monsters\Mummy.cs" />
+    <Compile Include="StardewValley\Monsters\ParryEventArgs.cs" />
+    <Compile Include="StardewValley\Monsters\RockCrab.cs" />
+    <Compile Include="StardewValley\Monsters\RockGolem.cs" />
+    <Compile Include="StardewValley\Monsters\Serpent.cs" />
+    <Compile Include="StardewValley\Monsters\ShadowBrute.cs" />
+    <Compile Include="StardewValley\Monsters\ShadowGirl.cs" />
+    <Compile Include="StardewValley\Monsters\ShadowGuy.cs" />
+    <Compile Include="StardewValley\Monsters\ShadowShaman.cs" />
+    <Compile Include="StardewValley\Monsters\Shooter.cs" />
+    <Compile Include="StardewValley\Monsters\Skeleton.cs" />
+    <Compile Include="StardewValley\Monsters\Spiker.cs" />
+    <Compile Include="StardewValley\Monsters\SquidKid.cs" />
+    <Compile Include="StardewValley\MovieConcession.cs" />
+    <Compile Include="StardewValley\MovieInvitation.cs" />
+    <Compile Include="StardewValley\MovieViewerLockEvent.cs" />
+    <Compile Include="StardewValley\Multiplayer.cs" />
+    <Compile Include="StardewValley\MultipleMutexRequest.cs" />
+    <Compile Include="StardewValley\NativeClipboard\ClipboardPlatformType.cs" />
+    <Compile Include="StardewValley\NativeClipboard\LinuxSdlClipboard.cs" />
+    <Compile Include="StardewValley\NativeClipboard\OsxSdlClipboard.cs" />
+    <Compile Include="StardewValley\NativeClipboard\SdlClipboard.cs" />
+    <Compile Include="StardewValley\NativeClipboard\WindowsSdlClipboard.cs" />
+    <Compile Include="StardewValley\NetFarmerPairDictionary.cs" />
+    <Compile Include="StardewValley\NetIntIntArrayDictionary.cs" />
+    <Compile Include="StardewValley\NetLogger.cs" />
+    <Compile Include="StardewValley\NetLogRecord.cs" />
+    <Compile Include="StardewValley\NetStringIntArrayDictionary.cs" />
+    <Compile Include="StardewValley\NetSynchronizer.cs" />
+    <Compile Include="StardewValley\Network\BandwidthLogger.cs" />
+    <Compile Include="StardewValley\Network\BarGraph.cs" />
+    <Compile Include="StardewValley\Network\Bimap.cs" />
+    <Compile Include="StardewValley\Network\BuilderData.cs" />
+    <Compile Include="StardewValley\Network\ChestHit\ChestHitArgs.cs" />
+    <Compile Include="StardewValley\Network\ChestHit\ChestHitSynchronizer.cs" />
+    <Compile Include="StardewValley\Network\ChestHit\ChestHitTimer.cs" />
+    <Compile Include="StardewValley\Network\ChestHit\Internal\ChestHitMessageType.cs" />
+    <Compile Include="StardewValley\Network\Client.cs" />
+    <Compile Include="StardewValley\Network\Compress\INetCompression.cs" />
+    <Compile Include="StardewValley\Network\Compress\LZ4NetCompression.cs" />
+    <Compile Include="StardewValley\Network\Compress\NullNetCompression.cs" />
+    <Compile Include="StardewValley\Network\Dedicated\DedicatedServer.cs" />
+    <Compile Include="StardewValley\Network\Dedicated\DedicatedServerMessageType.cs" />
+    <Compile Include="StardewValley\Network\FarmerCollection.cs" />
+    <Compile Include="StardewValley\Network\GameServer.cs" />
+    <Compile Include="StardewValley\Network\HookableClient.cs" />
+    <Compile Include="StardewValley\Network\HookableServer.cs" />
+    <Compile Include="StardewValley\Network\IBandwidthMonitor.cs" />
+    <Compile Include="StardewValley\Network\IGameServer.cs" />
+    <Compile Include="StardewValley\Network\IHookableClient.cs" />
+    <Compile Include="StardewValley\Network\IHookableServer.cs" />
+    <Compile Include="StardewValley\Network\IncomingMessage.cs" />
+    <Compile Include="StardewValley\Network\LidgrenClient.cs" />
+    <Compile Include="StardewValley\Network\LidgrenMessageUtils.cs" />
+    <Compile Include="StardewValley\Network\LidgrenServer.cs" />
+    <Compile Include="StardewValley\Network\LocationWeather.cs" />
+    <Compile Include="StardewValley\Network\NetAudio.cs" />
+    <Compile Include="StardewValley\Network\NetBufferReadStream.cs" />
+    <Compile Include="StardewValley\Network\NetBufferWriteStream.cs" />
+    <Compile Include="StardewValley\Network\NetBundles.cs" />
+    <Compile Include="StardewValley\Network\NetCharacterRef.cs" />
+    <Compile Include="StardewValley\Network\NetDancePartner.cs" />
+    <Compile Include="StardewValley\Network\NetDirection.cs" />
+    <Compile Include="StardewValley\Network\NetEvents\BasePlayerActionRequest.cs" />
+    <Compile Include="StardewValley\Network\NetEvents\BaseSetFlagRequest.cs" />
+    <Compile Include="StardewValley\Network\NetEvents\MailType.cs" />
+    <Compile Include="StardewValley\Network\NetEvents\NutDropRequest.cs" />
+    <Compile Include="StardewValley\Network\NetEvents\PlayerActionTarget.cs" />
+    <Compile Include="StardewValley\Network\NetEvents\SetMailRequest.cs" />
+    <Compile Include="StardewValley\Network\NetEvents\SetSimpleFlagRequest.cs" />
+    <Compile Include="StardewValley\Network\NetEvents\SimpleFlagType.cs" />
+    <Compile Include="StardewValley\Network\NetFarmerCollection.cs" />
+    <Compile Include="StardewValley\Network\NetFarmerRef.cs" />
+    <Compile Include="StardewValley\Network\NetFarmerRoot.cs" />
+    <Compile Include="StardewValley\Network\NetIntDictionary.cs" />
+    <Compile Include="StardewValley\Network\NetLocationRef.cs" />
+    <Compile Include="StardewValley\Network\NetLongDictionary.cs" />
+    <Compile Include="StardewValley\Network\NetMutex.cs" />
+    <Compile Include="StardewValley\Network\NetMutexQueue.cs" />
+    <Compile Include="StardewValley\Network\NetNPCRef.cs" />
+    <Compile Include="StardewValley\Network\NetPausableField.cs" />
+    <Compile Include="StardewValley\Network\NetPointDictionary.cs" />
+    <Compile Include="StardewValley\Network\NetPosition.cs" />
+    <Compile Include="StardewValley\Network\NetReady\Internal\BaseReadyCheck.cs" />
+    <Compile Include="StardewValley\Network\NetReady\Internal\ClientReadyCheck.cs" />
+    <Compile Include="StardewValley\Network\NetReady\Internal\ReadyCheckMessageType.cs" />
+    <Compile Include="StardewValley\Network\NetReady\Internal\ReadyState.cs" />
+    <Compile Include="StardewValley\Network\NetReady\Internal\ServerReadyCheck.cs" />
+    <Compile Include="StardewValley\Network\NetReady\ReadySynchronizer.cs" />
+    <Compile Include="StardewValley\Network\NetStringDictionary.cs" />
+    <Compile Include="StardewValley\Network\NetVector2Dictionary.cs" />
+    <Compile Include="StardewValley\Network\NetWitnessedLock.cs" />
+    <Compile Include="StardewValley\Network\NetWorldState.cs" />
+    <Compile Include="StardewValley\Network\OutgoingMessage.cs" />
+    <Compile Include="StardewValley\Network\OverlaidDictionary.cs" />
+    <Compile Include="StardewValley\Network\OverlayDictionary.cs" />
+    <Compile Include="StardewValley\Network\Server.cs" />
+    <Compile Include="StardewValley\NewDaySynchronizer.cs" />
+    <Compile Include="StardewValley\Noise.cs" />
+    <Compile Include="StardewValley\NoiseGenerator.cs" />
+    <Compile Include="StardewValley\NonInstancedStatic.cs" />
+    <Compile Include="StardewValley\NPC.cs" />
+    <Compile Include="StardewValley\NPCController.cs" />
+    <Compile Include="StardewValley\NPCDialogueResponse.cs" />
+    <Compile Include="StardewValley\NumberSprite.cs" />
+    <Compile Include="StardewValley\Object.cs" />
+    <Compile Include="StardewValley\Objects\BedFurniture.cs" />
+    <Compile Include="StardewValley\Objects\Boots.cs" />
+    <Compile Include="StardewValley\Objects\BreakableContainer.cs" />
+    <Compile Include="StardewValley\Objects\Cask.cs" />
+    <Compile Include="StardewValley\Objects\Chest.cs" />
+    <Compile Include="StardewValley\Objects\Clothing.cs" />
+    <Compile Include="StardewValley\Objects\ColoredObject.cs" />
+    <Compile Include="StardewValley\Objects\CombinedRing.cs" />
+    <Compile Include="StardewValley\Objects\CrabPot.cs" />
+    <Compile Include="StardewValley\Objects\DefaultPhoneHandler.cs" />
+    <Compile Include="StardewValley\Objects\FishTankFurniture.cs" />
+    <Compile Include="StardewValley\Objects\Furniture.cs" />
+    <Compile Include="StardewValley\Objects\Hat.cs" />
+    <Compile Include="StardewValley\Objects\IndoorPot.cs" />
+    <Compile Include="StardewValley\Objects\IPhoneHandler.cs" />
+    <Compile Include="StardewValley\Objects\ItemPedestal.cs" />
+    <Compile Include="StardewValley\Objects\Mannequin.cs" />
+    <Compile Include="StardewValley\Objects\MiniJukebox.cs" />
+    <Compile Include="StardewValley\Objects\PetLicense.cs" />
+    <Compile Include="StardewValley\Objects\Phone.cs" />
+    <Compile Include="StardewValley\Objects\RandomizedPlantFurniture.cs" />
+    <Compile Include="StardewValley\Objects\Ring.cs" />
+    <Compile Include="StardewValley\Objects\Sign.cs" />
+    <Compile Include="StardewValley\Objects\SpecialItem.cs" />
+    <Compile Include="StardewValley\Objects\StorageFurniture.cs" />
+    <Compile Include="StardewValley\Objects\TankFish.cs" />
+    <Compile Include="StardewValley\Objects\Trinkets\CompanionTrinketEffect.cs" />
+    <Compile Include="StardewValley\Objects\Trinkets\FairyBoxTrinketEffect.cs" />
+    <Compile Include="StardewValley\Objects\Trinkets\IceOrbTrinketEffect.cs" />
+    <Compile Include="StardewValley\Objects\Trinkets\MagicQuiverTrinketEffect.cs" />
+    <Compile Include="StardewValley\Objects\Trinkets\RainbowHairTrinketEffect.cs" />
+    <Compile Include="StardewValley\Objects\Trinkets\Trinket.cs" />
+    <Compile Include="StardewValley\Objects\Trinkets\TrinketEffect.cs" />
+    <Compile Include="StardewValley\Objects\TV.cs" />
+    <Compile Include="StardewValley\Objects\Wallpaper.cs" />
+    <Compile Include="StardewValley\Objects\WoodChipper.cs" />
+    <Compile Include="StardewValley\Objects\Workbench.cs" />
+    <Compile Include="StardewValley\Options.cs" />
+    <Compile Include="StardewValley\Pathfinding\LocationWarpRoute.cs" />
+    <Compile Include="StardewValley\Pathfinding\PathFindController.cs" />
+    <Compile Include="StardewValley\Pathfinding\PathNode.cs" />
+    <Compile Include="StardewValley\Pathfinding\PriorityQueue.cs" />
+    <Compile Include="StardewValley\Pathfinding\SchedulePathDescription.cs" />
+    <Compile Include="StardewValley\Pathfinding\WarpPathfindingCache.cs" />
+    <Compile Include="StardewValley\Preconditions.cs" />
+    <Compile Include="StardewValley\Program.cs" />
+    <Compile Include="StardewValley\Projectiles\BasicProjectile.cs" />
+    <Compile Include="StardewValley\Projectiles\DebuffingProjectile.cs" />
+    <Compile Include="StardewValley\Projectiles\Projectile.cs" />
+    <Compile Include="StardewValley\Prop.cs" />
+    <Compile Include="StardewValley\Proposal.cs" />
+    <Compile Include="StardewValley\ProposalResponse.cs" />
+    <Compile Include="StardewValley\ProposalType.cs" />
+    <Compile Include="StardewValley\PurchaseableKeyItem.cs" />
+    <Compile Include="StardewValley\Quests\CraftingQuest.cs" />
+    <Compile Include="StardewValley\Quests\DescriptionElement.cs" />
+    <Compile Include="StardewValley\Quests\FishingQuest.cs" />
+    <Compile Include="StardewValley\Quests\GoSomewhereQuest.cs" />
+    <Compile Include="StardewValley\Quests\HaveBuildingQuest.cs" />
+    <Compile Include="StardewValley\Quests\IQuest.cs" />
+    <Compile Include="StardewValley\Quests\ItemDeliveryQuest.cs" />
+    <Compile Include="StardewValley\Quests\ItemHarvestQuest.cs" />
+    <Compile Include="StardewValley\Quests\LostItemQuest.cs" />
+    <Compile Include="StardewValley\Quests\NetDescriptionElementList.cs" />
+    <Compile Include="StardewValley\Quests\NetDescriptionElementRef.cs" />
+    <Compile Include="StardewValley\Quests\Quest.cs" />
+    <Compile Include="StardewValley\Quests\ResourceCollectionQuest.cs" />
+    <Compile Include="StardewValley\Quests\SecretLostItemQuest.cs" />
+    <Compile Include="StardewValley\Quests\SlayMonsterQuest.cs" />
+    <Compile Include="StardewValley\Quests\SocializeQuest.cs" />
+    <Compile Include="StardewValley\RainDrop.cs" />
+    <Compile Include="StardewValley\ReportHasRoomAnotherFarmDelegate.cs" />
+    <Compile Include="StardewValley\Response.cs" />
+    <Compile Include="StardewValley\Rumble.cs" />
+    <Compile Include="StardewValley\SaveGame.cs" />
+    <Compile Include="StardewValley\SaveMigrations\ISaveMigrator.cs" />
+    <Compile Include="StardewValley\SaveMigrations\SaveFixes.cs" />
+    <Compile Include="StardewValley\SaveMigrations\SaveMigrator.cs" />
+    <Compile Include="StardewValley\SaveMigrations\SaveMigrator_1_3.cs" />
+    <Compile Include="StardewValley\SaveMigrations\SaveMigrator_1_4.cs" />
+    <Compile Include="StardewValley\SaveMigrations\SaveMigrator_1_5.cs" />
+    <Compile Include="StardewValley\SaveMigrations\SaveMigrator_1_6.cs" />
+    <Compile Include="StardewValley\SaveSerialization\SaveSerializer.cs" />
+    <Compile Include="StardewValley\SaveSerialization\Vector2Reader.cs" />
+    <Compile Include="StardewValley\SaveSerialization\Vector2Serializer.cs" />
+    <Compile Include="StardewValley\SaveSerialization\Vector2Writer.cs" />
+    <Compile Include="StardewValley\SDKs\GogGalaxy\GalaxyHelper.cs" />
+    <Compile Include="StardewValley\SDKs\GogGalaxy\GalaxyNetClient.cs" />
+    <Compile Include="StardewValley\SDKs\GogGalaxy\GalaxyNetHelper.cs" />
+    <Compile Include="StardewValley\SDKs\GogGalaxy\GalaxyNetServer.cs" />
+    <Compile Include="StardewValley\SDKs\GogGalaxy\GalaxySocket.cs" />
+    <Compile Include="StardewValley\SDKs\GogGalaxy\Internal\Base36.cs" />
+    <Compile Include="StardewValley\SDKs\GogGalaxy\Listeners\GalaxyAuthListener.cs" />
+    <Compile Include="StardewValley\SDKs\GogGalaxy\Listeners\GalaxyGameJoinRequestedListener.cs" />
+    <Compile Include="StardewValley\SDKs\GogGalaxy\Listeners\GalaxyLobbyCreatedListener.cs" />
+    <Compile Include="StardewValley\SDKs\GogGalaxy\Listeners\GalaxyLobbyDataListener.cs" />
+    <Compile Include="StardewValley\SDKs\GogGalaxy\Listeners\GalaxyLobbyDataRetrieveListener.cs" />
+    <Compile Include="StardewValley\SDKs\GogGalaxy\Listeners\GalaxyLobbyEnteredListener.cs" />
+    <Compile Include="StardewValley\SDKs\GogGalaxy\Listeners\GalaxyLobbyLeftListener.cs" />
+    <Compile Include="StardewValley\SDKs\GogGalaxy\Listeners\GalaxyLobbyMemberStateListener.cs" />
+    <Compile Include="StardewValley\SDKs\GogGalaxy\Listeners\GalaxyOperationalStateChangeListener.cs" />
+    <Compile Include="StardewValley\SDKs\GogGalaxy\Listeners\GalaxyRichPresenceListener.cs" />
+    <Compile Include="StardewValley\SDKs\GogGalaxy\Listeners\GalaxySpecificUserDataListener.cs" />
+    <Compile Include="StardewValley\SDKs\LobbyUpdateListener.cs" />
+    <Compile Include="StardewValley\SDKs\NullSDKHelper.cs" />
+    <Compile Include="StardewValley\SDKs\SDKHelper.cs" />
+    <Compile Include="StardewValley\SDKs\SDKNetHelper.cs" />
+    <Compile Include="StardewValley\SDKs\Steam\Internal\ConnectionData.cs" />
+    <Compile Include="StardewValley\SDKs\Steam\Internal\HybridLobby.cs" />
+    <Compile Include="StardewValley\SDKs\Steam\Internal\LobbyConnectionType.cs" />
+    <Compile Include="StardewValley\SDKs\Steam\Internal\SteamSocketUtils.cs" />
+    <Compile Include="StardewValley\SDKs\Steam\SteamHelper.cs" />
+    <Compile Include="StardewValley\SDKs\Steam\SteamNetClient.cs" />
+    <Compile Include="StardewValley\SDKs\Steam\SteamNetHelper.cs" />
+    <Compile Include="StardewValley\SDKs\Steam\SteamNetServer.cs" />
+    <Compile Include="StardewValley\SDKs\WeGameRail\RailHelper.cs" />
+    <Compile Include="StardewValley\SeaMonsterTemporarySprite.cs" />
+    <Compile Include="StardewValley\SerializableDictionary.cs" />
+    <Compile Include="StardewValley\SerializableDictionaryWithCaseInsensitiveKeys.cs" />
+    <Compile Include="StardewValley\ServerPrivacy.cs" />
+    <Compile Include="StardewValley\Shed.cs" />
+    <Compile Include="StardewValley\SlimeHutch.cs" />
+    <Compile Include="StardewValley\SoundBankWrapper.cs" />
+    <Compile Include="StardewValley\SpecialOrders\Objectives\CollectObjective.cs" />
+    <Compile Include="StardewValley\SpecialOrders\Objectives\DeliverObjective.cs" />
+    <Compile Include="StardewValley\SpecialOrders\Objectives\DonateObjective.cs" />
+    <Compile Include="StardewValley\SpecialOrders\Objectives\FishObjective.cs" />
+    <Compile Include="StardewValley\SpecialOrders\Objectives\GiftObjective.cs" />
+    <Compile Include="StardewValley\SpecialOrders\Objectives\JKScoreObjective.cs" />
+    <Compile Include="StardewValley\SpecialOrders\Objectives\OrderObjective.cs" />
+    <Compile Include="StardewValley\SpecialOrders\Objectives\ReachMineFloorObjective.cs" />
+    <Compile Include="StardewValley\SpecialOrders\Objectives\ShipObjective.cs" />
+    <Compile Include="StardewValley\SpecialOrders\Objectives\SlayObjective.cs" />
+    <Compile Include="StardewValley\SpecialOrders\Rewards\FriendshipReward.cs" />
+    <Compile Include="StardewValley\SpecialOrders\Rewards\GemsReward.cs" />
+    <Compile Include="StardewValley\SpecialOrders\Rewards\MailReward.cs" />
+    <Compile Include="StardewValley\SpecialOrders\Rewards\MoneyReward.cs" />
+    <Compile Include="StardewValley\SpecialOrders\Rewards\ObjectReward.cs" />
+    <Compile Include="StardewValley\SpecialOrders\Rewards\OrderReward.cs" />
+    <Compile Include="StardewValley\SpecialOrders\Rewards\ResetEventReward.cs" />
+    <Compile Include="StardewValley\SpecialOrders\SpecialOrder.cs" />
+    <Compile Include="StardewValley\SpecialOrders\SpecialOrderStatus.cs" />
+    <Compile Include="StardewValley\StackDrawType.cs" />
+    <Compile Include="StardewValley\StartMovieEvent.cs" />
+    <Compile Include="StardewValley\StartupPreferences.cs" />
+    <Compile Include="StardewValley\Stats.cs" />
+    <Compile Include="StardewValley\StatsDictionary.cs" />
+    <Compile Include="StardewValley\StringBuilderFormatEx.cs" />
+    <Compile Include="StardewValley\TemporaryAnimatedSprite.cs" />
+    <Compile Include="StardewValley\TemporaryAnimatedSpriteList.cs" />
+    <Compile Include="StardewValley\TerrainFeatures\Bush.cs" />
+    <Compile Include="StardewValley\TerrainFeatures\CosmeticPlant.cs" />
+    <Compile Include="StardewValley\TerrainFeatures\Flooring.cs" />
+    <Compile Include="StardewValley\TerrainFeatures\FruitTree.cs" />
+    <Compile Include="StardewValley\TerrainFeatures\GiantCrop.cs" />
+    <Compile Include="StardewValley\TerrainFeatures\Grass.cs" />
+    <Compile Include="StardewValley\TerrainFeatures\HoeDirt.cs" />
+    <Compile Include="StardewValley\TerrainFeatures\HoeDirtFertilizerApplyStatus.cs" />
+    <Compile Include="StardewValley\TerrainFeatures\LargeTerrainFeature.cs" />
+    <Compile Include="StardewValley\TerrainFeatures\Leaf.cs" />
+    <Compile Include="StardewValley\TerrainFeatures\ResourceClump.cs" />
+    <Compile Include="StardewValley\TerrainFeatures\Tent.cs" />
+    <Compile Include="StardewValley\TerrainFeatures\TerrainFeature.cs" />
+    <Compile Include="StardewValley\TerrainFeatures\Tree.cs" />
+    <Compile Include="StardewValley\Tests\ExtractSyntaxDelegate.cs" />
+    <Compile Include="StardewValley\Tests\SyntaxAbstractor.cs" />
+    <Compile Include="StardewValley\Tests\TranslationValidator.cs" />
+    <Compile Include="StardewValley\Tests\TranslationValidatorIssue.cs" />
+    <Compile Include="StardewValley\Tests\TranslationValidatorResult.cs" />
+    <Compile Include="StardewValley\TilePositionComparer.cs" />
+    <Compile Include="StardewValley\TokenizableStrings\TokenParser.cs" />
+    <Compile Include="StardewValley\TokenizableStrings\TokenParserDelegate.cs" />
+    <Compile Include="StardewValley\TokenizableStrings\TokenStringBuilder.cs" />
+    <Compile Include="StardewValley\Tool.cs" />
+    <Compile Include="StardewValley\Tools\Axe.cs" />
+    <Compile Include="StardewValley\Tools\ErrorTool.cs" />
+    <Compile Include="StardewValley\Tools\FishingRod.cs" />
+    <Compile Include="StardewValley\Tools\GenericTool.cs" />
+    <Compile Include="StardewValley\Tools\Hoe.cs" />
+    <Compile Include="StardewValley\Tools\Lantern.cs" />
+    <Compile Include="StardewValley\Tools\MeleeWeapon.cs" />
+    <Compile Include="StardewValley\Tools\MilkPail.cs" />
+    <Compile Include="StardewValley\Tools\Pan.cs" />
+    <Compile Include="StardewValley\Tools\Pickaxe.cs" />
+    <Compile Include="StardewValley\Tools\Raft.cs" />
+    <Compile Include="StardewValley\Tools\Shears.cs" />
+    <Compile Include="StardewValley\Tools\Slingshot.cs" />
+    <Compile Include="StardewValley\Tools\Wand.cs" />
+    <Compile Include="StardewValley\Tools\WateringCan.cs" />
+    <Compile Include="StardewValley\Torch.cs" />
+    <Compile Include="StardewValley\Triggers\CachedAction.cs" />
+    <Compile Include="StardewValley\Triggers\CachedTriggerAction.cs" />
+    <Compile Include="StardewValley\Triggers\TriggerActionManager.cs" />
+    <Compile Include="StardewValley\Utility.cs" />
+    <Compile Include="StardewValley\Util\BoundingBoxGroup.cs" />
+    <Compile Include="StardewValley\Util\DictionarySaver.cs" />
+    <Compile Include="StardewValley\Util\EventTest.cs" />
+    <Compile Include="StardewValley\Util\GuidHelper.cs" />
+    <Compile Include="StardewValley\Util\IInputSimulator.cs" />
+    <Compile Include="StardewValley\Util\LeftRightClickSpamInputSimulator.cs" />
+    <Compile Include="StardewValley\Util\ProfanityFilter.cs" />
+    <Compile Include="StardewValley\Util\SaveablePair.cs" />
+    <Compile Include="StardewValley\Util\SaveablePairExtensions.cs" />
+    <Compile Include="StardewValley\Util\StackTraceHelper.cs" />
+    <Compile Include="StardewValley\Util\SynchronizedShopStock.cs" />
+    <Compile Include="StardewValley\Util\ToolSpamInputSimulator.cs" />
+    <Compile Include="StardewValley\Warp.cs" />
+    <Compile Include="StardewValley\WaterTiles.cs" />
+    <Compile Include="StardewValley\WeatherDebris.cs" />
+    <Compile Include="StardewValley\WorldDate.cs" />
+    <Compile Include="StardewValley\WorldMaps\MapArea.cs" />
+    <Compile Include="StardewValley\WorldMaps\MapAreaPosition.cs" />
+    <Compile Include="StardewValley\WorldMaps\MapAreaPositionWithContext.cs" />
+    <Compile Include="StardewValley\WorldMaps\MapAreaTexture.cs" />
+    <Compile Include="StardewValley\WorldMaps\MapAreaTooltip.cs" />
+    <Compile Include="StardewValley\WorldMaps\MapRegion.cs" />
+    <Compile Include="StardewValley\WorldMaps\WorldMapManager.cs" />
+    <Compile Include="System\Runtime\CompilerServices\NullableAttribute.cs" />
+    <Compile Include="System\Runtime\CompilerServices\NullableContextAttribute.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="StardewValley\Icon.bmp" />
+    <EmbeddedResource Include="StardewValley\Icon.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="app.manifest" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>

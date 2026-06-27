@@ -1,0 +1,9 @@
+C:\Users\admin\Documents\StardewValleyMods\MasterHand\obj\Debug\net6.0\MasterHand.csproj.AssemblyReference.cache
+C:\Users\admin\Documents\StardewValleyMods\MasterHand\obj\Debug\net6.0\MasterHand.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\admin\Documents\StardewValleyMods\MasterHand\obj\Debug\net6.0\MasterHand.AssemblyInfoInputs.cache
+C:\Users\admin\Documents\StardewValleyMods\MasterHand\obj\Debug\net6.0\MasterHand.AssemblyInfo.cs
+C:\Users\admin\Documents\StardewValleyMods\MasterHand\obj\Debug\net6.0\MasterHand.csproj.CoreCompileInputs.cache
+C:\Users\admin\Documents\StardewValleyMods\MasterHand\obj\Debug\net6.0\MasterHand.sourcelink.json
+C:\Users\admin\Documents\StardewValleyMods\MasterHand\bin\Debug\net6.0\MasterHand.deps.json
+C:\Users\admin\Documents\StardewValleyMods\MasterHand\bin\Debug\net6.0\MasterHand.dll
+C:\Users\admin\Documents\StardewValleyMods\MasterHand\obj\Debug\net6.0\MasterHand.dll

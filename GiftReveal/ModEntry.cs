@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using StardewModdingAPI;
 using StardewValley;
+using StardewValley.GameData.Objects;
 
 namespace GiftReveal
 {
@@ -16,6 +17,11 @@ namespace GiftReveal
         private Dictionary<int, List<string>> _universalPositiveGifts = new();
         private bool _initialized = false;
 
+        // 缓存：类别 -> 物品ID列表
+        private Dictionary<int, List<string>> _categoryItems = new();
+        // 缓存：标签 -> 物品ID列表
+        private Dictionary<string, List<string>> _tagItems = new();
+
         public override void Entry(IModHelper helper)
         {
             Config = helper.ReadConfig<ModConfig>();
@@ -23,13 +29,18 @@ namespace GiftReveal
             helper.Events.GameLoop.SaveLoaded += (_, _) =>
             {
                 if (!Context.IsMainPlayer) return;
+                BuildItemCaches();
                 LoadGiftData();
             };
 
             helper.Events.GameLoop.DayStarted += (_, _) =>
             {
                 if (!Context.IsMainPlayer) return;
-                if (!_initialized) LoadGiftData();
+                if (!_initialized)
+                {
+                    BuildItemCaches();
+                    LoadGiftData();
+                }
                 if (_initialized) WriteGiftsToAllPlayers();
             };
 
@@ -40,15 +51,74 @@ namespace GiftReveal
             };
         }
 
+        private void BuildItemCaches()
+        {
+            _categoryItems.Clear();
+            _tagItems.Clear();
+
+            foreach (var kvp in Game1.objectData)
+            {
+                string itemId = kvp.Key;
+                ObjectData data = kvp.Value;
+
+                // 类别
+                int category = data.Category;
+                if (category != 0)
+                {
+                    if (!_categoryItems.ContainsKey(category))
+                        _categoryItems[category] = new List<string>();
+                    _categoryItems[category].Add(itemId);
+                }
+
+                // 标签
+                if (data.ContextTags != null)
+                {
+                    foreach (string tag in data.ContextTags)
+                    {
+                        if (string.IsNullOrWhiteSpace(tag)) continue;
+                        if (!_tagItems.ContainsKey(tag))
+                            _tagItems[tag] = new List<string>();
+                        _tagItems[tag].Add(itemId);
+                    }
+                }
+            }
+        }
+
+        private List<string> ResolveItemOrCategoryOrTag(string token)
+        {
+            // 1. 负数：类别ID
+            if (int.TryParse(token, out int num) && num < 0)
+            {
+                if (_categoryItems.TryGetValue(num, out var items))
+                    return items;
+                return new List<string>();
+            }
+
+            // 2. 纯数字ID：直接返回
+            if (int.TryParse(token, out _))
+            {
+                return new List<string> { token };
+            }
+
+            // 3. 非数字：尝试作为标签
+            if (_tagItems.TryGetValue(token, out var taggedItems))
+                return taggedItems;
+
+            // 4. 标签未命中：直接返回
+            if (ItemRegistry.Create(token, 1, 0) != null)
+            {
+                return new List<string> { token };
+            }
+
+            // 5. 完全无法识别：忽略
+            return new List<string>();
+        }
+
         private void LoadGiftData()
         {
             try
             {
-                if (Game1.NPCGiftTastes == null || Game1.NPCGiftTastes.Count == 0)
-                {
-                    Monitor.Log("NPCGiftTastes 为空 > 等待下次尝试", LogLevel.Warn);
-                    return;
-                }
+                if (Game1.NPCGiftTastes == null || Game1.NPCGiftTastes.Count == 0) return;
 
                 _npcPositiveGifts.Clear();
                 _npcNegativeGifts.Clear();
@@ -72,22 +142,21 @@ namespace GiftReveal
                         var posDict = new Dictionary<int, List<string>>();
                         var negSet = new HashSet<string>();
 
-                        // 顺序：最爱、喜欢、一般、讨厌、最讨厌
                         string[] sections = raw.Split('/');
+                        // 只处理前5个段落：最爱、喜欢、普通、不喜欢、讨厌
+                        int limit = Math.Min(sections.Length, 5);
 
-                        for (int i = 0; i < sections.Length; i++)
+                        for (int i = 0; i < limit; i++)
                         {
                             string section = sections[i].Trim();
                             if (string.IsNullOrWhiteSpace(section)) continue;
-
-                            // 跳过纯文本行
-                            if (!ContainsAnyItemId(section)) continue;
+                            if (!ContainsAnyItemIdOrCategory(section)) continue;
 
                             if (i == 0) // 最爱
                                 AddItemsToTier(posDict, 5, section);
                             else if (i == 1) // 喜欢
                                 AddItemsToTier(posDict, 2, section);
-                            else if (i == 3 || i == 4) // 讨厌/最讨厌
+                            else if (i == 3 || i == 4) // 讨厌
                                 CollectItemsToSet(negSet, section);
                         }
 
@@ -110,7 +179,7 @@ namespace GiftReveal
             }
         }
 
-        private bool ContainsAnyItemId(string text)
+        private bool ContainsAnyItemIdOrCategory(string text)
         {
             foreach (string token in text.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries))
             {
@@ -122,7 +191,7 @@ namespace GiftReveal
 
         private void ExtractUniversalItems(string raw, int tier)
         {
-            var ids = ParseItemIds(raw);
+            var ids = ExpandAllTokens(raw);
             if (ids.Count > 0)
             {
                 if (!_universalPositiveGifts.ContainsKey(tier))
@@ -133,7 +202,7 @@ namespace GiftReveal
 
         private void AddItemsToTier(Dictionary<int, List<string>> dict, int tier, string content)
         {
-            var ids = ParseItemIds(content);
+            var ids = ExpandAllTokens(content);
             if (ids.Count > 0)
             {
                 if (!dict.ContainsKey(tier))
@@ -144,25 +213,27 @@ namespace GiftReveal
 
         private void CollectItemsToSet(HashSet<string> set, string content)
         {
-            var ids = ParseItemIds(content);
+            var ids = ExpandAllTokens(content);
             foreach (var id in ids)
                 set.Add(id);
         }
 
-        private List<string> ParseItemIds(string raw)
+        private List<string> ExpandAllTokens(string raw)
         {
-            var set = new HashSet<string>();
+            var result = new HashSet<string>();
             if (string.IsNullOrWhiteSpace(raw)) return new List<string>();
 
-            string[] tokens = raw.Split(new[] { ' ', '\t', '/' }, StringSplitOptions.RemoveEmptyEntries);
+            string[] tokens = raw.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
             foreach (string token in tokens)
             {
                 string t = token.Trim();
                 if (t.Length == 0 || t.Length > 50) continue;
-                if (int.TryParse(t, out _) || Regex.IsMatch(t, @"^[a-zA-Z_][a-zA-Z0-9_]*$"))
-                    set.Add(t);
+
+                var expanded = ResolveItemOrCategoryOrTag(t);
+                foreach (var id in expanded)
+                    result.Add(id);
             }
-            return set.ToList();
+            return result.ToList();
         }
 
         private void WriteGiftsToAllPlayers()
@@ -216,7 +287,7 @@ namespace GiftReveal
                             }
                             else if (innerDict[id] < tier)
                             {
-                                innerDict[id] = tier; // 升级等级
+                                innerDict[id] = tier;
                             }
                         }
                     }

@@ -1,8 +1,9 @@
-C:\Users\admin\Documents\ModEntry\InfiniteGifts\obj\Debug\net6.0\InfiniteGifts.csproj.AssemblyReference.cache
-C:\Users\admin\Documents\ModEntry\InfiniteGifts\obj\Debug\net6.0\InfiniteGifts.GeneratedMSBuildEditorConfig.editorconfig
-C:\Users\admin\Documents\ModEntry\InfiniteGifts\obj\Debug\net6.0\InfiniteGifts.AssemblyInfoInputs.cache
-C:\Users\admin\Documents\ModEntry\InfiniteGifts\obj\Debug\net6.0\InfiniteGifts.AssemblyInfo.cs
-C:\Users\admin\Documents\ModEntry\InfiniteGifts\obj\Debug\net6.0\InfiniteGifts.csproj.CoreCompileInputs.cache
-C:\Users\admin\Documents\ModEntry\InfiniteGifts\bin\Debug\net6.0\InfiniteGifts.deps.json
-C:\Users\admin\Documents\ModEntry\InfiniteGifts\bin\Debug\net6.0\InfiniteGifts.dll
-C:\Users\admin\Documents\ModEntry\InfiniteGifts\obj\Debug\net6.0\InfiniteGifts.dll
+C:\Users\admin\Documents\StardewValleyMods\InfiniteGifts\bin\Debug\net6.0\InfiniteGifts.deps.json
+C:\Users\admin\Documents\StardewValleyMods\InfiniteGifts\bin\Debug\net6.0\InfiniteGifts.dll
+C:\Users\admin\Documents\StardewValleyMods\InfiniteGifts\obj\Debug\net6.0\InfiniteGifts.csproj.AssemblyReference.cache
+C:\Users\admin\Documents\StardewValleyMods\InfiniteGifts\obj\Debug\net6.0\InfiniteGifts.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\admin\Documents\StardewValleyMods\InfiniteGifts\obj\Debug\net6.0\InfiniteGifts.AssemblyInfoInputs.cache
+C:\Users\admin\Documents\StardewValleyMods\InfiniteGifts\obj\Debug\net6.0\InfiniteGifts.AssemblyInfo.cs
+C:\Users\admin\Documents\StardewValleyMods\InfiniteGifts\obj\Debug\net6.0\InfiniteGifts.csproj.CoreCompileInputs.cache
+C:\Users\admin\Documents\StardewValleyMods\InfiniteGifts\obj\Debug\net6.0\InfiniteGifts.sourcelink.json
+C:\Users\admin\Documents\StardewValleyMods\InfiniteGifts\obj\Debug\net6.0\InfiniteGifts.dll

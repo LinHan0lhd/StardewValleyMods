@@ -1,5 +1,8 @@
-public class ModConfig
+namespace GiftsReturn
 {
-    public float LoveReturnChance { get; set; } = 0.3f;
-    public float LikeReturnChance { get; set; } = 0.3f;
+    public class ModConfig
+    {
+        public float LoveReturnChance { get; set; } = 0.5f;      // 回礼触发概率
+        public float GiftValueMultiplier { get; set; } = 10f;     // 每1点好感对应的回礼价值
+    }
 }

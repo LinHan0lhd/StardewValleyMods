@@ -13,6 +13,7 @@ using StardewValley.Characters;
 using StardewValley.Locations;
 using StardewValley.Menus;
 using StardewValley.Objects;
+using StardewValley.Buildings;
 
 namespace AutoServerPro
 {
@@ -274,12 +275,27 @@ namespace AutoServerPro
             if (Game1.ticks % 60 != 0) return;
 
             // 宠物名字持续修正
-            if (Game1.player.hasPet() && Game1.getCharacterFromName(Game1.player.getPetName()) is Pet pet)
+            if (Game1.player.hasPet())
             {
-                if (pet.Name != Config.petname)
+                Farm? farm = Game1.getFarm();
+                if (farm != null)
                 {
-                    pet.Name = Config.petname;
-                    pet.displayName = Config.petname;
+                    Pet? myPet = null;
+                    foreach (Building building in farm.buildings)
+                    {
+                        if (building is PetBowl bowl && bowl.petId.Value != Guid.Empty)
+                        {
+                            myPet = farm.characters.OfType<Pet>()
+                                .FirstOrDefault(p => p.petId.Value == bowl.petId.Value);
+                                break;
+                        }
+                    }
+
+                    if (myPet != null && myPet.Name != Config.petname)
+                    {
+                        myPet.Name = Config.petname;
+                        myPet.displayName = Config.petname;
+                    }
                 }
             }
 
@@ -351,10 +367,10 @@ namespace AutoServerPro
             var farmhands = Game1.otherFarmers?.Values?.Where(f => f?.isActive() == true).ToList() ?? new List<Farmer>();
             if (!farmhands.Any())
             {
-                if (!Game1.paused) { Game1.paused = true; Monitor.Log("全员离线 > 游戏已暂停", LogLevel.Info); }
+                if (!Game1.paused) { Game1.paused = true; Monitor.Log("全员离线 > 游戏已暂停", LogLevel.Trace); }
                 return;
             }
-            if (Game1.paused) { Game1.paused = false; Monitor.Log("成员在线 > 游戏已恢复", LogLevel.Info); }
+            if (Game1.paused) { Game1.paused = false; Monitor.Log("成员在线 > 游戏已恢复", LogLevel.Trace); }
             if (!Context.IsMainPlayer || !Context.IsMultiplayer) return;
 
             // 社区中心解锁
@@ -370,7 +386,8 @@ namespace AutoServerPro
             }
 
             // 场景同步（睡觉及其重试中/节日中/事件中暂停）
-            if (!IsAnyFestivalActive
+            if (Config.EnableSceneSync
+                && !IsAnyFestivalActive
                 && !_isSleeping
                 && !_goneToSleep
                 && _sleepRetryCount == 0
@@ -424,11 +441,11 @@ namespace AutoServerPro
         {
             if (string.IsNullOrWhiteSpace(info.Location) || info.Location == "Temp")
             {
-                Monitor.Log($"节日位置无效 ({info.Location})，已跳过。", LogLevel.Warn);
+                Monitor.Log($"节日位置无效 ({info.Location}) 已跳过", LogLevel.Warn);
                 return;
             }
 
-            Monitor.Log($"节日开始：{date.Day} {date.Season}", LogLevel.Info);
+            Monitor.Log($"节日开始：{date.Day} {date.Season}", LogLevel.Trace);
             Game1.netReady?.SetLocalReady("festivalStart", true);
             Game1.activeClickableMenu = new ReadyCheckDialog("festivalStart", true, who =>
             {
@@ -535,7 +552,7 @@ namespace AutoServerPro
 
         private void AddLuauIngredient()
         {
-            var item = new StardewValley.Object("268", 1, false, -1, 3);
+            var item = ItemRegistry.Create("268", 1, 4);
             Helper.Reflection.GetMethod(new Event(), "addItemToLuauSoup")?.Invoke(item, Game1.player);
         }
 

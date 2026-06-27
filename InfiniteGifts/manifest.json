@@ -1,8 +1,8 @@
 {
   "Name": "InfiniteGifts",
   "Author": "LinHan",
-  "Version": "1.0.0",
-  "Description": "通过控制台命令标记玩家，使其每天可无限次向所有NPC送礼补全NPC友谊数据并重置送礼次数为 -999",
+  "Version": "1.1.0",
+  "Description": "Removes gift limits.",
   "UniqueID": "LinHan.InfiniteGifts",
   "EntryDll": "InfiniteGifts.dll",
   "MinimumApiVersion": "4.0.0",
