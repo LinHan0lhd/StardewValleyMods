@@ -318,12 +318,25 @@ namespace CPXnbExporter
             var pixels = new Color[original.Width * original.Height];
             original.GetData(pixels);
 
-            // 预生成 PNG 字节（SaveAsPng 需要 GPU，必须在主线程）
+            // 检测并还原预乘 Alpha
+            // SMAPI 虚拟路径（如 SMAPI/xxx）加载的 PNG 会被 MonoGame 的 Texture2D.FromStream
+            // 转成预乘 Alpha，导致导出的 XNB 像素与原版 XNB（Straight Alpha）格式不一致，
+            // 游戏中表现为透明区域变黑、半透明区域偏暗。原版 XNB 资产是 Straight Alpha，
+            // 不会被误判（IsPremultiplied 返回 false）。
+            if (IsPremultiplied(pixels))
+            {
+                UnpremultiplyAlpha(pixels);
+                Monitor.Log($"  ↳ 还原预乘 Alpha: {assetName}", LogLevel.Trace);
+            }
+
+            // 预生成 PNG 字节（用处理后的像素，确保 unpacked 预览也正确）
             byte[] pngData = null;
             if (unpackedBase != null)
             {
+                using var pngTex = new Texture2D(original.GraphicsDevice, original.Width, original.Height);
+                pngTex.SetData(pixels);
                 using var pngMs = new MemoryStream();
-                original.SaveAsPng(pngMs, original.Width, original.Height);
+                pngTex.SaveAsPng(pngMs, original.Width, original.Height);
                 pngData = pngMs.ToArray();
             }
 
@@ -341,6 +354,52 @@ namespace CPXnbExporter
             };
 
             return _pipeline.TryAdd(item);
+        }
+
+        /// <summary>
+        /// 检测像素数据是否为预乘 Alpha。
+        /// 判据：半透明像素(0&lt;A&lt;255)中，若所有 RGB&lt;=Alpha 则判定为预乘；
+        /// 若存在任何 RGB&gt;Alpha 的半透明像素，则不是预乘。
+        /// 无半透明像素时返回 false（不处理，因为完全透明/不透明像素不受预乘影响）。
+        /// </summary>
+        private static bool IsPremultiplied(Color[] pixels)
+        {
+            bool hasSemiTransparentPremult = false;
+            int step = Math.Max(1, pixels.Length / 2000);
+            for (int i = 0; i < pixels.Length; i += step)
+            {
+                var p = pixels[i];
+                if (p.A == 0 || p.A == 255) continue;
+                if (p.R > p.A || p.G > p.A || p.B > p.A)
+                    return false; // RGB > Alpha，说明不是预乘
+                hasSemiTransparentPremult = true;
+            }
+            return hasSemiTransparentPremult;
+        }
+
+        /// <summary>
+        /// 将预乘 Alpha 像素还原为 Straight Alpha。
+        /// 完全透明(A=0)的像素 RGB 无法恢复，保持黑色（不影响渲染）。
+        /// </summary>
+        private static void UnpremultiplyAlpha(Color[] pixels)
+        {
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                var p = pixels[i];
+                if (p.A == 0)
+                {
+                    pixels[i] = new Color(0, 0, 0, 0);
+                }
+                else if (p.A < 255)
+                {
+                    float scale = 255f / p.A;
+                    pixels[i] = new Color(
+                        (byte)Math.Min(255, p.R * scale),
+                        (byte)Math.Min(255, p.G * scale),
+                        (byte)Math.Min(255, p.B * scale),
+                        p.A);
+                }
+            }
         }
 
         private void FinishExport()
