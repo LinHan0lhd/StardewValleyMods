@@ -71,7 +71,7 @@ namespace CPXnbExporter
             writer.Flush();
 
             byte[] rawData = ms.ToArray();
-            int headerSize = isMobile ? 14 : 10;
+            int headerSize = isMobile ? 15 : 10;
             int bodySize = rawData.Length - headerSize;
 
             if (isMobile)
@@ -90,7 +90,7 @@ namespace CPXnbExporter
                 byte[] fileSizeBytes = BitConverter.GetBytes((uint)finalData.Length);
                 Array.Copy(fileSizeBytes, 0, finalData, fileSizePos, 4);
 
-                byte[] contentSizeBytes = BitConverter.GetBytes((uint)bodySize);
+                byte[] contentSizeBytes = BitConverter.GetBytes((uint)compressedSize);
                 Array.Copy(contentSizeBytes, 0, finalData, contentSizePos, 4);
 
                 output.Write(finalData, 0, finalData.Length);
