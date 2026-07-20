@@ -12,6 +12,14 @@ namespace CPXnbExporter
 {
     public static class TBinWriter
     {
+        /// <summary>
+        /// 路径规范化函数。用于把 SMAPI 虚拟资产路径（如 SMAPI/模组ID/...）
+        /// 映射为游戏 Content 可识别的路径（如 Mods/模组ID/...）。
+        /// 在写入 TBIN 的 tilesheet ImageSource 时调用。
+        /// 由 ModEntry 在导出开始时设置，结束时清理。
+        /// </summary>
+        public static Func<string, string> PathNormalizer { get; set; }
+
         public static byte[] SerializeTbin(Map map)
         {
             using var ms = new MemoryStream();
@@ -40,6 +48,11 @@ namespace CPXnbExporter
                 string imageSource = tileSheet.ImageSource;
                 if (string.IsNullOrEmpty(imageSource))
                     return imageSource;
+
+                // 应用路径规范化（如 SMAPI/模组ID/... → Mods/模组ID/...）
+                if (PathNormalizer != null)
+                    imageSource = PathNormalizer(imageSource);
+
                 string ext = Path.GetExtension(imageSource);
                 if (!string.IsNullOrEmpty(ext) &&
                     (ext.Equals(".png", StringComparison.OrdinalIgnoreCase) ||

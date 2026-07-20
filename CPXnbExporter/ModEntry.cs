@@ -192,6 +192,9 @@ namespace CPXnbExporter
             _currentAssetIndex = -1;
             _exportedAssetNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+            // 设置路径规范化：SMAPI 虚拟路径 → Mods/模组ID/... 路径
+            TBinWriter.PathNormalizer = NormalizeAssetPath;
+
             // 创建后台写入管道
             _pipeline = new ExportPipeline(_config.WorkerThreadCount, _config.MaxQueueSize, Monitor);
 
@@ -263,11 +266,11 @@ namespace CPXnbExporter
                     // 这解决了 CP 包只声明 EditMap 而未声明 Load tilesheet 导致的闪退问题
                     foreach (var tileSheet in map.TileSheets)
                     {
-                        string imageSource = tileSheet.ImageSource;
-                        if (string.IsNullOrEmpty(imageSource)) continue;
+                        string rawImageSource = tileSheet.ImageSource;
+                        if (string.IsNullOrEmpty(rawImageSource)) continue;
 
-                        // 移除扩展名后再检查（与 TBinWriter 导出格式一致）
-                        string ext = System.IO.Path.GetExtension(imageSource);
+                        // 移除扩展名
+                        string ext = System.IO.Path.GetExtension(rawImageSource);
                         if (!string.IsNullOrEmpty(ext) &&
                             (ext.Equals(".png", StringComparison.OrdinalIgnoreCase) ||
                              ext.Equals(".jpg", StringComparison.OrdinalIgnoreCase) ||
@@ -275,26 +278,31 @@ namespace CPXnbExporter
                              ext.Equals(".bmp", StringComparison.OrdinalIgnoreCase) ||
                              ext.Equals(".gif", StringComparison.OrdinalIgnoreCase)))
                         {
-                            imageSource = imageSource.Substring(0, imageSource.Length - ext.Length);
+                            rawImageSource = rawImageSource.Substring(0, rawImageSource.Length - ext.Length);
                         }
 
-                        if (_exportedAssetNames.Contains(imageSource)) continue;
+                        // 映射路径用于导出和去重（与 TBinWriter 写入 TBIN 的路径一致）
+                        string normalizedPath = NormalizeAssetPath(rawImageSource);
 
-                        string tsSafeName = imageSource.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+                        if (_exportedAssetNames.Contains(normalizedPath)) continue;
+
+                        string tsSafeName = normalizedPath.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
                         string tsPackedBase = Path.Combine(_currentOptions.PackedDir, tsSafeName);
                         string tsUnpackedBase = _currentOptions.OutputUnpacked ? Path.Combine(_currentOptions.UnpackedDir, tsSafeName) : null;
 
                         try
                         {
-                            if (EnqueueTexture(imageSource, tsPackedBase, tsUnpackedBase))
+                            // 加载用原始路径（SMAPI 注册的虚拟资产路径）
+                            // 导出路径用映射后的路径（Mods/模组ID/...）
+                            if (EnqueueTexture(rawImageSource, tsPackedBase, tsUnpackedBase))
                             {
-                                _exportedAssetNames.Add(imageSource);
-                                Monitor.Log($"  ↳ 自动补全 tilesheet 贴图: {imageSource} (来自地图 {assetName})", LogLevel.Trace);
+                                _exportedAssetNames.Add(normalizedPath);
+                                Monitor.Log($"  ↳ 自动补全 tilesheet 贴图: {normalizedPath} (来自地图 {assetName})", LogLevel.Trace);
                             }
                         }
                         catch (Exception tex)
                         {
-                            Monitor.Log($"  ↳ 自动补全 tilesheet 失败 [{imageSource}]: {tex.Message}", LogLevel.Trace);
+                            Monitor.Log($"  ↳ 自动补全 tilesheet 失败 [{normalizedPath}]: {tex.Message}", LogLevel.Trace);
                         }
                     }
                 }
@@ -402,6 +410,23 @@ namespace CPXnbExporter
             }
         }
 
+        /// <summary>
+        /// 路径规范化：把 SMAPI 虚拟资产路径映射为游戏 Content 可识别的路径。
+        /// SMAPI/模组ID/文件夹/资源 → Mods/模组ID/文件夹/资源
+        /// 非 SMAPI 路径原样返回。
+        /// </summary>
+        private static string NormalizeAssetPath(string assetName)
+        {
+            if (string.IsNullOrEmpty(assetName))
+                return assetName;
+
+            if (assetName.StartsWith("SMAPI/", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Mods/" + assetName.Substring("SMAPI/".Length);
+            }
+            return assetName;
+        }
+
         private void FinishExport()
         {
             _phase = ExportPhase.Idle;
@@ -418,6 +443,7 @@ namespace CPXnbExporter
             _assetList = null;
             _currentAssetIndex = -1;
             _exportedAssetNames = null;
+            TBinWriter.PathNormalizer = null;
 
             Monitor.Log("\n==== 导出完成 ====", LogLevel.Info);
             Monitor.Log($"贴图: 成功 {texS}, 失败 {texF}", LogLevel.Info);
