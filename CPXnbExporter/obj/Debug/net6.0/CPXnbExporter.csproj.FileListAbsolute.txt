@@ -1,0 +1,11 @@
+C:\Users\admin\Documents\StardewValleyMods\CPXnbExporter\obj\Debug\net6.0\CPXnbExporter.csproj.AssemblyReference.cache
+C:\Users\admin\Documents\StardewValleyMods\CPXnbExporter\obj\Debug\net6.0\CPXnbExporter.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\admin\Documents\StardewValleyMods\CPXnbExporter\obj\Debug\net6.0\CPXnbExporter.AssemblyInfoInputs.cache
+C:\Users\admin\Documents\StardewValleyMods\CPXnbExporter\obj\Debug\net6.0\CPXnbExporter.AssemblyInfo.cs
+C:\Users\admin\Documents\StardewValleyMods\CPXnbExporter\obj\Debug\net6.0\CPXnbExporter.csproj.CoreCompileInputs.cache
+C:\Users\admin\Documents\StardewValleyMods\CPXnbExporter\obj\Debug\net6.0\CPXnbExporter.sourcelink.json
+C:\Users\admin\Documents\StardewValleyMods\CPXnbExporter\bin\Debug\net6.0\CPXnbExporter.deps.json
+C:\Users\admin\Documents\StardewValleyMods\CPXnbExporter\bin\Debug\net6.0\CPXnbExporter.dll
+C:\Users\admin\Documents\StardewValleyMods\CPXnbExporter\obj\Debug\net6.0\CPXnbExporter.dll
+C:\Users\admin\Documents\StardewValleyMods\CPXnbExporter\bin\Debug\net6.0\CPXnbExporter.pdb
+C:\Users\admin\Documents\StardewValleyMods\CPXnbExporter\obj\Debug\net6.0\CPXnbExporter.pdb

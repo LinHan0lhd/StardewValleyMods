@@ -1,9 +1,0 @@
-C:\Users\admin\Documents\StardewValleyMods\GiftsReturn\bin\Debug\net6.0\GiftsReturn.deps.json
-C:\Users\admin\Documents\StardewValleyMods\GiftsReturn\bin\Debug\net6.0\GiftsReturn.dll
-C:\Users\admin\Documents\StardewValleyMods\GiftsReturn\obj\Debug\net6.0\GiftsReturn.csproj.AssemblyReference.cache
-C:\Users\admin\Documents\StardewValleyMods\GiftsReturn\obj\Debug\net6.0\GiftsReturn.GeneratedMSBuildEditorConfig.editorconfig
-C:\Users\admin\Documents\StardewValleyMods\GiftsReturn\obj\Debug\net6.0\GiftsReturn.AssemblyInfoInputs.cache
-C:\Users\admin\Documents\StardewValleyMods\GiftsReturn\obj\Debug\net6.0\GiftsReturn.AssemblyInfo.cs
-C:\Users\admin\Documents\StardewValleyMods\GiftsReturn\obj\Debug\net6.0\GiftsReturn.csproj.CoreCompileInputs.cache
-C:\Users\admin\Documents\StardewValleyMods\GiftsReturn\obj\Debug\net6.0\GiftsReturn.sourcelink.json
-C:\Users\admin\Documents\StardewValleyMods\GiftsReturn\obj\Debug\net6.0\GiftsReturn.dll

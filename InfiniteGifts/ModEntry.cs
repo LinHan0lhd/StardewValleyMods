@@ -1,6 +1,7 @@
 ﻿using System;
+using System.Linq;
+using HarmonyLib;
 using StardewModdingAPI;
-using StardewModdingAPI.Events;
 using StardewValley;
 
 namespace InfiniteGifts
@@ -9,25 +10,49 @@ namespace InfiniteGifts
     {
         public override void Entry(IModHelper helper)
         {
-            helper.Events.GameLoop.UpdateTicked += (_, e) =>
-            {
-                if (!Context.IsMainPlayer || !Context.IsWorldReady) return;
-                if (e.Ticks % 60 != 0) return;
-                foreach (var farmer in Game1.getAllFarmers())
-                    FixFriendshipData(farmer);
-            };
+            var harmony = new Harmony(ModManifest.UniqueID);
+
+            harmony.Patch(
+                original: AccessTools.Method(typeof(NPC), nameof(NPC.receiveGift)),
+                prefix: new HarmonyMethod(typeof(ModEntry), nameof(Prefix_ReceiveGift))
+            );
         }
 
-        private static void FixFriendshipData(Farmer? farmer)
+        public static void Prefix_ReceiveGift(NPC __instance, Farmer giver)
+        {
+            if (!Context.IsMainPlayer || giver == null) return;
+            ReplaceAllFriendships(giver);
+        }
+
+        public static void ReplaceAllFriendships(Farmer farmer)
         {
             if (farmer?.friendshipData == null) return;
-            foreach (var pair in farmer.friendshipData.Pairs)
+
+            foreach (var key in farmer.friendshipData.Keys.ToArray())
             {
-                if (pair.Value != null)
+                var old = farmer.friendshipData[key];
+                if (old == null) continue;
+                if (old.GiftsToday <= -999 && old.GiftsThisWeek <= -999) continue;
+
+                var newFriendship = new Friendship(old.Points)
                 {
-                    pair.Value.GiftsToday = -999;
-                    pair.Value.GiftsThisWeek = -999;
-                }
+                    Status = old.Status,
+                    Proposer = old.Proposer,
+                    RoommateMarriage = old.RoommateMarriage,
+                    TalkedToToday = old.TalkedToToday,
+                    ProposalRejected = old.ProposalRejected,
+                    GiftsToday = -999,
+                    GiftsThisWeek = -999
+                };
+
+                if (old.WeddingDate != null)
+                    newFriendship.WeddingDate = new WorldDate(old.WeddingDate);
+                if (old.LastGiftDate != null)
+                    newFriendship.LastGiftDate = new WorldDate(old.LastGiftDate);
+                if (old.NextBirthingDate != null)
+                    newFriendship.NextBirthingDate = new WorldDate(old.NextBirthingDate);
+
+                farmer.friendshipData[key] = newFriendship;
             }
         }
     }

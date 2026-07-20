@@ -1,0 +1,16 @@
+{
+  "Name": "CPXnbExporter",
+  "Author": "LinHan",
+  "Version": "2.1.1",
+  "Description": "免跑图全局加载CP修改贴图，导出XNB+JSON+PNG三件套，支持移动端。v2.1.1：多线程导出，仅导出当前语言。",
+  "UniqueID": "LinHan.CPXnbExporter",
+  "EntryDll": "CPXnbExporter.dll",
+  "MinimumApiVersion": "4.0.0",
+  "Dependencies": [
+    {
+      "UniqueID": "Pathoschild.ContentPatcher",
+      "MinimumVersion": "2.6.0",
+      "IsRequired": true
+    }
+  ]
+}
