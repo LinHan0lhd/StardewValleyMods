@@ -134,10 +134,22 @@ namespace CPXnbExporter
             byte[] pixelData = new byte[dataSize];
             for (int i = 0; i < pixels.Length; i++)
             {
-                pixelData[i * 4 + 0] = pixels[i].R;
-                pixelData[i * 4 + 1] = pixels[i].G;
-                pixelData[i * 4 + 2] = pixels[i].B;
-                pixelData[i * 4 + 3] = pixels[i].A;
+                // 反预乘 alpha：SMAPI 加载 PNG 时会执行预乘，写入 XNB 前需要还原
+                // 否则移动端 ContentManager 加载时会二次预乘，导致半透明区域变黑
+                byte a = pixels[i].A;
+                if (a > 0 && a < 255)
+                {
+                    pixelData[i * 4 + 0] = (byte)Math.Min(255, pixels[i].R * 255 / a);
+                    pixelData[i * 4 + 1] = (byte)Math.Min(255, pixels[i].G * 255 / a);
+                    pixelData[i * 4 + 2] = (byte)Math.Min(255, pixels[i].B * 255 / a);
+                }
+                else
+                {
+                    pixelData[i * 4 + 0] = pixels[i].R;
+                    pixelData[i * 4 + 1] = pixels[i].G;
+                    pixelData[i * 4 + 2] = pixels[i].B;
+                }
+                pixelData[i * 4 + 3] = a;
             }
             writer.Write(pixelData);
             writer.Flush();
