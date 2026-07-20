@@ -318,12 +318,18 @@ namespace CPXnbExporter
             var pixels = new Color[original.Width * original.Height];
             original.GetData(pixels);
 
-            // 预生成 PNG 字节（SaveAsPng 需要 GPU，必须在主线程）
+            // 修复预乘 alpha：CP 加载部分贴图时使用预乘 alpha，
+            // 导致半透明区域的 RGB 被乘以 alpha，透明区域变黑
+            XnbWriter.UnpremultiplyAlpha(pixels);
+
+            // 预生成 PNG 字节（用修复后的 pixels 创建新 Texture2D，避免原贴图预乘状态影响）
             byte[] pngData = null;
             if (unpackedBase != null)
             {
+                using var tempTex = new Texture2D(Game1.graphics.GraphicsDevice, original.Width, original.Height);
+                tempTex.SetData(pixels);
                 using var pngMs = new MemoryStream();
-                original.SaveAsPng(pngMs, original.Width, original.Height);
+                tempTex.SaveAsPng(pngMs, original.Width, original.Height);
                 pngData = pngMs.ToArray();
             }
 

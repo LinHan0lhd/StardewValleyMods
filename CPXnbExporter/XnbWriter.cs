@@ -37,6 +37,10 @@ namespace CPXnbExporter
             var pixels = new Color[width * height];
             texture.GetData(pixels);
 
+            // 修复预乘 alpha：CP 加载部分贴图时使用预乘 alpha，
+            // 导致半透明区域的 RGB 被乘以 alpha，透明区域变黑
+            UnpremultiplyAlpha(pixels);
+
             // XNB
             string xnbPath = packedBasePath + ".xnb";
             long xnbFileSize;
@@ -62,15 +66,65 @@ namespace CPXnbExporter
             // Unpacked
             if (!string.IsNullOrEmpty(unpackedBasePath))
             {
+                // 用修复后的 pixels 创建新 Texture2D 再 SaveAsPng，
+                // 避免原贴图预乘状态影响 PNG 输出
+                using var tempTex = new Texture2D(texture.GraphicsDevice, width, height);
+                tempTex.SetData(pixels);
                 string pngPath = unpackedBasePath + ".png";
                 using (var fs = new FileStream(pngPath, FileMode.Create, FileAccess.Write))
-                    texture.SaveAsPng(fs, width, height);
+                    tempTex.SaveAsPng(fs, width, height);
 
                 string configPath = unpackedBasePath + ".config";
                 File.WriteAllText(configPath, metadata.ToConfig(), Encoding.UTF8);
             }
 
             return metadata;
+        }
+
+        /// <summary>
+        /// 检测并修复预乘 alpha。
+        /// CP 加载部分贴图时使用预乘 alpha 格式，半透明像素的 RGB 已被乘以 alpha，
+        /// 导出后透明区域变黑。此方法检测并还原原始 RGB 值。
+        /// </summary>
+        public static void UnpremultiplyAlpha(Color[] pixels)
+        {
+            if (pixels == null || pixels.Length == 0) return;
+
+            // 检测是否是预乘 alpha：
+            // 预乘 alpha 的特征是半透明像素的 RGB <= Alpha
+            // 非 premultiplied 的半透明白色像素 RGB(255,255,255) > Alpha(128)
+            int semiTransparentCount = 0;
+            int premultipliedCount = 0;
+
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                var p = pixels[i];
+                if (p.A > 0 && p.A < 255)
+                {
+                    semiTransparentCount++;
+                    if (p.R <= p.A && p.G <= p.A && p.B <= p.A)
+                        premultipliedCount++;
+                }
+            }
+
+            // 至少 10 个半透明像素，且 80% 以上满足预乘条件才判定为预乘
+            if (semiTransparentCount < 10 || premultipliedCount * 5 < semiTransparentCount * 4)
+                return;
+
+            // Un-premultiply：RGB = RGB * 255 / Alpha
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                var p = pixels[i];
+                if (p.A > 0 && p.A < 255)
+                {
+                    float scale = 255f / p.A;
+                    pixels[i] = new Color(
+                        (byte)Math.Min(255, (int)(p.R * scale + 0.5f)),
+                        (byte)Math.Min(255, (int)(p.G * scale + 0.5f)),
+                        (byte)Math.Min(255, (int)(p.B * scale + 0.5f)),
+                        p.A);
+                }
+            }
         }
 
         /// <summary>
