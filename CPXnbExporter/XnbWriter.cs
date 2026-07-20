@@ -153,7 +153,7 @@ namespace CPXnbExporter
 
                 int maxCompressedSize = LZ4Codec.MaximumOutputSize(bodySize);
                 byte[] compressedBody = new byte[maxCompressedSize];
-                int compressedSize = LZ4Codec.Encode(bodyBytes, 0, bodySize, compressedBody, 0, bodySize);
+                int compressedSize = LZ4Codec.Encode(bodyBytes, 0, bodySize, compressedBody, 0, maxCompressedSize);
 
                 byte[] finalData = new byte[headerSize + compressedSize];
                 Array.Copy(uncompressedData, 0, finalData, 0, headerSize);

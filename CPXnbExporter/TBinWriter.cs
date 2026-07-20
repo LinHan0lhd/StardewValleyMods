@@ -35,6 +35,24 @@ namespace CPXnbExporter
                 }
             }
 
+            string GetImageSourceWithoutExtension(TileSheet tileSheet)
+            {
+                string imageSource = tileSheet.ImageSource;
+                if (string.IsNullOrEmpty(imageSource))
+                    return imageSource;
+                string ext = Path.GetExtension(imageSource);
+                if (!string.IsNullOrEmpty(ext) &&
+                    (ext.Equals(".png", StringComparison.OrdinalIgnoreCase) ||
+                     ext.Equals(".jpg", StringComparison.OrdinalIgnoreCase) ||
+                     ext.Equals(".jpeg", StringComparison.OrdinalIgnoreCase) ||
+                     ext.Equals(".bmp", StringComparison.OrdinalIgnoreCase) ||
+                     ext.Equals(".gif", StringComparison.OrdinalIgnoreCase)))
+                {
+                    return imageSource.Substring(0, imageSource.Length - ext.Length);
+                }
+                return imageSource;
+            }
+
             // Collect all strings
             AddString(map.Id);
             foreach (var prop in map.Properties)
@@ -45,7 +63,7 @@ namespace CPXnbExporter
             foreach (var tileSheet in map.TileSheets)
             {
                 AddString(tileSheet.Id);
-                AddString(tileSheet.ImageSource);
+                AddString(GetImageSourceWithoutExtension(tileSheet));
                 AddString(tileSheet.Description);
                 foreach (var prop in tileSheet.Properties)
                 {
@@ -116,7 +134,7 @@ namespace CPXnbExporter
             foreach (var tileSheet in map.TileSheets)
             {
                 writer.Write(stringIndex[tileSheet.Id]);
-                writer.Write(stringIndex[tileSheet.ImageSource]);
+                writer.Write(stringIndex[GetImageSourceWithoutExtension(tileSheet)]);
                 writer.Write(tileSheet.SheetWidth);
                 writer.Write(tileSheet.SheetHeight);
                 writer.Write(tileSheet.TileWidth);

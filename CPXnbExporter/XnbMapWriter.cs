@@ -8,7 +8,8 @@ namespace CPXnbExporter
 {
     public static class XnbMapWriter
     {
-        private const string MapReaderName = "xTile.Pipeline.TideReader, xTile";
+        private const string MapReaderFull = "xTile.Pipeline.TideReader, xTile";
+        private const string MapReaderShort = "xTile.Pipeline.TideReader";
 
         /// <summary>主线程调用版本：直接接受 Map 对象</summary>
         public static void WriteMapXnb(Stream output, Map map, char platform)
@@ -23,7 +24,7 @@ namespace CPXnbExporter
         public static void WriteMapXnbFromTbin(Stream output, byte[] tbinData, char platform)
         {
             bool isMobile = (platform == 'a' || platform == 'i');
-            string readerName = MapReaderName;
+            string readerName = isMobile ? MapReaderShort : MapReaderFull;
 
             using var ms = new MemoryStream();
             using var writer = new BinaryWriter(ms, Encoding.UTF8);
@@ -81,7 +82,7 @@ namespace CPXnbExporter
 
                 int maxCompressedSize = LZ4Codec.MaximumOutputSize(bodySize);
                 byte[] compressedBody = new byte[maxCompressedSize];
-                int compressedSize = LZ4Codec.Encode(bodyBytes, 0, bodySize, compressedBody, 0, bodySize);
+                int compressedSize = LZ4Codec.Encode(bodyBytes, 0, bodySize, compressedBody, 0, maxCompressedSize);
 
                 byte[] finalData = new byte[headerSize + compressedSize];
                 Array.Copy(rawData, 0, finalData, 0, headerSize);
