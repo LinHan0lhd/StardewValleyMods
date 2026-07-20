@@ -143,7 +143,7 @@ namespace CPXnbExporter
             writer.Flush();
 
             byte[] uncompressedData = ms.ToArray();
-            int headerSize = isMobile ? 15 : 10;
+            int headerSize = isMobile ? 14 : 10;
             int bodySize = uncompressedData.Length - headerSize;
 
             if (isMobile)
@@ -153,7 +153,7 @@ namespace CPXnbExporter
 
                 int maxCompressedSize = LZ4Codec.MaximumOutputSize(bodySize);
                 byte[] compressedBody = new byte[maxCompressedSize];
-                int compressedSize = LZ4Codec.Encode(bodyBytes, 0, bodySize, compressedBody, 0, maxCompressedSize);
+                int compressedSize = LZ4Codec.Encode(bodyBytes, 0, bodySize, compressedBody, 0, bodySize);
 
                 byte[] finalData = new byte[headerSize + compressedSize];
                 Array.Copy(uncompressedData, 0, finalData, 0, headerSize);
@@ -162,7 +162,7 @@ namespace CPXnbExporter
                 byte[] fileSizeBytes = BitConverter.GetBytes((uint)finalData.Length);
                 Array.Copy(fileSizeBytes, 0, finalData, fileSizePosition, 4);
 
-                byte[] contentSizeBytes = BitConverter.GetBytes((uint)compressedSize);
+                byte[] contentSizeBytes = BitConverter.GetBytes((uint)bodySize);
                 Array.Copy(contentSizeBytes, 0, finalData, contentSizePosition, 4);
 
                 output.Write(finalData, 0, finalData.Length);
