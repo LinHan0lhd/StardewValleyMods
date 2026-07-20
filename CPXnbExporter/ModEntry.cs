@@ -25,6 +25,9 @@ namespace CPXnbExporter
         private List<CpAssetLoader.CpAssetInfo> _assetList;
         private int _currentAssetIndex = -1;
 
+        // 已导出资产名去重集合（用于地图 tilesheet 自动补全时避免重复导出）
+        private HashSet<string> _exportedAssetNames;
+
         // 导出阶段
         private enum ExportPhase { Idle, Loading, WaitingForWorkers, Finishing }
         private ExportPhase _phase = ExportPhase.Idle;
@@ -187,6 +190,7 @@ namespace CPXnbExporter
             _phase = ExportPhase.Loading;
             _currentOptions = ExportOptions.Parse(args, Path.Combine(Helper.DirectoryPath, "exported"));
             _currentAssetIndex = -1;
+            _exportedAssetNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             // 创建后台写入管道
             _pipeline = new ExportPipeline(_config.WorkerThreadCount, _config.MaxQueueSize, Monitor);
@@ -222,35 +226,9 @@ namespace CPXnbExporter
 
                 if (asset.AssetType == CpAssetLoader.CpAssetType.Texture)
                 {
-                    // 加载贴图（主线程，GPU 相关）
-                    var original = Helper.GameContent.Load<Texture2D>(assetName);
-                    var pixels = new Color[original.Width * original.Height];
-                    original.GetData(pixels);
-
-                    // 预生成 PNG 字节（SaveAsPng 需要 GPU，必须在主线程）
-                    byte[] pngData = null;
-                    if (unpackedBase != null)
-                    {
-                        using var pngMs = new MemoryStream();
-                        original.SaveAsPng(pngMs, original.Width, original.Height);
-                        pngData = pngMs.ToArray();
-                    }
-
-                    var item = new ExportWorkItem
-                    {
-                        Type = WorkItemType.Texture,
-                        FileName = assetName,
-                        PackedBasePath = packedBase,
-                        UnpackedBasePath = unpackedBase,
-                        Platform = _currentOptions.Platform,
-                        PixelData = pixels,
-                        PngData = pngData,
-                        Width = original.Width,
-                        Height = original.Height
-                    };
-
-                    if (!_pipeline.TryAdd(item))
+                    if (!EnqueueTexture(assetName, packedBase, unpackedBase))
                         return false; // 队列满，回退索引重试
+                    _exportedAssetNames.Add(assetName);
                 }
                 else // Map
                 {
@@ -279,6 +257,46 @@ namespace CPXnbExporter
 
                     if (!_pipeline.TryAdd(item))
                         return false;
+                    _exportedAssetNames.Add(assetName);
+
+                    // 自动补全：扫描地图引用的所有 tilesheet，导出未在列表中的贴图
+                    // 这解决了 CP 包只声明 EditMap 而未声明 Load tilesheet 导致的闪退问题
+                    foreach (var tileSheet in map.TileSheets)
+                    {
+                        string imageSource = tileSheet.ImageSource;
+                        if (string.IsNullOrEmpty(imageSource)) continue;
+
+                        // 移除扩展名后再检查（与 TBinWriter 导出格式一致）
+                        string ext = System.IO.Path.GetExtension(imageSource);
+                        if (!string.IsNullOrEmpty(ext) &&
+                            (ext.Equals(".png", StringComparison.OrdinalIgnoreCase) ||
+                             ext.Equals(".jpg", StringComparison.OrdinalIgnoreCase) ||
+                             ext.Equals(".jpeg", StringComparison.OrdinalIgnoreCase) ||
+                             ext.Equals(".bmp", StringComparison.OrdinalIgnoreCase) ||
+                             ext.Equals(".gif", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            imageSource = imageSource.Substring(0, imageSource.Length - ext.Length);
+                        }
+
+                        if (_exportedAssetNames.Contains(imageSource)) continue;
+
+                        string tsSafeName = imageSource.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+                        string tsPackedBase = Path.Combine(_currentOptions.PackedDir, tsSafeName);
+                        string tsUnpackedBase = _currentOptions.OutputUnpacked ? Path.Combine(_currentOptions.UnpackedDir, tsSafeName) : null;
+
+                        try
+                        {
+                            if (EnqueueTexture(imageSource, tsPackedBase, tsUnpackedBase))
+                            {
+                                _exportedAssetNames.Add(imageSource);
+                                Monitor.Log($"  ↳ 自动补全 tilesheet 贴图: {imageSource} (来自地图 {assetName})", LogLevel.Trace);
+                            }
+                        }
+                        catch (Exception tex)
+                        {
+                            Monitor.Log($"  ↳ 自动补全 tilesheet 失败 [{imageSource}]: {tex.Message}", LogLevel.Trace);
+                        }
+                    }
                 }
 
                 return true;
@@ -288,6 +306,41 @@ namespace CPXnbExporter
                 Monitor.Log($"加载失败 [{asset.AssetName}]: {ex.Message}", LogLevel.Trace);
                 return true; // 标记为已处理（失败），继续下一个
             }
+        }
+
+        /// <summary>
+        /// 加载贴图并入队。返回 false 表示队列满，需下一帧重试。
+        /// </summary>
+        private bool EnqueueTexture(string assetName, string packedBase, string unpackedBase)
+        {
+            // 加载贴图（主线程，GPU 相关）
+            var original = Helper.GameContent.Load<Texture2D>(assetName);
+            var pixels = new Color[original.Width * original.Height];
+            original.GetData(pixels);
+
+            // 预生成 PNG 字节（SaveAsPng 需要 GPU，必须在主线程）
+            byte[] pngData = null;
+            if (unpackedBase != null)
+            {
+                using var pngMs = new MemoryStream();
+                original.SaveAsPng(pngMs, original.Width, original.Height);
+                pngData = pngMs.ToArray();
+            }
+
+            var item = new ExportWorkItem
+            {
+                Type = WorkItemType.Texture,
+                FileName = assetName,
+                PackedBasePath = packedBase,
+                UnpackedBasePath = unpackedBase,
+                Platform = _currentOptions.Platform,
+                PixelData = pixels,
+                PngData = pngData,
+                Width = original.Width,
+                Height = original.Height
+            };
+
+            return _pipeline.TryAdd(item);
         }
 
         private void FinishExport()
@@ -305,6 +358,7 @@ namespace CPXnbExporter
             _pipeline = null;
             _assetList = null;
             _currentAssetIndex = -1;
+            _exportedAssetNames = null;
 
             Monitor.Log("\n==== 导出完成 ====", LogLevel.Info);
             Monitor.Log($"贴图: 成功 {texS}, 失败 {texF}", LogLevel.Info);
