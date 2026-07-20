@@ -231,7 +231,7 @@ namespace CPXnbExporter
                     byte[] pngData = null;
                     if (unpackedBase != null)
                     {
-                        var pngMs = new MemoryStream();
+                        using var pngMs = new MemoryStream();
                         original.SaveAsPng(pngMs, original.Width, original.Height);
                         pngData = pngMs.ToArray();
                     }
