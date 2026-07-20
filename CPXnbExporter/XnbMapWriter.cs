@@ -9,7 +9,6 @@ namespace CPXnbExporter
     public static class XnbMapWriter
     {
         private const string MapReaderFull = "xTile.Pipeline.TideReader, xTile";
-        private const string MapReaderShort = "xTile.Pipeline.TideReader";
 
         /// <summary>主线程调用版本：直接接受 Map 对象</summary>
         public static void WriteMapXnb(Stream output, Map map, char platform)
@@ -24,7 +23,8 @@ namespace CPXnbExporter
         public static void WriteMapXnbFromTbin(Stream output, byte[] tbinData, char platform)
         {
             bool isMobile = (platform == 'a' || platform == 'i');
-            string readerName = isMobile ? MapReaderShort : MapReaderFull;
+            // 地图 reader 在所有平台均使用全名，与 XnbConverter 参考实现一致
+            string readerName = MapReaderFull;
 
             using var ms = new MemoryStream();
             using var writer = new BinaryWriter(ms, Encoding.UTF8);
