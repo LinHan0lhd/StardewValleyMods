@@ -326,12 +326,13 @@ namespace CPXnbExporter
             var pixels = new Color[original.Width * original.Height];
             original.GetData(pixels);
 
-            // 检测并还原预乘 Alpha
-            // SMAPI 虚拟路径（如 SMAPI/xxx）加载的 PNG 会被 MonoGame 的 Texture2D.FromStream
-            // 转成预乘 Alpha，导致导出的 XNB 像素与原版 XNB（Straight Alpha）格式不一致，
-            // 游戏中表现为透明区域变黑、半透明区域偏暗。原版 XNB 资产是 Straight Alpha，
-            // 不会被误判（IsPremultiplied 返回 false）。
-            if (IsPremultiplied(pixels))
+            // 基于 assetName 判断是否为 SMAPI 虚拟路径资产
+            // SMAPI/ 开头的路径是通过 Texture2D.FromStream 加载的 PNG，MonoGame 会转成预乘 Alpha，
+            // 需要还原为 Straight Alpha 以匹配原版 XNB 格式。
+            // 非 SMAPI/ 路径是从原版 XNB 加载的，本身就是 Straight Alpha，不需要处理。
+            // 注意：不能基于像素特征自动检测，因为某些原版深色半透明像素会被误判。
+            bool isSMAPIAsset = assetName.StartsWith("SMAPI/", StringComparison.OrdinalIgnoreCase);
+            if (isSMAPIAsset)
             {
                 UnpremultiplyAlpha(pixels);
                 Monitor.Log($"  ↳ 还原预乘 Alpha: {assetName}", LogLevel.Trace);
@@ -362,27 +363,6 @@ namespace CPXnbExporter
             };
 
             return _pipeline.TryAdd(item);
-        }
-
-        /// <summary>
-        /// 检测像素数据是否为预乘 Alpha。
-        /// 判据：半透明像素(0&lt;A&lt;255)中，若所有 RGB&lt;=Alpha 则判定为预乘；
-        /// 若存在任何 RGB&gt;Alpha 的半透明像素，则不是预乘。
-        /// 无半透明像素时返回 false（不处理，因为完全透明/不透明像素不受预乘影响）。
-        /// </summary>
-        private static bool IsPremultiplied(Color[] pixels)
-        {
-            bool hasSemiTransparentPremult = false;
-            int step = Math.Max(1, pixels.Length / 2000);
-            for (int i = 0; i < pixels.Length; i += step)
-            {
-                var p = pixels[i];
-                if (p.A == 0 || p.A == 255) continue;
-                if (p.R > p.A || p.G > p.A || p.B > p.A)
-                    return false; // RGB > Alpha，说明不是预乘
-                hasSemiTransparentPremult = true;
-            }
-            return hasSemiTransparentPremult;
         }
 
         /// <summary>
