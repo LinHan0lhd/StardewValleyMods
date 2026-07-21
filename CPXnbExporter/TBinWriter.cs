@@ -214,10 +214,24 @@ namespace CPXnbExporter
 
             // 用反射获取 PropertyValue 内部存储的原始值。
             // 不依赖 TryGetValue<T>（xTile 闭源，不同版本该泛型方法可能不存在或签名不同）。
-            // 遍历所有实例字段，只取值类型为 bool/int/float/string 的字段（跳过 enum 等类型字段）。
+            //
+            // 重要：PropertyValue 内部有一个类型标记字段（tag/type/kind 等，枚举或 int 类型），
+            // 用于区分 bool/int/float/string。如果直接遍历字段取第一个匹配 bool/int/float/string 的，
+            // 会错误地把"类型标记字段"当作"值字段"读取（例如 tag=3 被当成 int 值 3 写入）。
+            // 因此必须跳过名字含 tag/type/kind 的字段，只取真正的值字段。
             object inner = null;
             foreach (var f in _propertyValueFields)
             {
+                string fname = f.Name ?? "";
+                string fnameLower = fname.ToLowerInvariant();
+                // 跳过类型标记字段（tag/type/kind/discriminator/case）
+                if (fnameLower.Contains("tag") ||
+                    fnameLower.Contains("type") ||
+                    fnameLower.Contains("kind") ||
+                    fnameLower.Contains("discriminator") ||
+                    fnameLower.Contains("case"))
+                    continue;
+
                 try
                 {
                     var v = f.GetValue(value);
@@ -249,8 +263,9 @@ namespace CPXnbExporter
                     WriteString(writer, s ?? "");
                     break;
                 default:
-                    // fallback: 反射取不到值时当作字符串处理。
-                    // 游戏读取属性大多用 string（xTile 隐式转换支持），仍可正常工作。
+                    // fallback: 反射取不到值字段时当作字符串处理。
+                    // PropertyValue 重载了到 string 的隐式转换（op_Implicit），ToString/隐式转换会返回实际值字符串。
+                    // 游戏读取属性大多用 string 形式（见 FrameworkExtensions.TryGetValue），仍可正常工作。
                     writer.Write((byte)3);
                     WriteString(writer, value.ToString() ?? "");
                     break;
