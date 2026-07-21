@@ -412,7 +412,8 @@ namespace CPXnbExporter
 
         /// <summary>
         /// 路径规范化：把 SMAPI 虚拟资产路径映射为游戏 Content 可识别的路径。
-        /// SMAPI/模组ID/文件夹/资源 → Mods/模组ID/文件夹/资源
+        /// SMAPI/模组ID/assets/文件夹/资源 → Mods/模组ID/文件夹/资源（自动去掉 assets 这一层）
+        /// SMAPI/模组ID/文件夹/资源 → Mods/模组ID/文件夹/资源（无 assets 层则原样映射）
         /// 非 SMAPI 路径原样返回。
         /// </summary>
         private static string NormalizeAssetPath(string assetName)
@@ -422,7 +423,24 @@ namespace CPXnbExporter
 
             if (assetName.StartsWith("SMAPI/", StringComparison.OrdinalIgnoreCase))
             {
-                return "Mods/" + assetName.Substring("SMAPI/".Length);
+                string rest = assetName.Substring("SMAPI/".Length);
+                // rest = "模组ID/assets/文件夹/资源"
+
+                int firstSlash = rest.IndexOf('/');
+                if (firstSlash >= 0)
+                {
+                    string modId = rest.Substring(0, firstSlash);
+                    string afterModId = rest.Substring(firstSlash + 1);
+                    // afterModId = "assets/文件夹/资源"
+
+                    // 如果模组ID后面的第一层是 assets，则去掉这一层
+                    if (afterModId.StartsWith("assets/", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return "Mods/" + modId + "/" + afterModId.Substring("assets/".Length);
+                    }
+                }
+
+                return "Mods/" + rest;
             }
             return assetName;
         }
