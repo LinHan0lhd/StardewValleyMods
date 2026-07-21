@@ -21,6 +21,20 @@ namespace CPXnbExporter
         public static Func<string, string> PathNormalizer { get; set; }
 
         /// <summary>
+        /// 当前正在导出的地图 assetName（如 "Maps/ArchaeologyHouse"）。
+        /// 用于把 tilesheet 的 ImageSource 从"相对于 Content 的完整路径"
+        /// 转换为"相对于地图所在目录的相对路径"。
+        ///
+        /// 原因：游戏加载地图时，XnaDisplayDevice.LoadTileSheet 会以地图所在目录
+        /// 为基准拼接 tilesheet 路径。如地图在 Maps/xxx，tilesheet 写 "Maps/paths"
+        /// 会被拼成 "Maps/Maps/paths.xnb"（错误），应写 "paths" 拼成 "Maps/paths.xnb"。
+        /// 跨目录引用（如 Mods/...）需要加 "../" 前缀跳出地图目录。
+        ///
+        /// 由 ModEntry 在每次调用 SerializeTbin 前设置（每张地图不同）。
+        /// </summary>
+        public static string MapAssetName { get; set; }
+
+        /// <summary>
         /// PropertyValue 内部实例字段（反射缓存）。
         /// 用于在不依赖 TryGetValue&lt;T&gt; API 的情况下读取属性原始值
         /// （xTile 是闭源库，不同版本该方法签名/可用性不一致）。
@@ -302,9 +316,72 @@ namespace CPXnbExporter
                  ext.Equals(".bmp", StringComparison.OrdinalIgnoreCase) ||
                  ext.Equals(".gif", StringComparison.OrdinalIgnoreCase)))
             {
-                return imageSource.Substring(0, imageSource.Length - ext.Length);
+                imageSource = imageSource.Substring(0, imageSource.Length - ext.Length);
             }
+
+            // 转换为相对于地图所在目录的路径。
+            // 游戏加载地图时，XnaDisplayDevice 以地图目录为基准拼接 tilesheet 路径，
+            // 所以 tbin 里必须存相对路径，不能存完整路径。
+            // 例如地图 Maps/ArchaeologyHouse：
+            //   "Maps/paths" → "paths"（去掉地图目录前缀）
+            //   "Mods/xxx/yyy" → "../Mods/xxx/yyy"（跨目录加 ../）
+            imageSource = MakeRelativeToMapDir(imageSource, MapAssetName);
+
             return imageSource;
+        }
+
+        /// <summary>
+        /// 把 tilesheet ImageSource 从"相对于 Content 的完整路径"
+        /// 转换为"相对于地图所在目录的相对路径"。
+        ///
+        /// 例如地图 assetName = "Maps/ArchaeologyHouse"（地图目录 = "Maps"）：
+        ///   "Maps/paths"        → "paths"             （同级，去前缀）
+        ///   "Mods/xxx/yyy"      → "../Mods/xxx/yyy"   （跨目录，加 ../）
+        ///   "Maps/sub/foo"      → "sub/foo"           （子目录）
+        ///
+        /// 例如地图 assetName = "Maps/Mines/mine1"（地图目录 = "Maps/Mines"）：
+        ///   "Maps/Mines/foo"    → "foo"               （同级）
+        ///   "Maps/paths"        → "../paths"          （上级目录）
+        ///   "Mods/xxx"          → "../../Mods/xxx"    （跨目录，加 ../../）
+        /// </summary>
+        private static string MakeRelativeToMapDir(string imagePath, string mapAssetName)
+        {
+            if (string.IsNullOrEmpty(imagePath) || string.IsNullOrEmpty(mapAssetName))
+                return imagePath;
+
+            // 统一用 / 分隔
+            string img = imagePath.Replace('\\', '/');
+            string map = mapAssetName.Replace('\\', '/');
+
+            // 获取地图所在目录（assetName 去掉最后一段）
+            int lastSlash = map.LastIndexOf('/');
+            if (lastSlash < 0)
+                return img; // 地图在根目录，ImageSource 不用改（就是相对 Content 的）
+            string mapDir = map.Substring(0, lastSlash); // 如 "Maps" 或 "Maps/Mines"
+
+            // 如果 ImageSource 以地图目录 + "/" 开头，直接去掉前缀
+            if (img.StartsWith(mapDir + "/", StringComparison.OrdinalIgnoreCase))
+                return img.Substring(mapDir.Length + 1);
+
+            // 否则计算相对路径：找公共前缀，然后补 ../
+            string[] imgParts = img.Split('/');
+            string[] dirParts = mapDir.Split('/');
+
+            int common = 0;
+            while (common < imgParts.Length - 1 && common < dirParts.Length &&
+                   imgParts[common].Equals(dirParts[common], StringComparison.OrdinalIgnoreCase))
+                common++;
+
+            var result = new StringBuilder();
+            for (int i = common; i < dirParts.Length; i++)
+                result.Append("../");
+            for (int i = common; i < imgParts.Length; i++)
+            {
+                if (i > common)
+                    result.Append('/');
+                result.Append(imgParts[i]);
+            }
+            return result.ToString();
         }
 
         public static void WriteMapXnb(Stream fs, Map map, char platform)

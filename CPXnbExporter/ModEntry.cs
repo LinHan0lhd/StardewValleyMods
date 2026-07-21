@@ -238,14 +238,20 @@ namespace CPXnbExporter
                     // 总是通过 Map 对象中转，确保生成正确的 tbin 格式
                     // CP 包的 .tmx 是 XML 文本格式，不能直接当 tbin 二进制写入 XNB
                     Map map;
+                    string actualAssetName = assetName;
                     try { map = Helper.GameContent.Load<Map>(assetName); }
                     catch
                     {
                         if (!assetName.StartsWith("Maps/", StringComparison.OrdinalIgnoreCase))
-                            map = Helper.GameContent.Load<Map>("Maps/" + assetName);
+                        {
+                            actualAssetName = "Maps/" + assetName;
+                            map = Helper.GameContent.Load<Map>(actualAssetName);
+                        }
                         else
                             throw;
                     }
+                    // 设置当前地图 assetName，供 TBinWriter 计算 tilesheet 相对路径
+                    TBinWriter.MapAssetName = actualAssetName;
                     byte[] tbinData = TBinWriter.SerializeTbin(map);
 
                     var item = new ExportWorkItem
@@ -442,6 +448,7 @@ namespace CPXnbExporter
             _currentAssetIndex = -1;
             _exportedAssetNames = null;
             TBinWriter.PathNormalizer = null;
+            TBinWriter.MapAssetName = null;
 
             Monitor.Log("\n==== 导出完成 ====", LogLevel.Info);
             Monitor.Log($"贴图: 成功 {texS}, 失败 {texF}", LogLevel.Info);
@@ -493,6 +500,7 @@ namespace CPXnbExporter
                 Directory.CreateDirectory(Path.GetDirectoryName(packedPath));
 
                 Map map = Helper.GameContent.Load<Map>(assetName);
+                TBinWriter.MapAssetName = assetName;
                 using (var fs = new FileStream(packedPath, FileMode.Create, FileAccess.Write))
                     TBinWriter.WriteMapXnb(fs, map, options.Platform);
 
