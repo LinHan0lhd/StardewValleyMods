@@ -292,7 +292,7 @@ namespace CPXnbExporter
 
                         if (_exportedAssetNames.Contains(normalizedPath)) continue;
 
-                        string tsSafeName = ("Maps/" + normalizedPath).Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+                        string tsSafeName = normalizedPath.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
                         string tsPackedBase = Path.Combine(_currentOptions.PackedDir, tsSafeName);
                         string tsUnpackedBase = _currentOptions.OutputUnpacked ? Path.Combine(_currentOptions.UnpackedDir, tsSafeName) : null;
 
@@ -400,12 +400,12 @@ namespace CPXnbExporter
         /// 路径规范化：把 SMAPI 虚拟资产路径映射为游戏 Content 可识别的路径。
         ///
         /// 重要：原版游戏（无 SMAPI）不支持 ../ 跨目录路径，tilesheet 必须在 Content/Maps/ 内。
-        /// 所以虚拟资产映射到资源路径（去掉 SMAPI/模组ID/ 前缀），放在 Maps/ 目录内。
+        /// 所以虚拟资产映射到 Maps/Mods/模组ID/... 路径（在 Maps 目录内，保留 Mods/ 命名空间）。
         /// 这样游戏 eager prefixing 会正确解析：
-        ///   ImageSource "x/y" → 游戏 prefixing → "Maps/x/y" → Content/Maps/x/y.xnb
+        ///   ImageSource "Mods/modId/x/y" → 游戏 prefixing → "Maps/Mods/modId/x/y" → Content/Maps/Mods/modId/x/y.xnb
         ///
-        /// SMAPI/模组ID/assets/文件夹/资源 → 文件夹/资源（去掉 SMAPI/ + 模组ID + assets/）
-        /// SMAPI/模组ID/文件夹/资源 → 文件夹/资源（去掉 SMAPI/ + 模组ID）
+        /// SMAPI/模组ID/assets/文件夹/资源 → Maps/Mods/模组ID/文件夹/资源（去掉 assets 层，保留 Mods/ 命名空间）
+        /// SMAPI/模组ID/文件夹/资源 → Maps/Mods/模组ID/文件夹/资源
         /// 非 SMAPI 路径原样返回。
         /// </summary>
         private static string NormalizeAssetPath(string assetName)
@@ -419,18 +419,16 @@ namespace CPXnbExporter
                 int firstSlash = rest.IndexOf('/');
                 if (firstSlash >= 0)
                 {
-                    // 跳过模组ID
+                    string modId = rest.Substring(0, firstSlash);
                     string afterModId = rest.Substring(firstSlash + 1);
-                    // 跳过 assets/ 层
                     if (afterModId.StartsWith("assets/", StringComparison.OrdinalIgnoreCase))
                     {
                         afterModId = afterModId.Substring("assets/".Length);
                     }
-                    // 返回不带 Maps/ 前缀的资源路径（如 "glasses/z_glass"）
-                    // MakeRelativeToMapDir 会处理剩余路径
-                    return afterModId;
+                    // 保留 Mods/模组ID/ 作为命名空间，避免不同模组文件冲突
+                    return "Maps/Mods/" + modId + "/" + afterModId;
                 }
-                return rest;
+                return "Maps/Mods/" + rest;
             }
             return assetName;
         }
