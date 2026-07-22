@@ -400,12 +400,12 @@ namespace CPXnbExporter
         /// 路径规范化：把 SMAPI 虚拟资产路径映射为游戏 Content 可识别的路径。
         ///
         /// 重要：原版游戏（无 SMAPI）不支持 ../ 跨目录路径，tilesheet 必须在 Content/Maps/ 内。
-        /// 所以虚拟资产映射到 Maps/Mods/模组ID/... （在 Maps 目录内），而非 Mods/模组ID/...。
+        /// 所以虚拟资产映射到 Maps/文件夹/资源（在 Maps 目录内），而非 Mods/模组ID/...。
         /// 这样游戏 eager prefixing 会正确解析：
-        ///   ImageSource "Mods/modId/x" → 游戏 prefixing → "Maps/Mods/modId/x" → Content/Maps/Mods/modId/x.xnb
+        ///   ImageSource "x/y" → 游戏 prefixing → "Maps/x/y" → Content/Maps/x/y.xnb
         ///
-        /// SMAPI/模组ID/assets/文件夹/资源 → Maps/Mods/模组ID/文件夹/资源（去掉 assets 层，加 Maps/ 前缀）
-        /// SMAPI/模组ID/文件夹/资源 → Maps/Mods/模组ID/文件夹/资源（无 assets 层则原样映射）
+        /// SMAPI/模组ID/assets/文件夹/资源 → Maps/文件夹/资源（去掉 SMAPI/ + 模组ID + assets/，加 Maps/ 前缀）
+        /// SMAPI/模组ID/文件夹/资源 → Maps/文件夹/资源（去掉 SMAPI/ + 模组ID）
         /// 非 SMAPI 路径原样返回。
         /// </summary>
         private static string NormalizeAssetPath(string assetName)
@@ -428,11 +428,14 @@ namespace CPXnbExporter
                     // 如果模组ID后面的第一层是 assets，则去掉这一层
                     if (afterModId.StartsWith("assets/", StringComparison.OrdinalIgnoreCase))
                     {
-                        return "Maps/Mods/" + modId + "/" + afterModId.Substring("assets/".Length);
+                        // 去掉 Mods/模组ID/ 前缀，只保留资源相对路径
+                        // 例如 SMAPI/nekotekina.../assets/glasses/z_glass → Maps/glasses/z_glass
+                        return "Maps/" + afterModId.Substring("assets/".Length);
                     }
                 }
 
-                return "Maps/Mods/" + rest;
+                // 跳过模组ID，只取第一段之后的路径
+                return "Maps/" + rest.Substring(firstSlash + 1);
             }
             return assetName;
         }

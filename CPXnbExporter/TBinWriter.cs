@@ -28,7 +28,6 @@ namespace CPXnbExporter
         /// 原因：游戏加载地图时，XnaDisplayDevice.LoadTileSheet 会以地图所在目录
         /// 为基准拼接 tilesheet 路径。如地图在 Maps/xxx，tilesheet 写 "Maps/paths"
         /// 会被拼成 "Maps/Maps/paths.xnb"（错误），应写 "paths" 拼成 "Maps/paths.xnb"。
-        /// 跨目录引用（如 Mods/...）需要加 "../" 前缀跳出地图目录。
         ///
         /// 由 ModEntry 在每次调用 SerializeTbin 前设置（每张地图不同）。
         /// </summary>
@@ -323,46 +322,60 @@ namespace CPXnbExporter
             // 游戏加载地图时，XnaDisplayDevice 以地图目录为基准拼接 tilesheet 路径，
             // 所以 tbin 里必须存相对路径，不能存完整路径。
             // 例如地图 Maps/ArchaeologyHouse：
-            //   "Maps/paths" → "paths"（去掉地图目录前缀）
-            //   "Mods/xxx/yyy" → "../Mods/xxx/yyy"（跨目录加 ../）
+            //   "Maps/paths" → "paths"
+            //   "Maps/Mods/x/y" → "x/y"（剥离 Mods/ 前缀）
             imageSource = MakeRelativeToMapDir(imageSource, MapAssetName);
 
             return imageSource;
         }
 
         /// <summary>
-        /// 把 tilesheet ImageSource 从"相对于 Content 的完整路径"
-        /// 转换为"相对于 Maps 目录的路径"（去掉 Maps/ 前缀）。
+        /// 把 tilesheet ImageSource 转换为相对于 Maps 目录的路径。
         ///
-        /// 重要：原版游戏（无 SMAPI）不支持 ../ 跨目录路径。
-        /// 游戏加载地图时会做 eager prefixing：如果 ImageSource 不以 Maps/ 开头，
-        /// 会自动加 Maps/ 前缀。所以 tbin 里应存去掉 Maps/ 前缀的路径。
+        /// 处理流程：
+        ///   1. 去掉 Maps/ 前缀（游戏 eager prefixing 会自动加回来）
+        ///   2. 去掉 ../ 前缀（SMAPI FixTilesheetPaths 可能产生）
+        ///   3. 剥离 Mods/模组ID/ 前缀，只保留资源相对路径
         ///
         /// 例如地图 assetName = "Maps/ArchaeologyHouse"：
-        ///   "Maps/paths"            → "paths"           （原版 tilesheet）
-        ///   "Maps/Mods/modId/x"     → "Mods/modId/x"    （虚拟资产，放在 Maps/Mods/ 下）
+        ///   "Maps/paths"            → "paths"           （原版 tilesheet，游戏加 Maps/ → Maps/paths ✓）
+        ///   "Maps/../Mods/x/y"      → "x/y"             （SMAPI 已转换的相对路径 → 剥离 Mods/模组ID/）
+        ///   "Maps/Mods/x/y"         → "x/y"             （剥离 Mods/ 前缀）
+        ///   "Maps/x/y"              → "x/y"             （去掉 Maps/ 前缀）
         ///
-        /// 游戏 eager prefixing 会把 "Mods/modId/x" → "Maps/Mods/modId/x"
-        /// → 加载 Content/Maps/Mods/modId/x.xnb ✓
+        /// 游戏 eager prefixing 会把 "x/y" → "Maps/x/y" → Content/Maps/x/y.xnb ✓
         /// </summary>
         private static string MakeRelativeToMapDir(string imagePath, string mapAssetName)
         {
             if (string.IsNullOrEmpty(imagePath))
                 return imagePath;
 
-            // 统一用 / 分隔
             string img = imagePath.Replace('\\', '/');
 
-            // SMAPI 加载地图后，可能已把 tilesheet ImageSource 转成相对路径
-            // （如 "../Mods/xxx"）。原版游戏不支持 ../，需要去掉。
+            // 先去 Maps/ 前缀
+            if (img.StartsWith("Maps/", StringComparison.OrdinalIgnoreCase))
+                img = img.Substring("Maps/".Length);
+
+            // 去掉开头的 ../（可能有多层，SMAPI FixTilesheetPaths 产生）
             while (img.StartsWith("../"))
                 img = img.Substring(3);
 
-            // 去掉 Maps/ 前缀（如果存在）
-            if (img.StartsWith("Maps/", StringComparison.OrdinalIgnoreCase))
-                return img.Substring("Maps/".Length);
+            // 剥离 Mods/模组ID/ 前缀，只保留资源相对路径
+            // 例如 Mods/nekotekina.../glasses/z_glass → glasses/z_glass
+            if (img.StartsWith("Mods/", StringComparison.OrdinalIgnoreCase))
+            {
+                var parts = img.Split('/');
+                // parts[0] = "Mods", parts[1] = 模组ID
+                if (parts.Length >= 3)
+                {
+                    img = string.Join("/", parts, 2, parts.Length - 2);
+                }
+                else
+                {
+                    img = parts.LastOrDefault() ?? img;
+                }
+            }
 
-            // 如果已经是裸名（如 "paths"）或相对路径（如 "Mods/x"），原样返回
             return img;
         }
 
