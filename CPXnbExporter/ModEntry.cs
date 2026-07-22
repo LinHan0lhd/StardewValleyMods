@@ -192,7 +192,7 @@ namespace CPXnbExporter
             _currentAssetIndex = -1;
             _exportedAssetNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            // 设置路径规范化：SMAPI 虚拟路径 → Mods/模组ID/... 路径
+            // 设置路径规范化：SMAPI 虚拟路径 → Maps/Mods/模组ID/... 路径
             TBinWriter.PathNormalizer = NormalizeAssetPath;
 
             // 创建后台写入管道
@@ -221,30 +221,37 @@ namespace CPXnbExporter
         {
             try
             {
-                string assetName = asset.AssetName;
-                string safeName = GetExportAssetName(assetName).Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+                // rawAssetName: SMAPI 虚拟资产路径，用于 ContentManager 加载
+                // normalizedAssetName: 规范化后的导出路径，用于文件写入和去重
+                string rawAssetName = asset.AssetName;
+                string normalizedAssetName = NormalizeAssetPath(rawAssetName);
+                string safeName = GetExportAssetName(normalizedAssetName)
+                    .Replace('/', Path.DirectorySeparatorChar)
+                    .Replace('\\', Path.DirectorySeparatorChar);
 
                 string packedBase = Path.Combine(_currentOptions.PackedDir, safeName);
                 string unpackedBase = _currentOptions.OutputUnpacked ? Path.Combine(_currentOptions.UnpackedDir, safeName) : null;
 
                 if (asset.AssetType == CpAssetLoader.CpAssetType.Texture)
                 {
-                    if (!EnqueueTexture(assetName, packedBase, unpackedBase))
+                    // 用原始路径加载（SMAPI 虚拟资产路径），导出到规范化路径
+                    if (!EnqueueTexture(rawAssetName, packedBase, unpackedBase))
                         return false; // 队列满，回退索引重试
-                    _exportedAssetNames.Add(assetName);
+                    _exportedAssetNames.Add(normalizedAssetName);
                 }
                 else // Map
                 {
                     // 总是通过 Map 对象中转，确保生成正确的 tbin 格式
                     // CP 包的 .tmx 是 XML 文本格式，不能直接当 tbin 二进制写入 XNB
                     Map map;
-                    string actualAssetName = assetName;
-                    try { map = Helper.GameContent.Load<Map>(assetName); }
+                    string actualAssetName = normalizedAssetName;
+                    try { map = Helper.GameContent.Load<Map>(rawAssetName); }
                     catch
                     {
-                        if (!assetName.StartsWith("Maps/", StringComparison.OrdinalIgnoreCase))
+                        if (!rawAssetName.StartsWith("Maps/", StringComparison.OrdinalIgnoreCase)
+                            && !rawAssetName.StartsWith("maps/", StringComparison.OrdinalIgnoreCase))
                         {
-                            actualAssetName = "Maps/" + assetName;
+                            actualAssetName = "Maps/" + rawAssetName;
                             map = Helper.GameContent.Load<Map>(actualAssetName);
                         }
                         else
@@ -257,7 +264,7 @@ namespace CPXnbExporter
                     var item = new ExportWorkItem
                     {
                         Type = WorkItemType.Map,
-                        FileName = assetName,
+                        FileName = rawAssetName,
                         PackedBasePath = packedBase,
                         UnpackedBasePath = unpackedBase,
                         Platform = _currentOptions.Platform,
@@ -266,7 +273,7 @@ namespace CPXnbExporter
 
                     if (!_pipeline.TryAdd(item))
                         return false;
-                    _exportedAssetNames.Add(assetName);
+                    _exportedAssetNames.Add(normalizedAssetName);
 
                     // 自动补全：扫描地图引用的所有 tilesheet，导出未在列表中的贴图
                     // 这解决了 CP 包只声明 EditMap 而未声明 Load tilesheet 导致的闪退问题
@@ -290,6 +297,8 @@ namespace CPXnbExporter
                         // 映射路径用于导出和去重（与 TBinWriter 写入 TBIN 的路径一致）
                         string normalizedPath = NormalizeAssetPath(rawImageSource);
 
+                        // BUG 修复：主资产和 tilesheet 现在都使用规范化路径作为去重键，
+                        // 避免同一文件被导出到 SMAPI/... 和 Maps/Mods/... 两个位置
                         if (_exportedAssetNames.Contains(normalizedPath)) continue;
 
                         string tsSafeName = normalizedPath.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
@@ -303,7 +312,7 @@ namespace CPXnbExporter
                             if (EnqueueTexture(rawImageSource, tsPackedBase, tsUnpackedBase))
                             {
                                 _exportedAssetNames.Add(normalizedPath);
-                                Monitor.Log($"  ↳ 自动补全 tilesheet 贴图: {normalizedPath} (来自地图 {assetName})", LogLevel.Trace);
+                                Monitor.Log($"  ↳ 自动补全 tilesheet 贴图: {normalizedPath} (来自地图 {rawAssetName})", LogLevel.Trace);
                             }
                         }
                         catch (Exception tex)
@@ -400,12 +409,12 @@ namespace CPXnbExporter
         /// 路径规范化：把 SMAPI 虚拟资产路径映射为游戏 Content 可识别的路径。
         ///
         /// 重要：原版游戏（无 SMAPI）不支持 ../ 跨目录路径，tilesheet 必须在 Content/Maps/ 内。
-        /// 所以虚拟资产映射到 Maps/文件夹/模组ID_资源 路径（模组ID编码到文件名避免冲突）。
+        /// 所以虚拟资产映射到 Maps/Mods/模组ID/... 路径（在 Maps 目录内，保留 Mods/ 命名空间）。
         /// 这样游戏 eager prefixing 会正确解析：
-        ///   ImageSource "glasses/xxx_z_glass" → 游戏 prefixing → "Maps/glasses/xxx_z_glass" → Content/Maps/glasses/xxx_z_glass.xnb
+        ///   ImageSource "Mods/modId/x/y" → 游戏 prefixing → "Maps/Mods/modId/x/y" → Content/Maps/Mods/modId/x/y.xnb
         ///
-        /// SMAPI/模组ID/assets/glasses/z_glass.png → Maps/glasses/模组ID_z_glass.png（模组ID编码到文件名，避免冲突）
-        /// SMAPI/模组ID/文件夹/资源 → Maps/文件夹/模组ID_资源
+        /// SMAPI/模组ID/assets/文件夹/资源 → Maps/Mods/模组ID/文件夹/资源（去掉 assets 层，保留 Mods/ 命名空间）
+        /// SMAPI/模组ID/文件夹/资源 → Maps/Mods/模组ID/文件夹/资源
         /// 非 SMAPI 路径原样返回。
         /// </summary>
         private static string NormalizeAssetPath(string assetName)
@@ -425,13 +434,10 @@ namespace CPXnbExporter
                     {
                         afterModId = afterModId.Substring("assets/".Length);
                     }
-                    // 扁平化唯一文件名：模组ID_原路径，用_替换所有分隔符
-                    // SMAPI/nekotekina.../assets/glasses/z_glass.png → Mods/nekotekina..._glasses_z_glass.png
-                    string safeName = (modId + "_" + afterModId)
-                        .Replace('/', '_').Replace('\\', '_').Replace('.', '_');
-                    return "Mods/" + safeName;
+                    // 保留 Mods/模组ID/ 作为命名空间，避免不同模组文件冲突
+                    return "Maps/Mods/" + modId + "/" + afterModId;
                 }
-                return "Mods/" + rest;
+                return "Maps/Mods/" + rest;
             }
             return assetName;
         }
@@ -472,12 +478,16 @@ namespace CPXnbExporter
             Texture2D tempCopy = null;
             try
             {
-                string safeName = GetExportAssetName(assetName).Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+                string normalizedName = NormalizeAssetPath(assetName);
+                string safeName = GetExportAssetName(normalizedName)
+                    .Replace('/', Path.DirectorySeparatorChar)
+                    .Replace('\\', Path.DirectorySeparatorChar);
                 string packedBase = Path.Combine(options.PackedDir, safeName);
                 string unpackedBase = options.OutputUnpacked ? Path.Combine(options.UnpackedDir, safeName) : null;
                 Directory.CreateDirectory(Path.GetDirectoryName(packedBase));
                 if (unpackedBase != null) Directory.CreateDirectory(Path.GetDirectoryName(unpackedBase));
 
+                // 用原始路径加载（SMAPI 虚拟资产路径）
                 Texture2D original = Helper.GameContent.Load<Texture2D>(assetName);
                 tempCopy = CloneTexture(original);
                 XnbWriter.ExportTextureSet(packedBase, unpackedBase, tempCopy, options.Platform);
@@ -500,12 +510,16 @@ namespace CPXnbExporter
         {
             try
             {
-                string safeName = GetExportAssetName(assetName).Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+                string normalizedName = NormalizeAssetPath(assetName);
+                string safeName = GetExportAssetName(normalizedName)
+                    .Replace('/', Path.DirectorySeparatorChar)
+                    .Replace('\\', Path.DirectorySeparatorChar);
                 string packedPath = Path.Combine(options.PackedDir, safeName + ".xnb");
                 Directory.CreateDirectory(Path.GetDirectoryName(packedPath));
 
+                // 用原始路径加载（SMAPI 虚拟资产路径）
                 Map map = Helper.GameContent.Load<Map>(assetName);
-                TBinWriter.MapAssetName = assetName;
+                TBinWriter.MapAssetName = normalizedName;
                 using (var fs = new FileStream(packedPath, FileMode.Create, FileAccess.Write))
                     TBinWriter.WriteMapXnb(fs, map, options.Platform);
 

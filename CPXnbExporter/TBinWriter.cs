@@ -303,7 +303,7 @@ namespace CPXnbExporter
             if (string.IsNullOrEmpty(imageSource))
                 return imageSource;
 
-            // 应用路径规范化（如 SMAPI/模组ID/... → Mods/模组ID/...）
+            // 应用路径规范化（如 SMAPI/模组ID/... → Maps/Mods/模组ID/...）
             if (PathNormalizer != null)
                 imageSource = PathNormalizer(imageSource);
 
@@ -351,10 +351,6 @@ namespace CPXnbExporter
                 return imagePath;
 
             string img = imagePath.Replace('\\', '/');
-
-            // 先去 Maps/ 前缀
-            if (img.StartsWith("Maps/", StringComparison.OrdinalIgnoreCase))
-                img = img.Substring("Maps/".Length);
 
             // 去掉开头的 ../（可能有多层，SMAPI FixTilesheetPaths 产生）
             while (img.StartsWith("../"))
