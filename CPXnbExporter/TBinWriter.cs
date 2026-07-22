@@ -318,12 +318,11 @@ namespace CPXnbExporter
                 imageSource = imageSource.Substring(0, imageSource.Length - ext.Length);
             }
 
-            // 转换为相对于地图所在目录的路径。
-            // 游戏加载地图时，XnaDisplayDevice 以地图目录为基准拼接 tilesheet 路径，
-            // 所以 tbin 里必须存相对路径，不能存完整路径。
-            // 例如地图 Maps/ArchaeologyHouse：
-            //   "Maps/paths" → "paths"
-            //   "Maps/Mods/xxx" → "Mods/xxx"（保留 Mods/，游戏从 Content 根目录加载）
+            // 转换为 Content 相对路径。
+            // 例如：
+            //   "Maps/paths" → "Maps/paths"
+            //   "Maps/Mods/xxx" → "Mods/xxx"
+            //   "Mods/xxx" → "Mods/xxx"（游戏加载 Content/Mods/xxx.xnb）
             imageSource = MakeRelativeToMapDir(imageSource, MapAssetName);
 
             return imageSource;
@@ -333,17 +332,14 @@ namespace CPXnbExporter
         /// 把 tilesheet ImageSource 转换为相对于地图所在目录的路径。
         ///
         /// 处理流程：
-        ///   1. 去掉 Maps/ 前缀（游戏 eager prefixing 会自动加回来）
-        ///   2. 去掉 ../ 前缀（SMAPI FixTilesheetPaths 可能产生）
-        ///   3. 如果路径以 Mods/ 开头，保留完整路径（游戏从 Content 根目录加载）
+        ///   1. 去掉 ../ 前缀（SMAPI FixTilesheetPaths 可能产生）
+        ///   2. 如果路径以 Mods/ 开头，保留完整路径（游戏从 Content/Mods/ 加载）
+        ///   3. 如果路径是 Maps/Mods/...，剥掉 Maps/ 前缀统一成 Mods/...
         ///
-        /// 例如地图 assetName = "Maps/ArchaeologyHouse"：
-        ///   "Maps/paths"            → "paths"           （原版 tilesheet，游戏加 Maps/ → Maps/paths ✓）
-        ///   "Maps/Mods/xxx"         → "Mods/xxx"        （保留 Mods/，游戏直接加载 Content/Mods/xxx ✓）
-        ///   "Mods/xxx"              → "Mods/xxx"        （保留 Mods/，游戏直接加载 Content/Mods/xxx ✓）
-        ///
-        /// 游戏 eager prefixing：如果 ImageSource 不含目录分隔符，加 Maps/ 前缀。
-        /// 如果 ImageSource 含目录分隔符（如 Mods/xxx），直接加载，不加 Maps/ 前缀。
+        /// 例如：
+        ///   "Maps/paths"            → "Maps/paths"      （非 Mods 路径原样返回）
+        ///   "Maps/Mods/xxx"         → "Mods/xxx"        （剥掉 Maps/ 前缀）
+        ///   "Mods/xxx"              → "Mods/xxx"        （保留 Mods/，游戏加载 Content/Mods/xxx ✓）
         /// </summary>
         private static string MakeRelativeToMapDir(string imagePath, string mapAssetName)
         {
@@ -356,12 +352,16 @@ namespace CPXnbExporter
             while (img.StartsWith("../"))
                 img = img.Substring(3);
 
-            // 路径以 Mods/ 开头 → 保留完整路径，不作剥离
-            // 游戏 xTile 加载时，ImageSource 带目录分隔符的路径不会被加 Maps/ 前缀，
-            // 而是直接从 Content 根目录加载：Content/Mods/xxx.xnb
+            // 路径以 Mods/ 开头 → 保留完整路径，直接从 Content/Mods/ 加载
             if (img.StartsWith("Mods/", StringComparison.OrdinalIgnoreCase))
             {
                 return img;
+            }
+
+            // 兼容：如果路径是 Maps/Mods/...，剥掉 Maps/ 前缀，统一成 Mods/...
+            if (img.StartsWith("Maps/Mods/", StringComparison.OrdinalIgnoreCase))
+            {
+                return img.Substring("Maps/".Length);
             }
 
             return img;

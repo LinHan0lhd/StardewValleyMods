@@ -408,13 +408,10 @@ namespace CPXnbExporter
         /// <summary>
         /// 路径规范化：把 SMAPI 虚拟资产路径映射为游戏 Content 可识别的路径。
         ///
-        /// 重要：原版游戏（无 SMAPI）不支持 ../ 跨目录路径，tilesheet 必须在 Content/Maps/ 内。
-        /// 所以虚拟资产映射到 Maps/Mods/模组ID/... 路径（在 Maps 目录内，保留 Mods/ 命名空间）。
-        /// 这样游戏 eager prefixing 会正确解析：
-        ///   ImageSource "Mods/modId/x/y" → 游戏 prefixing → "Maps/Mods/modId/x/y" → Content/Maps/Mods/modId/x/y.xnb
+        /// 虚拟资产映射到 Mods/模组ID/... 路径，直接放在 Content/Mods/ 下。
         ///
-        /// SMAPI/模组ID/assets/文件夹/资源 → Maps/Mods/模组ID/文件夹/资源（去掉 assets 层，保留 Mods/ 命名空间）
-        /// SMAPI/模组ID/文件夹/资源 → Maps/Mods/模组ID/文件夹/资源
+        /// SMAPI/模组ID/assets/文件夹/资源 → Mods/模组ID/文件夹/资源（去掉 assets 层，保留 Mods/ 命名空间）
+        /// SMAPI/模组ID/文件夹/资源 → Mods/模组ID/文件夹/资源
         /// 非 SMAPI 路径原样返回。
         /// </summary>
         private static string NormalizeAssetPath(string assetName)
@@ -435,9 +432,9 @@ namespace CPXnbExporter
                         afterModId = afterModId.Substring("assets/".Length);
                     }
                     // 保留 Mods/模组ID/ 作为命名空间，避免不同模组文件冲突
-                    return "Maps/Mods/" + modId + "/" + afterModId;
+                    return "Mods/" + modId + "/" + afterModId;
                 }
-                return "Maps/Mods/" + rest;
+                return "Mods/" + rest;
             }
             return assetName;
         }
