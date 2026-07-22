@@ -292,7 +292,7 @@ namespace CPXnbExporter
 
                         if (_exportedAssetNames.Contains(normalizedPath)) continue;
 
-                        string tsSafeName = normalizedPath.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+                        string tsSafeName = ("Maps/" + normalizedPath).Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
                         string tsPackedBase = Path.Combine(_currentOptions.PackedDir, tsSafeName);
                         string tsUnpackedBase = _currentOptions.OutputUnpacked ? Path.Combine(_currentOptions.UnpackedDir, tsSafeName) : null;
 
