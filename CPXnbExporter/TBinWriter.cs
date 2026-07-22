@@ -323,27 +323,27 @@ namespace CPXnbExporter
             // 所以 tbin 里必须存相对路径，不能存完整路径。
             // 例如地图 Maps/ArchaeologyHouse：
             //   "Maps/paths" → "paths"
-            //   "Maps/Mods/x/y" → "x/y"（剥离 Mods/ 前缀）
+            //   "Maps/Mods/xxx" → "Mods/xxx"（保留 Mods/，游戏从 Content 根目录加载）
             imageSource = MakeRelativeToMapDir(imageSource, MapAssetName);
 
             return imageSource;
         }
 
         /// <summary>
-        /// 把 tilesheet ImageSource 转换为相对于 Maps 目录的路径。
+        /// 把 tilesheet ImageSource 转换为相对于地图所在目录的路径。
         ///
         /// 处理流程：
         ///   1. 去掉 Maps/ 前缀（游戏 eager prefixing 会自动加回来）
         ///   2. 去掉 ../ 前缀（SMAPI FixTilesheetPaths 可能产生）
-        ///   3. 剥离 Mods/模组ID/ 前缀，只保留资源相对路径
+        ///   3. 如果路径以 Mods/ 开头，保留完整路径（游戏从 Content 根目录加载）
         ///
         /// 例如地图 assetName = "Maps/ArchaeologyHouse"：
         ///   "Maps/paths"            → "paths"           （原版 tilesheet，游戏加 Maps/ → Maps/paths ✓）
-        ///   "Maps/../Mods/x/y"      → "x/y"             （SMAPI 已转换的相对路径 → 剥离 Mods/模组ID/）
-        ///   "Maps/Mods/x/y"         → "x/y"             （剥离 Mods/ 前缀）
-        ///   "Maps/x/y"              → "x/y"             （去掉 Maps/ 前缀）
+        ///   "Maps/Mods/xxx"         → "Mods/xxx"        （保留 Mods/，游戏直接加载 Content/Mods/xxx ✓）
+        ///   "Mods/xxx"              → "Mods/xxx"        （保留 Mods/，游戏直接加载 Content/Mods/xxx ✓）
         ///
-        /// 游戏 eager prefixing 会把 "x/y" → "Maps/x/y" → Content/Maps/x/y.xnb ✓
+        /// 游戏 eager prefixing：如果 ImageSource 不含目录分隔符，加 Maps/ 前缀。
+        /// 如果 ImageSource 含目录分隔符（如 Mods/xxx），直接加载，不加 Maps/ 前缀。
         /// </summary>
         private static string MakeRelativeToMapDir(string imagePath, string mapAssetName)
         {
@@ -360,20 +360,12 @@ namespace CPXnbExporter
             while (img.StartsWith("../"))
                 img = img.Substring(3);
 
-            // 剥离 Mods/模组ID/ 前缀，只保留资源相对路径
-            // 例如 Mods/nekotekina.../glasses/z_glass → glasses/z_glass
+            // 路径以 Mods/ 开头 → 保留完整路径，不作剥离
+            // 游戏 xTile 加载时，ImageSource 带目录分隔符的路径不会被加 Maps/ 前缀，
+            // 而是直接从 Content 根目录加载：Content/Mods/xxx.xnb
             if (img.StartsWith("Mods/", StringComparison.OrdinalIgnoreCase))
             {
-                var parts = img.Split('/');
-                // parts[0] = "Mods", parts[1] = 模组ID
-                if (parts.Length >= 3)
-                {
-                    img = string.Join("/", parts, 2, parts.Length - 2);
-                }
-                else
-                {
-                    img = parts.LastOrDefault() ?? img;
-                }
+                return img;
             }
 
             return img;

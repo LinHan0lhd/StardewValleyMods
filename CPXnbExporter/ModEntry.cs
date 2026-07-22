@@ -426,12 +426,12 @@ namespace CPXnbExporter
                         afterModId = afterModId.Substring("assets/".Length);
                     }
                     // 扁平化唯一文件名：模组ID_原路径，用_替换所有分隔符
-                    // SMAPI/nekotekina.../assets/glasses/z_glass.png → Maps/nekotekina..._glasses_z_glass.png
+                    // SMAPI/nekotekina.../assets/glasses/z_glass.png → Mods/nekotekina..._glasses_z_glass.png
                     string safeName = (modId + "_" + afterModId)
                         .Replace('/', '_').Replace('\\', '_').Replace('.', '_');
-                    return "Maps/" + safeName;
+                    return "Mods/" + safeName;
                 }
-                return "Maps/" + rest;
+                return "Mods/" + rest;
             }
             return assetName;
         }
