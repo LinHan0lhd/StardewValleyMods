@@ -20,8 +20,11 @@ namespace CPXnbExporter
     {
         /// <summary>
         /// 默认宿主 tilesheet 的 Content 路径。
+        /// 使用 spring_townInterior 而不是 paths，因为室内 tilesheet 通常更大，
+        /// 能容纳较宽的模组贴图。博物馆是室内地图，原版不会自动切换四季 tilesheet，
+        /// 所以一年四季都使用 spring 版本。
         /// </summary>
-        public const string DefaultHostAssetName = "Maps/paths";
+        public const string DefaultHostAssetName = "Maps/spring_townInterior";
 
         /// <summary>
         /// 判断一个 tilesheet 是否是虚拟 tilesheet（需要合并）。
