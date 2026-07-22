@@ -353,6 +353,11 @@ namespace CPXnbExporter
             // 统一用 / 分隔
             string img = imagePath.Replace('\\', '/');
 
+            // SMAPI 加载地图后，可能已把 tilesheet ImageSource 转成相对路径
+            // （如 "../Mods/xxx"）。原版游戏不支持 ../，需要去掉。
+            while (img.StartsWith("../"))
+                img = img.Substring(3);
+
             // 去掉 Maps/ 前缀（如果存在）
             if (img.StartsWith("Maps/", StringComparison.OrdinalIgnoreCase))
                 return img.Substring("Maps/".Length);
