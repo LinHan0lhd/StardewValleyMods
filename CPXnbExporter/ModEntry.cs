@@ -400,12 +400,12 @@ namespace CPXnbExporter
         /// 路径规范化：把 SMAPI 虚拟资产路径映射为游戏 Content 可识别的路径。
         ///
         /// 重要：原版游戏（无 SMAPI）不支持 ../ 跨目录路径，tilesheet 必须在 Content/Maps/ 内。
-        /// 所以虚拟资产映射到 Maps/Mods/模组ID/... 路径（在 Maps 目录内，保留 Mods/ 命名空间）。
+        /// 所以虚拟资产映射到 Maps/文件夹/模组ID_资源 路径（模组ID编码到文件名避免冲突）。
         /// 这样游戏 eager prefixing 会正确解析：
-        ///   ImageSource "Mods/modId/x/y" → 游戏 prefixing → "Maps/Mods/modId/x/y" → Content/Maps/Mods/modId/x/y.xnb
+        ///   ImageSource "glasses/xxx_z_glass" → 游戏 prefixing → "Maps/glasses/xxx_z_glass" → Content/Maps/glasses/xxx_z_glass.xnb
         ///
-        /// SMAPI/模组ID/assets/文件夹/资源 → Maps/Mods/模组ID/文件夹/资源（去掉 assets 层，保留 Mods/ 命名空间）
-        /// SMAPI/模组ID/文件夹/资源 → Maps/Mods/模组ID/文件夹/资源
+        /// SMAPI/模组ID/assets/glasses/z_glass.png → Maps/glasses/模组ID_z_glass.png（模组ID编码到文件名，避免冲突）
+        /// SMAPI/模组ID/文件夹/资源 → Maps/文件夹/模组ID_资源
         /// 非 SMAPI 路径原样返回。
         /// </summary>
         private static string NormalizeAssetPath(string assetName)
@@ -425,10 +425,18 @@ namespace CPXnbExporter
                     {
                         afterModId = afterModId.Substring("assets/".Length);
                     }
-                    // 保留 Mods/模组ID/ 作为命名空间，避免不同模组文件冲突
-                    return "Maps/Mods/" + modId + "/" + afterModId;
+                    // 把模组ID编码到文件名中，避免冲突
+                    // SMAPI/modId/assets/glasses/z_glass.png → Maps/glasses/modId_z_glass.png
+                    string dir = Path.GetDirectoryName(afterModId)?.Replace('\\', '/') ?? "";
+                    string file = Path.GetFileNameWithoutExtension(afterModId);
+                    string safeModId = modId.Replace('.', '_').Replace('/', '_').Replace('\\', '_');
+                    string result = string.IsNullOrEmpty(dir) 
+                        ? safeModId + "_" + file 
+                        : dir + "/" + safeModId + "_" + file;
+                    string ext = Path.GetExtension(afterModId);
+                    return "Maps/" + result + ext;
                 }
-                return "Maps/Mods/" + rest;
+                return "Maps/" + rest;
             }
             return assetName;
         }
