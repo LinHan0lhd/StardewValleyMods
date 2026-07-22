@@ -332,24 +332,24 @@ namespace CPXnbExporter
             var pixels = new Color[original.Width * original.Height];
             original.GetData(pixels);
 
-            // 基于 assetName 判断是否为 SMAPI 虚拟路径资产
-            // SMAPI/ 开头的路径是通过 Texture2D.FromStream 加载的 PNG，MonoGame 会转成预乘 Alpha，
-            // 需要还原为 Straight Alpha 以匹配原版 XNB 格式。
-            // 非 SMAPI/ 路径是从原版 XNB 加载的，本身就是 Straight Alpha，不需要处理。
-            // 注意：不能基于像素特征自动检测，因为某些原版深色半透明像素会被误判。
-            bool isSMAPIAsset = assetName.StartsWith("SMAPI/", StringComparison.OrdinalIgnoreCase);
-            if (isSMAPIAsset)
-            {
-                UnpremultiplyAlpha(pixels);
-                Monitor.Log($"  ↳ 还原预乘 Alpha: {assetName}", LogLevel.Trace);
-            }
+            // 重要：原版 XNB 贴图是预乘 Alpha 格式（XNA/MonoGame Content Pipeline 默认 PremultiplyAlpha=true）。
+            // SMAPI 通过 Texture2D.FromStream 加载 PNG 时也会做预乘 Alpha 转换。
+            // 所以无论资产来源（原版 XNB 还是 SMAPI 虚拟路径 PNG），GetData 拿到的都是预乘 Alpha 像素。
+            // 直接存入 XNB 即可，游戏加载时会正确渲染。
+            //
+            // 之前的错误做法：对 SMAPI 资产做 UnpremultiplyAlpha 还原，导致 XNB 存的是 Straight Alpha，
+            // 游戏用预乘 Alpha 的 blend mode 渲染时会过亮（半透明背景变白）。
+            //
+            // PNG 预览需要还原为 Straight Alpha（PNG 格式标准），XNB 保持预乘 Alpha（游戏期望的格式）。
 
-            // 预生成 PNG 字节（用处理后的像素，确保 unpacked 预览也正确）
+            // 预生成 PNG 字节（还原为 Straight Alpha，确保 unpacked 预览正确）
             byte[] pngData = null;
             if (unpackedBase != null)
             {
+                Color[] pngPixels = (Color[])pixels.Clone();
+                UnpremultiplyAlpha(pngPixels);
                 using var pngTex = new Texture2D(original.GraphicsDevice, original.Width, original.Height);
-                pngTex.SetData(pixels);
+                pngTex.SetData(pngPixels);
                 using var pngMs = new MemoryStream();
                 pngTex.SaveAsPng(pngMs, original.Width, original.Height);
                 pngData = pngMs.ToArray();
