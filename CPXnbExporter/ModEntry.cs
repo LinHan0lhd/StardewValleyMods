@@ -257,6 +257,26 @@ namespace CPXnbExporter
                         else
                             throw;
                     }
+                    // 自动整合寄生：把 SMAPI 虚拟 tilesheet 合并到宿主 tilesheet（如 Maps/paths）。
+                    // 这绕过原版游戏的 ContentHashes.json 白名单限制，因为新增路径无法加载。
+                    var mergedHostTexture = TileSheetMerger.MergeVirtualTileSheets(map, TileSheetMerger.DefaultHostAssetName, Helper, Monitor);
+                    if (mergedHostTexture != null)
+                    {
+                        string hostNormalizedPath = TileSheetMerger.DefaultHostAssetName;
+                        if (!_exportedAssetNames.Contains(hostNormalizedPath))
+                        {
+                            string hostSafeName = hostNormalizedPath.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+                            string hostPackedBase = Path.Combine(_currentOptions.PackedDir, hostSafeName);
+                            string hostUnpackedBase = _currentOptions.OutputUnpacked ? Path.Combine(_currentOptions.UnpackedDir, hostSafeName) : null;
+
+                            if (EnqueueTexture(mergedHostTexture, hostPackedBase, hostUnpackedBase))
+                            {
+                                _exportedAssetNames.Add(hostNormalizedPath);
+                                Monitor.Log($"  ↳ 已合并虚拟 tilesheet 到 {hostNormalizedPath}", LogLevel.Trace);
+                            }
+                        }
+                    }
+
                     // 设置当前地图 assetName，供 TBinWriter 计算 tilesheet 相对路径
                     TBinWriter.MapAssetName = actualAssetName;
                     byte[] tbinData = TBinWriter.SerializeTbin(map);
@@ -276,48 +296,34 @@ namespace CPXnbExporter
                     _exportedAssetNames.Add(normalizedAssetName);
 
                     // 自动补全：扫描地图引用的所有 tilesheet，导出未在列表中的贴图
-                    // 这解决了 CP 包只声明 EditMap 而未声明 Load tilesheet 导致的闪退问题
+                    // 注意：虚拟 tilesheet 已经被合并到宿主，这里跳过它们
                     foreach (var tileSheet in map.TileSheets)
                     {
                         string rawImageSource = tileSheet.ImageSource;
                         if (string.IsNullOrEmpty(rawImageSource)) continue;
 
-                        // 移除扩展名
-                        string ext = System.IO.Path.GetExtension(rawImageSource);
-                        if (!string.IsNullOrEmpty(ext) &&
-                            (ext.Equals(".png", StringComparison.OrdinalIgnoreCase) ||
-                             ext.Equals(".jpg", StringComparison.OrdinalIgnoreCase) ||
-                             ext.Equals(".jpeg", StringComparison.OrdinalIgnoreCase) ||
-                             ext.Equals(".bmp", StringComparison.OrdinalIgnoreCase) ||
-                             ext.Equals(".gif", StringComparison.OrdinalIgnoreCase)))
-                        {
-                            rawImageSource = rawImageSource.Substring(0, rawImageSource.Length - ext.Length);
-                        }
+                        // 跳过虚拟 tilesheet（已被合并）
+                        if (TileSheetMerger.IsVirtualTileSheet(tileSheet)) continue;
 
-                        // 映射路径用于导出和去重（与 TBinWriter 写入 TBIN 的路径一致）
-                        string normalizedPath = NormalizeAssetPath(rawImageSource);
+                        // 跳过宿主 tilesheet（如果已经被合并导出）
+                        string normalizedRaw = NormalizeAssetPath(rawImageSource);
+                        if (_exportedAssetNames.Contains(normalizedRaw)) continue;
 
-                        // BUG 修复：主资产和 tilesheet 现在都使用规范化路径作为去重键，
-                        // 避免同一文件被导出到 SMAPI/... 和 Maps/Mods/... 两个位置
-                        if (_exportedAssetNames.Contains(normalizedPath)) continue;
-
-                        string tsSafeName = normalizedPath.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+                        string tsSafeName = normalizedRaw.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
                         string tsPackedBase = Path.Combine(_currentOptions.PackedDir, tsSafeName);
                         string tsUnpackedBase = _currentOptions.OutputUnpacked ? Path.Combine(_currentOptions.UnpackedDir, tsSafeName) : null;
 
                         try
                         {
-                            // 加载用原始路径（SMAPI 注册的虚拟资产路径）
-                            // 导出路径用映射后的路径（Mods/模组ID/...）
                             if (EnqueueTexture(rawImageSource, tsPackedBase, tsUnpackedBase))
                             {
-                                _exportedAssetNames.Add(normalizedPath);
-                                Monitor.Log($"  ↳ 自动补全 tilesheet 贴图: {normalizedPath} (来自地图 {rawAssetName})", LogLevel.Trace);
+                                _exportedAssetNames.Add(normalizedRaw);
+                                Monitor.Log($"  ↳ 自动补全 tilesheet 贴图: {normalizedRaw} (来自地图 {rawAssetName})", LogLevel.Trace);
                             }
                         }
                         catch (Exception tex)
                         {
-                            Monitor.Log($"  ↳ 自动补全 tilesheet 失败 [{normalizedPath}]: {tex.Message}", LogLevel.Trace);
+                            Monitor.Log($"  ↳ 自动补全 tilesheet 失败 [{normalizedRaw}]: {tex.Message}", LogLevel.Trace);
                         }
                     }
                 }
@@ -338,6 +344,14 @@ namespace CPXnbExporter
         {
             // 加载贴图（主线程，GPU 相关）
             var original = Helper.GameContent.Load<Texture2D>(assetName);
+            return EnqueueTexture(original, assetName, packedBase, unpackedBase);
+        }
+
+        /// <summary>
+        /// 把已加载的 Texture2D 入队。返回 false 表示队列满，需下一帧重试。
+        /// </summary>
+        private bool EnqueueTexture(Texture2D original, string fileName, string packedBase, string unpackedBase)
+        {
             var pixels = new Color[original.Width * original.Height];
             original.GetData(pixels);
 
@@ -367,7 +381,7 @@ namespace CPXnbExporter
             var item = new ExportWorkItem
             {
                 Type = WorkItemType.Texture,
-                FileName = assetName,
+                FileName = fileName,
                 PackedBasePath = packedBase,
                 UnpackedBasePath = unpackedBase,
                 Platform = _currentOptions.Platform,
