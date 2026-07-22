@@ -425,16 +425,11 @@ namespace CPXnbExporter
                     {
                         afterModId = afterModId.Substring("assets/".Length);
                     }
-                    // 把模组ID编码到文件名中，避免冲突
-                    // SMAPI/modId/assets/glasses/z_glass.png → Maps/glasses/modId_z_glass.png
-                    string dir = Path.GetDirectoryName(afterModId)?.Replace('\\', '/') ?? "";
-                    string file = Path.GetFileNameWithoutExtension(afterModId);
-                    string safeModId = modId.Replace('.', '_').Replace('/', '_').Replace('\\', '_');
-                    string result = string.IsNullOrEmpty(dir) 
-                        ? safeModId + "_" + file 
-                        : dir + "/" + safeModId + "_" + file;
-                    string ext = Path.GetExtension(afterModId);
-                    return "Maps/" + result + ext;
+                    // 扁平化唯一文件名：模组ID_原路径，用_替换所有分隔符
+                    // SMAPI/nekotekina.../assets/glasses/z_glass.png → Maps/nekotekina..._glasses_z_glass.png
+                    string safeName = (modId + "_" + afterModId)
+                        .Replace('/', '_').Replace('\\', '_').Replace('.', '_');
+                    return "Maps/" + safeName;
                 }
                 return "Maps/" + rest;
             }
