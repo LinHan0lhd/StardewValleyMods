@@ -332,33 +332,54 @@ namespace CPXnbExporter
 
         /// <summary>
         /// 把 tilesheet ImageSource 从"相对于 Content 的完整路径"
-        /// 转换为"相对于 Maps 目录的路径"（去掉 Maps/ 前缀）。
+        /// 转换为"相对于地图所在目录的相对路径"。
         ///
-        /// 重要：原版游戏（无 SMAPI）不支持 ../ 跨目录路径。
-        /// 游戏加载地图时会做 eager prefixing：如果 ImageSource 不以 Maps/ 开头，
-        /// 会自动加 Maps/ 前缀。所以 tbin 里应存去掉 Maps/ 前缀的路径。
+        /// ../ 路径方式（原版兼容）：
+        ///   原版 ContentManager.Load("../Mods/x") → Content/../Mods/x → <游戏根>/Mods/x.xnb
+        ///   文件放在游戏根目录的 Mods/ 下。
         ///
-        /// 例如地图 assetName = "Maps/ArchaeologyHouse"：
-        ///   "Maps/paths"            → "paths"           （原版 tilesheet）
-        ///   "Maps/Mods/modId/x"     → "Mods/modId/x"    （虚拟资产，放在 Maps/Mods/ 下）
-        ///
-        /// 游戏 eager prefixing 会把 "Mods/modId/x" → "Maps/Mods/modId/x"
-        /// → 加载 Content/Maps/Mods/modId/x.xnb ✓
+        /// 例如地图 assetName = "Maps/ArchaeologyHouse"（地图目录 = "Maps"）：
+        ///   "Maps/paths"   → "paths"          （同级，去前缀）
+        ///   "Mods/xxx/yyy" → "../Mods/xxx/yyy"（跨目录，加 ../ 跳出 Maps）
         /// </summary>
         private static string MakeRelativeToMapDir(string imagePath, string mapAssetName)
         {
-            if (string.IsNullOrEmpty(imagePath))
+            if (string.IsNullOrEmpty(imagePath) || string.IsNullOrEmpty(mapAssetName))
                 return imagePath;
 
             // 统一用 / 分隔
             string img = imagePath.Replace('\\', '/');
+            string map = mapAssetName.Replace('\\', '/');
 
-            // 去掉 Maps/ 前缀（如果存在）
-            if (img.StartsWith("Maps/", StringComparison.OrdinalIgnoreCase))
-                return img.Substring("Maps/".Length);
+            // 获取地图所在目录（assetName 去掉最后一段）
+            int lastSlash = map.LastIndexOf('/');
+            if (lastSlash < 0)
+                return img; // 地图在根目录，ImageSource 不用改
+            string mapDir = map.Substring(0, lastSlash); // 如 "Maps" 或 "Maps/Mines"
 
-            // 如果已经是裸名（如 "paths"）或相对路径（如 "Mods/x"），原样返回
-            return img;
+            // 如果 ImageSource 以地图目录 + "/" 开头，直接去掉前缀
+            if (img.StartsWith(mapDir + "/", StringComparison.OrdinalIgnoreCase))
+                return img.Substring(mapDir.Length + 1);
+
+            // 否则计算相对路径：找公共前缀，然后补 ../
+            string[] imgParts = img.Split('/');
+            string[] dirParts = mapDir.Split('/');
+
+            int common = 0;
+            while (common < imgParts.Length - 1 && common < dirParts.Length &&
+                   imgParts[common].Equals(dirParts[common], StringComparison.OrdinalIgnoreCase))
+                common++;
+
+            var result = new StringBuilder();
+            for (int i = common; i < dirParts.Length; i++)
+                result.Append("../");
+            for (int i = common; i < imgParts.Length; i++)
+            {
+                if (i > common)
+                    result.Append('/');
+                result.Append(imgParts[i]);
+            }
+            return result.ToString();
         }
 
         public static void WriteMapXnb(Stream fs, Map map, char platform)
