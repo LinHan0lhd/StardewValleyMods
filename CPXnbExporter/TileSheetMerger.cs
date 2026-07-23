@@ -7,6 +7,7 @@ using StardewModdingAPI;
 using xTile;
 using xTile.Dimensions;
 using xTile.Layers;
+using xTile.ObjectModel;
 using xTile.Tiles;
 
 namespace CPXnbExporter
@@ -328,7 +329,7 @@ namespace CPXnbExporter
             }
         }
 
-        private static void CopyProperties(IDictionary<string, PropertyValue> source, IDictionary<string, PropertyValue> dest)
+        private static void CopyProperties(IPropertyCollection source, IPropertyCollection dest)
         {
             foreach (var kv in source)
                 dest[kv.Key] = kv.Value;
