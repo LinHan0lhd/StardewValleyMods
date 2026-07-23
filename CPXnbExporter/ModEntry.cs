@@ -269,7 +269,7 @@ namespace CPXnbExporter
                             string hostPackedBase = Path.Combine(_currentOptions.PackedDir, hostSafeName);
                             string hostUnpackedBase = _currentOptions.OutputUnpacked ? Path.Combine(_currentOptions.UnpackedDir, hostSafeName) : null;
 
-                            if (EnqueueTexture(mergedHostTexture, hostPackedBase, hostUnpackedBase))
+                            if (EnqueueTexture(mergedHostTexture, hostNormalizedPath, hostPackedBase, hostUnpackedBase))
                             {
                                 _exportedAssetNames.Add(hostNormalizedPath);
                                 Monitor.Log($"  ↳ 已合并虚拟 tilesheet 到 {hostNormalizedPath}", LogLevel.Trace);
