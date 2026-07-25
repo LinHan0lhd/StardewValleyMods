@@ -3,8 +3,6 @@ using System.Text;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Reflection;
-using System.Text;
 using xTile;
 using xTile.Layers;
 using xTile.ObjectModel;

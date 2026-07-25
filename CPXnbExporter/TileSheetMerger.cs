@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Xna.Framework;
@@ -12,26 +13,10 @@ using xTile.Tiles;
 
 namespace CPXnbExporter
 {
-    /// <summary>
-    /// 将地图中的虚拟 tilesheet（通常是 SMAPI 注册的模组贴图）合并到宿主 tilesheet。
-    /// 用于绕过原版游戏的 ContentHashes.json 白名单限制：新增路径无法加载，
-    /// 但已有白名单路径（如 Maps/paths）可以被替换/扩展。
-    /// </summary>
     public static class TileSheetMerger
     {
-        /// <summary>
-        /// 默认宿主 tilesheet 的 Content 路径。
-        /// 使用 Maps/busPeople（废弃的公交车场景 tilesheet），原因：
-        /// 1. 游戏废案，原版不会加载，随便改不会破坏任何正常场景；
-        /// 2. 宽度极大（1024px+），能容纳最宽的模组贴图，减少切片次数；
-        /// 3. 在白名单内，原版 ContentHashes.json 允许加载。
-        /// </summary>
         public const string DefaultHostAssetName = "Maps/busPeople";
 
-        /// <summary>
-        /// 判断一个 tilesheet 是否是虚拟 tilesheet（需要合并）。
-        /// 虚拟 tilesheet 指 SMAPI 注册的模组贴图，或已规范化到 Maps/Mods/... 的路径。
-        /// </summary>
         public static bool IsVirtualTileSheet(TileSheet tileSheet)
         {
             if (tileSheet == null) return false;
@@ -43,22 +28,20 @@ namespace CPXnbExporter
                 || src.StartsWith("Mods/", StringComparison.OrdinalIgnoreCase);
         }
 
-        /// <summary>
-        /// 把地图中所有虚拟 tilesheet 合并到指定宿主 tilesheet。
-        /// 合并后，地图中引用虚拟 tilesheet 的 tile 会被重写到宿主 tilesheet 的扩展区域。
-        /// 使用 Shelf Next-Fit 算法在宿主下方紧凑排列；过宽的贴图会自动垂直切片，
-        /// 切成不超过宿主宽度的条带分别放入不同货架行。
-        /// </summary>
-        public static Texture2D MergeVirtualTileSheets(Map map, string hostAssetName, IModHelper helper, IMonitor monitor)
+        public static Texture2D MergeVirtualTileSheets(
+            Map map,
+            string hostAssetName,
+            IModHelper helper,
+            IMonitor monitor,
+            string troubleshootDir = null)
         {
             if (map == null || helper == null) return null;
 
             var virtualSheets = map.TileSheets.Where(IsVirtualTileSheet).ToList();
             if (virtualSheets.Count == 0) return null;
 
-            monitor?.Log($"  ↳ 发现 {virtualSheets.Count} 个虚拟 tilesheet，准备紧凑合并到 {hostAssetName}", LogLevel.Trace);
+            monitor?.Log($"  ↳ 发现 {virtualSheets.Count} 个虚拟贴图", LogLevel.Trace);
 
-            // 解析宿主 ID
             string hostId = hostAssetName.Replace('\\', '/');
             int lastSlash = hostId.LastIndexOf('/');
             if (lastSlash >= 0) hostId = hostId.Substring(lastSlash + 1);
@@ -67,266 +50,711 @@ namespace CPXnbExporter
                 ts.ImageSource?.Replace('\\', '/').Equals(hostAssetName, StringComparison.OrdinalIgnoreCase) == true
                 || ts.Id.Equals(hostId, StringComparison.OrdinalIgnoreCase));
 
-            // 加载宿主贴图
             Texture2D hostTexture;
             try { hostTexture = helper.GameContent.Load<Texture2D>(hostAssetName); }
             catch (Exception ex)
             {
-                monitor?.Log($"  ↳ 合并失败：无法加载宿主贴图 {hostAssetName}: {ex.Message}", LogLevel.Trace);
-                return null;
-            }
-
-            int tileWidth = hostSheet?.TileWidth ?? virtualSheets[0].TileWidth;
-            int tileHeight = hostSheet?.TileHeight ?? virtualSheets[0].TileHeight;
-            if (tileWidth <= 0 || tileHeight <= 0)
-            {
-                monitor?.Log($"  ↳ 合并失败：tile 尺寸无效 {tileWidth}x{tileHeight}", LogLevel.Trace);
+                monitor?.Log($"  ↳ 无法加载宿主贴图 {hostAssetName}: {ex.Message}", LogLevel.Trace);
                 return null;
             }
 
             int hostPixelW = hostTexture.Width;
             int hostPixelH = hostTexture.Height;
-            int hostTilesWide = hostPixelW / tileWidth;
-            if (hostTilesWide <= 0) hostTilesWide = 1;
+            int hostTileW = hostSheet?.TileWidth ?? 64;
+            int hostTileH = hostSheet?.TileHeight ?? 64;
 
-            // ---- 加载所有虚拟贴图，过宽则自动垂直切片 ----
-            var candidates = new List<VirtualSheetInfo>();
+            monitor?.Log($"  ↳ 宿主: {hostPixelW}x{hostPixelH}px, Tile={hostTileW}x{hostTileH}", LogLevel.Trace);
+
+            var virtualDataList = new List<VirtualTileData>();
+
             foreach (var vSheet in virtualSheets)
             {
                 Texture2D vTex;
                 try { vTex = helper.GameContent.Load<Texture2D>(vSheet.ImageSource); }
                 catch (Exception ex)
                 {
-                    monitor?.Log($"  ↳ 合并失败：无法加载虚拟贴图 {vSheet.ImageSource}: {ex.Message}", LogLevel.Trace);
+                    monitor?.Log($"  ↳ 无法加载虚拟贴图 {vSheet.ImageSource}: {ex.Message}", LogLevel.Trace);
                     return null;
                 }
 
-                if (vSheet.TileWidth != tileWidth || vSheet.TileHeight != tileHeight)
+                // 修正瓦片尺寸
+                if (vSheet.SheetWidth > 0 && vSheet.SheetHeight > 0)
                 {
-                    monitor?.Log($"  ↳ 合并失败：虚拟 tilesheet {vSheet.Id} 的 tile 尺寸 {vSheet.TileWidth}x{vSheet.TileHeight} 与宿主 {tileWidth}x{tileHeight} 不一致", LogLevel.Trace);
-                    return null;
-                }
-
-                int alignedW = ((vTex.Width + tileWidth - 1) / tileWidth) * tileWidth;
-                int alignedH = ((vTex.Height + tileHeight - 1) / tileHeight) * tileHeight;
-                int vTilesWide = alignedW / tileWidth;
-
-                if (vTilesWide > hostTilesWide)
-                {
-                    // 过宽，垂直切成多条，每条宽度不超过宿主宽度
-                    monitor?.Log($"  ↳ 虚拟贴图 {vSheet.Id} 宽度 {alignedW}px ({vTilesWide} tiles) 超过宿主 {hostPixelW}px，自动切片", LogLevel.Trace);
-
-                    for (int col = 0; col < vTilesWide; col += hostTilesWide)
+                    int calcW = vTex.Width / vSheet.SheetWidth;
+                    int calcH = vTex.Height / vSheet.SheetHeight;
+                    if (calcW > 0 && calcH > 0 &&
+                        (vSheet.TileWidth != calcW || vSheet.TileHeight != calcH))
                     {
-                        int colsInSlice = Math.Min(hostTilesWide, vTilesWide - col);
-                        int slicePixelW = colsInSlice * tileWidth;
-
-                        candidates.Add(new VirtualSheetInfo
-                        {
-                            TileSheet = vSheet,
-                            Texture = vTex,
-                            AlignedWidth = slicePixelW,
-                            AlignedHeight = alignedH,
-                            SourceX = col * tileWidth,
-                            SourceY = 0,
-                            StartTileCol = col,
-                            EndTileCol = col + colsInSlice
-                        });
+                        monitor?.Log(
+                            $"  ⚠ 修正虚拟贴图 [{vSheet.Id}] 的瓦片尺寸: " +
+                            $"{vSheet.TileWidth}x{vSheet.TileHeight} → {calcW}x{calcH}",
+                            LogLevel.Warn);
+                        vSheet.TileWidth = calcW;
+                        vSheet.TileHeight = calcH;
                     }
                 }
-                else
+
+                var pixels = new Color[vTex.Width * vTex.Height];
+                vTex.GetData(pixels);
+
+                var data = new VirtualTileData
                 {
-                    candidates.Add(new VirtualSheetInfo
-                    {
-                        TileSheet = vSheet,
-                        Texture = vTex,
-                        AlignedWidth = alignedW,
-                        AlignedHeight = alignedH,
-                        SourceX = 0,
-                        SourceY = 0,
-                        StartTileCol = 0,
-                        EndTileCol = vTilesWide
-                    });
-                }
+                    Sheet = vSheet,
+                    Texture = vTex,
+                    Pixels = pixels,
+                    PixelW = vTex.Width,
+                    PixelH = vTex.Height,
+                    TileW = vSheet.TileWidth,
+                    TileH = vSheet.TileHeight,
+                    OldSheetW = vSheet.SheetWidth,
+                    OldSheetH = vSheet.SheetHeight,
+                    Id = vSheet.Id
+                };
+
+                data.SameSizeAsHost = (data.TileW == hostTileW && data.TileH == hostTileH);
+
+                monitor?.Log($"  ↳ 虚拟 {data.Id}: {data.PixelW}x{data.PixelH}px, Tile={data.TileW}x{data.TileH}, Sheet={data.OldSheetW}x{data.OldSheetH}, SameSize={data.SameSizeAsHost}", LogLevel.Trace);
+
+                virtualDataList.Add(data);
             }
 
-            // ---- Shelf Next-Fit Decreasing Height 紧凑排列 ----
-            candidates.Sort((a, b) => b.AlignedHeight.CompareTo(a.AlignedHeight));
+            var usedCoordsMap = new Dictionary<VirtualTileData, HashSet<(int x, int y)>>();
+            foreach (var vd in virtualDataList)
+                usedCoordsMap[vd] = new HashSet<(int, int)>();
 
-            var shelves = new List<Shelf>();
-            foreach (var cand in candidates)
+            foreach (Layer layer in map.Layers)
             {
-                bool placed = false;
-                foreach (var shelf in shelves.OrderByDescending(s => s.RemainingWidth))
+                for (int y = 0; y < layer.LayerHeight; y++)
                 {
-                    if (shelf.TryPlace(cand, hostPixelW))
+                    for (int x = 0; x < layer.LayerWidth; x++)
                     {
-                        placed = true;
-                        break;
+                        CollectUsedCoords(layer.Tiles[x, y], usedCoordsMap);
                     }
-                }
-                if (!placed)
-                {
-                    var newShelf = new Shelf(hostPixelH);
-                    newShelf.TryPlace(cand, hostPixelW);
-                    shelves.Add(newShelf);
                 }
             }
 
-            // 计算最终贴图尺寸
-            int newPixelW = hostPixelW;
-            int newPixelH = hostPixelH;
-            foreach (var shelf in shelves)
-                newPixelH = Math.Max(newPixelH, shelf.Y + shelf.Height);
+            var activeVirtualData = new List<VirtualTileData>();
 
-            // ---- 创建合并贴图 ----
+            foreach (var vd in virtualDataList)
+            {
+                var coords = usedCoordsMap[vd];
+                if (coords.Count == 0)
+                {
+                    monitor?.Log($"  ↳ 虚拟 {vd.Id} 未被任何 tile 引用，跳过", LogLevel.Trace);
+                    continue;
+                }
+
+                var clampedCoords = new HashSet<(int x, int y)>();
+                int maxX = vd.PixelW / vd.TileW;
+                int maxY = vd.PixelH / vd.TileH;
+
+                foreach (var (cx, cy) in coords)
+                {
+                    int ccx = Math.Max(0, Math.Min(cx, maxX - 1));
+                    int ccy = Math.Max(0, Math.Min(cy, maxY - 1));
+                    clampedCoords.Add((ccx, ccy));
+                }
+
+                if (clampedCoords.Count == 0)
+                {
+                    monitor?.Log($"  ↳ 虚拟 {vd.Id} Clamp 后无有效坐标，跳过", LogLevel.Trace);
+                    continue;
+                }
+
+                // 去重 + 删除透明瓦片
+                var uniqueNonTransparent = new Dictionary<string, (int x, int y)>();
+                var dedupMap = new Dictionary<(int, int), (int x, int y)>();
+                int transparentCount = 0;
+
+                foreach (var coord in clampedCoords)
+                {
+                    if (IsTileFullyTransparent(vd, coord.x, coord.y))
+                    {
+                        dedupMap[coord] = (-1, -1);
+                        transparentCount++;
+                        continue;
+                    }
+
+                    byte[] hash = GetTilePixelHash(vd, coord.x, coord.y);
+                    string hashKey = Convert.ToBase64String(hash);
+
+                    if (uniqueNonTransparent.TryGetValue(hashKey, out var rep))
+                    {
+                        dedupMap[coord] = rep;
+                    }
+                    else
+                    {
+                        uniqueNonTransparent[hashKey] = coord;
+                        dedupMap[coord] = coord;
+                    }
+                }
+
+                vd.ClampedCoords = new HashSet<(int x, int y)>(uniqueNonTransparent.Values);
+                vd.DedupMap = dedupMap;
+
+                if (vd.ClampedCoords.Count == 0)
+                {
+                    monitor?.Log($"  ↳ 虚拟 {vd.Id} 所有瓦片均为透明或重复，跳过", LogLevel.Trace);
+                    continue;
+                }
+
+                // 重新计算包围盒（基于剩余唯一非透明瓦片）
+                vd.MinX = vd.ClampedCoords.Min(c => c.x);
+                vd.MinY = vd.ClampedCoords.Min(c => c.y);
+                vd.MaxX = vd.ClampedCoords.Max(c => c.x);
+                vd.MaxY = vd.ClampedCoords.Max(c => c.y);
+                vd.BoundsW = (vd.MaxX - vd.MinX + 1) * vd.TileW;
+                vd.BoundsH = (vd.MaxY - vd.MinY + 1) * vd.TileH;
+
+                int dupCount = clampedCoords.Count - uniqueNonTransparent.Count - transparentCount;
+                monitor?.Log($"  ↳ 虚拟 {vd.Id}: 原始 {clampedCoords.Count} 个, 透明 {transparentCount} 个, 重复 {dupCount} 个, 最终唯一瓦片 {vd.ClampedCoords.Count} 个", LogLevel.Trace);
+
+                activeVirtualData.Add(vd);
+            }
+
+            if (activeVirtualData.Count == 0)
+            {
+                monitor?.Log($"  ↳ 没有需要合并的虚拟贴图", LogLevel.Trace);
+                return null;
+            }
+
+            activeVirtualData.Sort((a, b) =>
+                (b.BoundsW * b.BoundsH).CompareTo(a.BoundsW * a.BoundsH));
+
+            int mergedW = hostPixelW;
+            int mergedH = hostPixelH;
+
+            foreach (var vd in activeVirtualData)
+            {
+                vd.OffsetX = 0;
+                vd.OffsetY = mergedH;
+                int rem = vd.OffsetY % vd.TileH;
+                if (rem != 0) vd.OffsetY += vd.TileH - rem;
+                mergedH = vd.OffsetY + vd.BoundsH;
+                if (vd.BoundsW > mergedW) mergedW = vd.BoundsW;
+            }
+
+            int lcm = hostTileW;
+            foreach (var vd in activeVirtualData)
+                lcm = Lcm(lcm, vd.TileW);
+            mergedW = ((mergedW + lcm - 1) / lcm) * lcm;
+
+            monitor?.Log($"  ↳ 合并贴图: {mergedW}x{mergedH}px", LogLevel.Trace);
+
+            // 生成 TileMap（透明瓦片跳过）
+            foreach (var vd in activeVirtualData)
+            {
+                vd.TileMap = new Dictionary<(int oldX, int oldY), (int newX, int newY)>();
+
+                int tilesPerRow = mergedW / vd.TileW;
+                int col = 0, row = 0;
+
+                var uniqueToNew = new Dictionary<(int, int), (int newX, int newY)>();
+                foreach (var uniqueCoord in vd.ClampedCoords)
+                {
+                    var newCoord = (col, row);
+                    uniqueToNew[uniqueCoord] = newCoord;
+                    col++;
+                    if (col >= tilesPerRow)
+                    {
+                        col = 0;
+                        row++;
+                    }
+                }
+
+                foreach (var kv in vd.DedupMap)
+                {
+                    var oldCoord = kv.Key;
+                    var repCoord = kv.Value;
+
+                    if (repCoord == (-1, -1))
+                        continue;
+
+                    vd.TileMap[oldCoord] = uniqueToNew[repCoord];
+                }
+
+                vd.NewSheetW = mergedW / vd.TileW;
+                vd.NewSheetH = mergedH / vd.TileH;
+
+                monitor?.Log($"  ↳ 虚拟 {vd.Id} 映射: {vd.TileMap.Count} 个 tile (有效), Sheet={vd.NewSheetW}x{vd.NewSheetH}, Offset=({vd.OffsetX},{vd.OffsetY})", LogLevel.Trace);
+            }
+
             var device = hostTexture.GraphicsDevice;
-            var mergedTexture = new Texture2D(device, newPixelW, newPixelH);
-            var mergedPixels = new Color[newPixelW * newPixelH];
+            var mergedTex = new Texture2D(device, mergedW, mergedH);
+            var mergedPixels = new Color[mergedW * mergedH];
             Array.Clear(mergedPixels, 0, mergedPixels.Length);
 
-            // 复制宿主
             var hostPixels = new Color[hostPixelW * hostPixelH];
             hostTexture.GetData(hostPixels);
-            CopyPixels(hostPixels, hostPixelW, hostPixelH, 0, 0, hostPixelW, hostPixelH, mergedPixels, newPixelW, newPixelH, 0, 0);
+            CopyPixels(hostPixels, hostPixelW, hostPixelH, 0, 0, hostPixelW, hostPixelH,
+                       mergedPixels, mergedW, mergedH, 0, 0);
 
-            // 复制虚拟贴图（按条带）
-            var layoutMap = new Dictionary<TileSheet, List<VirtualSheetLayout>>();
-            foreach (var cand in candidates)
+            foreach (var vd in activeVirtualData)
             {
-                var vPixels = new Color[cand.Texture.Width * cand.Texture.Height];
-                cand.Texture.GetData(vPixels);
-
-                // 防御：切片后的实际复制区域不能超出原 texture 边界
-                int copyW = Math.Min(cand.AlignedWidth, cand.Texture.Width - cand.SourceX);
-                int copyH = Math.Min(cand.AlignedHeight, cand.Texture.Height - cand.SourceY);
-
-                CopyPixels(vPixels, cand.Texture.Width, cand.Texture.Height,
-                           cand.SourceX, cand.SourceY, copyW, copyH,
-                           mergedPixels, newPixelW, newPixelH, cand.OffsetX, cand.OffsetY);
-
-                if (!layoutMap.ContainsKey(cand.TileSheet))
-                    layoutMap[cand.TileSheet] = new List<VirtualSheetLayout>();
-
-                layoutMap[cand.TileSheet].Add(new VirtualSheetLayout
+                var copiedReps = new HashSet<(int x, int y)>();
+                foreach (var kv in vd.TileMap)
                 {
-                    TileSheet = cand.TileSheet,
-                    OffsetX = cand.OffsetX,
-                    OffsetY = cand.OffsetY,
-                    AlignedWidth = cand.AlignedWidth,
-                    AlignedHeight = cand.AlignedHeight,
-                    StartTileCol = cand.StartTileCol,
-                    EndTileCol = cand.EndTileCol
-                });
+                    var oldCoord = kv.Key;
+                    var newCoord = kv.Value;
+
+                    (int repX, int repY) rep = vd.DedupMap[oldCoord];
+                    if (rep == (-1, -1)) continue;
+
+                    if (copiedReps.Contains(rep))
+                        continue;
+                    copiedReps.Add(rep);
+
+                    int srcX = rep.repX * vd.TileW;
+                    int srcY = rep.repY * vd.TileH;
+                    int dstX = vd.OffsetX + newCoord.newX * vd.TileW;
+                    int dstY = vd.OffsetY + newCoord.newY * vd.TileH;
+
+                    CopyPixels(vd.Pixels, vd.PixelW, vd.PixelH,
+                               srcX, srcY, vd.TileW, vd.TileH,
+                               mergedPixels, mergedW, mergedH,
+                               dstX, dstY);
+                }
             }
 
-            mergedTexture.SetData(mergedPixels);
+            mergedTex.SetData(mergedPixels);
 
-            // ---- 更新宿主 tilesheet ----
-            int newSheetWidth = newPixelW / tileWidth;
-            int newSheetHeight = newPixelH / tileHeight;
+            int newHostSheetW = mergedW / hostTileW;
+            int newHostSheetH = mergedH / hostTileH;
+            int oldHostSheetW = hostSheet?.SheetWidth ?? newHostSheetW;
 
             if (hostSheet == null)
             {
                 hostSheet = new TileSheet(hostId, map, hostAssetName,
-                    new Size { Width = newSheetWidth, Height = newSheetHeight },
-                    new Size { Width = tileWidth, Height = tileHeight });
+                    new Size { Width = newHostSheetW, Height = newHostSheetH },
+                    new Size { Width = hostTileW, Height = hostTileH });
                 map.AddTileSheet(hostSheet);
             }
             else
             {
                 hostSheet.ImageSource = hostAssetName;
-                hostSheet.SheetWidth = newSheetWidth;
-                hostSheet.SheetHeight = newSheetHeight;
+                hostSheet.SheetWidth = newHostSheetW;
+                hostSheet.SheetHeight = newHostSheetH;
             }
 
-            // ---- 重写地图 tile 引用 ----
+            monitor?.Log($"  ↳ 宿主 TileSheet: {newHostSheetW}x{newHostSheetH} tiles, Tile={hostTileW}x{hostTileH}", LogLevel.Trace);
+
+            foreach (var vd in activeVirtualData)
+            {
+                vd.Sheet.ImageSource = hostAssetName;
+                vd.Sheet.SheetWidth = vd.NewSheetW;
+                vd.Sheet.SheetHeight = vd.NewSheetH;
+                monitor?.Log($"  ↳ 虚拟 {vd.Id} 已更新: ImageSource={hostAssetName}, Tile={vd.Sheet.TileWidth}x{vd.Sheet.TileHeight}, Sheet={vd.NewSheetW}x{vd.NewSheetH}", LogLevel.Trace);
+            }
+
+            var lookupDict = new Dictionary<string, VirtualTileData>(StringComparer.OrdinalIgnoreCase);
+            foreach (var vd in activeVirtualData)
+                if (!string.IsNullOrEmpty(vd.Id))
+                    lookupDict[vd.Id] = vd;
+
             foreach (Layer layer in map.Layers)
             {
                 for (int y = 0; y < layer.LayerHeight; y++)
+                {
                     for (int x = 0; x < layer.LayerWidth; x++)
-                        RewriteTile(layer, x, y, hostSheet, layoutMap, newSheetWidth);
+                    {
+                        var tile = layer.Tiles[x, y];
+                        if (tile is StaticTile st)
+                            RewriteStaticTile(layer, x, y, st, hostSheet, lookupDict, oldHostSheetW, newHostSheetW, hostTileW, hostTileH, monitor);
+                        else if (tile is AnimatedTile anim)
+                            RewriteAnimatedTile(layer, x, y, anim, hostSheet, lookupDict, oldHostSheetW, newHostSheetW, hostTileW, hostTileH, monitor);
+                    }
+                }
             }
 
-            // 移除虚拟 tilesheet
-            foreach (var vSheet in virtualSheets)
-                map.RemoveTileSheet(vSheet);
+            foreach (var vd in activeVirtualData)
+            {
+                if (vd.SameSizeAsHost)
+                {
+                    try
+                    {
+                        bool stillReferenced = false;
+                        foreach (Layer layer in map.Layers)
+                        {
+                            for (int y = 0; y < layer.LayerHeight && !stillReferenced; y++)
+                            {
+                                for (int x = 0; x < layer.LayerWidth && !stillReferenced; x++)
+                                {
+                                    var tile = layer.Tiles[x, y];
+                                    if (tile != null && tile.TileSheet == vd.Sheet)
+                                        stillReferenced = true;
+                                }
+                            }
+                        }
 
-            int sliceCount = candidates.Count - virtualSheets.Count;
-            monitor?.Log($"  ↳ 紧凑合并完成：宿主扩展为 {newSheetWidth}x{newSheetHeight} tiles，共 {shelves.Count} 行货架，{virtualSheets.Count} 个虚拟 tilesheet" +
-                         (sliceCount > 0 ? $"（含 {sliceCount} 次自动切片）" : ""), LogLevel.Trace);
+                        if (!stillReferenced)
+                        {
+                            map.RemoveTileSheet(vd.Sheet);
+                            monitor?.Log($"  ↳ 移除冗余虚拟 TileSheet: {vd.Id} (尺寸与宿主相同，已重定向到宿主)", LogLevel.Trace);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        monitor?.Log($"  ↳ 无法移除虚拟 TileSheet {vd.Id}: {ex.Message}", LogLevel.Trace);
+                    }
+                }
+            }
 
-            return mergedTexture;
+            // ★ 生成综合排查图（一张总图）
+            if (!string.IsNullOrEmpty(troubleshootDir))
+            {
+                GenerateCombinedTroubleshootImage(mergedTex, activeVirtualData, hostPixelH, hostTileW, hostTileH, troubleshootDir, monitor);
+            }
+
+            monitor?.Log($"  ↳ 合并完成: {mergedW}x{mergedH}px", LogLevel.Trace);
+            return mergedTex;
         }
 
-        private static void RewriteTile(Layer layer, int x, int y, TileSheet hostSheet, Dictionary<TileSheet, List<VirtualSheetLayout>> layoutMap, int newSheetWidth)
+        private static bool IsTileFullyTransparent(VirtualTileData vd, int tileX, int tileY)
         {
-            var tile = layer.Tiles[x, y];
+            for (int y = 0; y < vd.TileH; y++)
+                for (int x = 0; x < vd.TileW; x++)
+                {
+                    int idx = (tileY * vd.TileH + y) * vd.PixelW + (tileX * vd.TileW + x);
+                    if (vd.Pixels[idx].A != 0) return false;
+                }
+            return true;
+        }
+
+        private static byte[] GetTilePixelHash(VirtualTileData vd, int tileX, int tileY)
+        {
+            int tileW = vd.TileW;
+            int tileH = vd.TileH;
+            int stride = tileW * 4;
+            byte[] raw = new byte[tileH * stride];
+
+            int srcStartX = tileX * tileW;
+            int srcStartY = tileY * tileH;
+
+            for (int y = 0; y < tileH; y++)
+                for (int x = 0; x < tileW; x++)
+                {
+                    int srcIdx = (srcStartY + y) * vd.PixelW + (srcStartX + x);
+                    Color c = vd.Pixels[srcIdx];
+                    int baseIdx = y * stride + x * 4;
+                    raw[baseIdx] = c.R;
+                    raw[baseIdx + 1] = c.G;
+                    raw[baseIdx + 2] = c.B;
+                    raw[baseIdx + 3] = c.A;
+                }
+
+            using var md5 = System.Security.Cryptography.MD5.Create();
+            return md5.ComputeHash(raw);
+        }
+
+        private static void CollectUsedCoords(Tile tile, Dictionary<VirtualTileData, HashSet<(int x, int y)>> usedCoordsMap)
+        {
             if (tile == null) return;
 
             if (tile is StaticTile st)
             {
-                if (layoutMap.TryGetValue(st.TileSheet, out var layouts))
+                foreach (var kv in usedCoordsMap)
                 {
-                    int oldX = st.TileIndex % st.TileSheet.SheetWidth;
-                    int oldY = st.TileIndex / st.TileSheet.SheetWidth;
-
-                    var layout = layouts.FirstOrDefault(l => oldX >= l.StartTileCol && oldX < l.EndTileCol);
-                    if (layout != null)
+                    if (st.TileSheet == kv.Key.Sheet)
                     {
-                        // OffsetX/OffsetY 是合并贴图中的绝对像素偏移，直接除以 tile 尺寸即得目标 tile 坐标
-                        int newX = (layout.OffsetX / st.TileSheet.TileWidth) + (oldX - layout.StartTileCol);
-                        int newY = (layout.OffsetY / st.TileSheet.TileHeight) + oldY;
-                        int newIndex = newY * newSheetWidth + newX;
-
-                        var newTile = new StaticTile(layer, hostSheet, st.BlendMode, newIndex);
-                        CopyProperties(st.Properties, newTile.Properties);
-                        layer.Tiles[x, y] = newTile;
+                        int ox = st.TileIndex % kv.Key.OldSheetW;
+                        int oy = st.TileIndex / kv.Key.OldSheetW;
+                        kv.Value.Add((ox, oy));
+                        break;
                     }
                 }
             }
             else if (tile is AnimatedTile anim)
             {
-                var newFrames = new StaticTile[anim.TileFrames.Length];
-                bool anyRewritten = false;
-                for (int i = 0; i < anim.TileFrames.Length; i++)
+                foreach (var frame in anim.TileFrames)
                 {
-                    var frame = anim.TileFrames[i];
-                    if (layoutMap.TryGetValue(frame.TileSheet, out var layouts))
+                    if (frame == null) continue;
+                    foreach (var kv in usedCoordsMap)
                     {
-                        int oldX = frame.TileIndex % frame.TileSheet.SheetWidth;
-                        int oldY = frame.TileIndex / frame.TileSheet.SheetWidth;
-
-                        var layout = layouts.FirstOrDefault(l => oldX >= l.StartTileCol && oldX < l.EndTileCol);
-                        if (layout != null)
+                        if (frame.TileSheet == kv.Key.Sheet)
                         {
-                            int newX = (layout.OffsetX / frame.TileSheet.TileWidth) + (oldX - layout.StartTileCol);
-                            int newY = (layout.OffsetY / frame.TileSheet.TileHeight) + oldY;
-                            int newIndex = newY * newSheetWidth + newX;
+                            int ox = frame.TileIndex % kv.Key.OldSheetW;
+                            int oy = frame.TileIndex / kv.Key.OldSheetW;
+                            kv.Value.Add((ox, oy));
+                            break;
+                        }
+                    }
+                }
+            }
+        }
 
-                            newFrames[i] = new StaticTile(layer, hostSheet, frame.BlendMode, newIndex);
-                            CopyProperties(frame.Properties, newFrames[i].Properties);
-                            anyRewritten = true;
-                        }
-                        else
-                        {
-                            newFrames[i] = frame;
-                        }
+        private static void RewriteStaticTile(
+            Layer layer, int x, int y,
+            StaticTile st,
+            TileSheet hostSheet,
+            Dictionary<string, VirtualTileData> lookupDict,
+            int oldHostSheetW, int newHostSheetW,
+            int hostTileW, int hostTileH,
+            IMonitor monitor)
+        {
+            if (st.TileSheet == hostSheet)
+            {
+                if (oldHostSheetW != newHostSheetW)
+                {
+                    int hostOldX = st.TileIndex % oldHostSheetW;
+                    int hostOldY = st.TileIndex / oldHostSheetW;
+                    int hostNewIdx = hostOldY * newHostSheetW + hostOldX;
+                    var newTile = new StaticTile(layer, hostSheet, st.BlendMode, hostNewIdx);
+                    CopyProperties(st.Properties, newTile.Properties);
+                    layer.Tiles[x, y] = newTile;
+                }
+                return;
+            }
+
+            string sheetId = st.TileSheet.Id;
+            if (string.IsNullOrEmpty(sheetId)) return;
+
+            if (!lookupDict.TryGetValue(sheetId, out var vd)) return;
+
+            int vOldX = st.TileIndex % vd.OldSheetW;
+            int vOldY = st.TileIndex / vd.OldSheetW;
+
+            if (!vd.TileMap.TryGetValue((vOldX, vOldY), out var newPos))
+            {
+                layer.Tiles[x, y] = null;
+                monitor?.Log($"  ↳ Tile ({x},{y}) 旧坐标 ({vOldX},{vOldY}) 无内容，已置空", LogLevel.Trace);
+                return;
+            }
+
+            if (vd.SameSizeAsHost)
+            {
+                int pixelX = newPos.newX * vd.TileW;
+                int pixelY = vd.OffsetY + newPos.newY * vd.TileH;
+                int newX = pixelX / hostTileW;
+                int newY = pixelY / hostTileH;
+                int newIdx = newY * newHostSheetW + newX;
+
+                var newTile = new StaticTile(layer, hostSheet, st.BlendMode, newIdx);
+                CopyProperties(st.Properties, newTile.Properties);
+                layer.Tiles[x, y] = newTile;
+            }
+            else
+            {
+                int newX = newPos.newX;
+                int newY = vd.OffsetY / vd.TileH + newPos.newY;
+                int newIdx = newY * vd.NewSheetW + newX;
+
+                var newTile = new StaticTile(layer, vd.Sheet, st.BlendMode, newIdx);
+                CopyProperties(st.Properties, newTile.Properties);
+                layer.Tiles[x, y] = newTile;
+            }
+        }
+
+        private static void RewriteAnimatedTile(
+            Layer layer, int x, int y,
+            AnimatedTile anim,
+            TileSheet hostSheet,
+            Dictionary<string, VirtualTileData> lookupDict,
+            int oldHostSheetW, int newHostSheetW,
+            int hostTileW, int hostTileH,
+            IMonitor monitor)
+        {
+            var newFrames = new StaticTile[anim.TileFrames.Length];
+            bool anyRewritten = false;
+
+            for (int i = 0; i < anim.TileFrames.Length; i++)
+            {
+                var frame = anim.TileFrames[i];
+
+                if (frame.TileSheet == hostSheet)
+                {
+                    if (oldHostSheetW != newHostSheetW)
+                    {
+                        int hostOldX = frame.TileIndex % oldHostSheetW;
+                        int hostOldY = frame.TileIndex / oldHostSheetW;
+                        int hostNewIdx = hostOldY * newHostSheetW + hostOldX;
+                        newFrames[i] = new StaticTile(layer, hostSheet, frame.BlendMode, hostNewIdx);
+                        CopyProperties(frame.Properties, newFrames[i].Properties);
+                        anyRewritten = true;
                     }
                     else
                     {
                         newFrames[i] = frame;
                     }
+                    continue;
                 }
 
-                if (anyRewritten)
+                string sheetId = frame.TileSheet.Id;
+                if (string.IsNullOrEmpty(sheetId))
                 {
-                    var newAnim = new AnimatedTile(layer, newFrames, anim.FrameInterval);
+                    newFrames[i] = frame;
+                    continue;
+                }
+
+                if (!lookupDict.TryGetValue(sheetId, out var vd))
+                {
+                    newFrames[i] = frame;
+                    continue;
+                }
+
+                int vOldX = frame.TileIndex % vd.OldSheetW;
+                int vOldY = frame.TileIndex / vd.OldSheetW;
+
+                if (!vd.TileMap.TryGetValue((vOldX, vOldY), out var newPos))
+                {
+                    newFrames[i] = null;
+                    anyRewritten = true;
+                    continue;
+                }
+
+                if (vd.SameSizeAsHost)
+                {
+                    int pixelX = newPos.newX * vd.TileW;
+                    int pixelY = vd.OffsetY + newPos.newY * vd.TileH;
+                    int newX = pixelX / hostTileW;
+                    int newY = pixelY / hostTileH;
+                    int hostNewIdx = newY * newHostSheetW + newX;
+                    newFrames[i] = new StaticTile(layer, hostSheet, frame.BlendMode, hostNewIdx);
+                    CopyProperties(frame.Properties, newFrames[i].Properties);
+                    anyRewritten = true;
+                }
+                else
+                {
+                    int newX = newPos.newX;
+                    int newY = vd.OffsetY / vd.TileH + newPos.newY;
+                    int vNewIdx = newY * vd.NewSheetW + newX;
+                    newFrames[i] = new StaticTile(layer, vd.Sheet, frame.BlendMode, vNewIdx);
+                    CopyProperties(frame.Properties, newFrames[i].Properties);
+                    anyRewritten = true;
+                }
+            }
+
+            if (anyRewritten)
+            {
+                var validFrames = newFrames.Where(f => f != null).ToArray();
+                if (validFrames.Length == 0)
+                    layer.Tiles[x, y] = null;
+                else if (validFrames.Length == 1)
+                    layer.Tiles[x, y] = validFrames[0];
+                else
+                {
+                    var newAnim = new AnimatedTile(layer, validFrames, anim.FrameInterval);
                     newAnim.BlendMode = anim.BlendMode;
                     CopyProperties(anim.Properties, newAnim.Properties);
                     layer.Tiles[x, y] = newAnim;
                 }
             }
+        }
+
+        // ★ 综合排查图：所有虚拟贴图绘制在同一张图上
+        private static void GenerateCombinedTroubleshootImage(
+            Texture2D mergedTex,
+            List<VirtualTileData> activeVirtualData,
+            int hostPixelH,
+            int hostTileW,
+            int hostTileH,
+            string troubleshootDir,
+            IMonitor monitor)
+        {
+            int w = mergedTex.Width;
+            int h = mergedTex.Height;
+            var pixels = new Color[w * h];
+            mergedTex.GetData(pixels);
+
+            // 宿主网格（灰色）
+            Color hostGridColor = new Color(128, 128, 128, 100);
+            for (int gy = 0; gy < hostPixelH; gy += hostTileH)
+                for (int px = 0; px < w; px++)
+                    if (gy * w + px < pixels.Length) pixels[gy * w + px] = BlendOver(pixels[gy * w + px], hostGridColor);
+            for (int gx = 0; gx < w; gx += hostTileW)
+                for (int py = 0; py < hostPixelH; py++)
+                    if (py * w + gx < pixels.Length) pixels[py * w + gx] = BlendOver(pixels[py * w + gx], hostGridColor);
+
+            // 分隔线（绿色）
+            Color sepColor = new Color(0, 255, 0, 200);
+            for (int px = 0; px < w; px++)
+            {
+                int idx = hostPixelH * w + px;
+                if (idx < pixels.Length) pixels[idx] = sepColor;
+            }
+
+            // 为每个虚拟贴图画红框、蓝网格、黄点
+            foreach (var vd in activeVirtualData)
+            {
+                // 收集实际占用的单元格
+                var occupiedCells = new HashSet<(int newX, int newY)>();
+                int maxNewRow = 0;
+                foreach (var kv in vd.TileMap)
+                {
+                    var pos = kv.Value;
+                    occupiedCells.Add(pos);
+                    if (pos.newY > maxNewRow) maxNewRow = pos.newY;
+                }
+                int actualRows = maxNewRow + 1;
+
+                // 红框
+                int boxX = vd.OffsetX;
+                int boxY = vd.OffsetY;
+                int boxW = w - boxX; // 虚拟贴图左对齐占满整行宽
+                int boxH = actualRows * vd.TileH;
+
+                Color boxColor = new Color(255, 0, 0, 220);
+                for (int px = boxX; px < boxX + boxW && px < w; px++)
+                {
+                    if (boxY >= 0 && boxY < h) pixels[boxY * w + px] = boxColor;
+                    if (boxY + boxH - 1 >= 0 && boxY + boxH - 1 < h) pixels[(boxY + boxH - 1) * w + px] = boxColor;
+                }
+                for (int py = boxY; py < boxY + boxH && py < h; py++)
+                {
+                    if (boxX >= 0 && boxX < w) pixels[py * w + boxX] = boxColor;
+                    if (boxX + boxW - 1 >= 0 && boxX + boxW - 1 < w) pixels[py * w + (boxX + boxW - 1)] = boxColor;
+                }
+
+                // 蓝网格（实际瓦片边界）
+                Color gridColor = new Color(0, 100, 255, 80);
+                foreach (var cell in occupiedCells)
+                {
+                    int cellLeft = vd.OffsetX + cell.newX * vd.TileW;
+                    int cellTop = vd.OffsetY + cell.newY * vd.TileH;
+
+                    // 下边线
+                    int lineY = cellTop + vd.TileH - 1;
+                    if (lineY < h)
+                        for (int px = cellLeft; px < cellLeft + vd.TileW && px < w; px++)
+                            pixels[lineY * w + px] = BlendOver(pixels[lineY * w + px], gridColor);
+
+                    // 右边线
+                    int lineX = cellLeft + vd.TileW - 1;
+                    if (lineX < w)
+                        for (int py = cellTop; py < cellTop + vd.TileH && py < h; py++)
+                            pixels[py * w + lineX] = BlendOver(pixels[py * w + lineX], gridColor);
+                }
+
+                // 黄点（瓦片中心）
+                Color dotColor = new Color(255, 255, 0, 180);
+                foreach (var cell in occupiedCells)
+                {
+                    int dotX = vd.OffsetX + cell.newX * vd.TileW + vd.TileW / 2;
+                    int dotY = vd.OffsetY + cell.newY * vd.TileH + vd.TileH / 2;
+                    if (dotX < w && dotY < h)
+                        pixels[dotY * w + dotX] = dotColor;
+                }
+            }
+
+            // 保存图片
+            string debugPath = Path.Combine(troubleshootDir, "merged_debug.png");
+            using var debugTex = new Texture2D(mergedTex.GraphicsDevice, w, h);
+            debugTex.SetData(pixels);
+            using (var fs = new FileStream(debugPath, FileMode.Create, FileAccess.Write))
+                debugTex.SaveAsPng(fs, w, h);
+
+            monitor?.Log($"  ↳ 综合排查图: {debugPath}", LogLevel.Trace);
+        }
+
+        private static Color BlendOver(Color dst, Color src)
+        {
+            float sa = src.A / 255f;
+            float da = dst.A / 255f;
+            float outA = sa + da * (1 - sa);
+            if (outA < 0.001f) return new Color(0, 0, 0, 0);
+            float r = (src.R * sa + dst.R * da * (1 - sa)) / outA;
+            float g = (src.G * sa + dst.G * da * (1 - sa)) / outA;
+            float b = (src.B * sa + dst.B * da * (1 - sa)) / outA;
+            return new Color((byte)r, (byte)g, (byte)b, (byte)(outA * 255));
         }
 
         private static void CopyProperties(IPropertyCollection source, IPropertyCollection dest)
@@ -335,8 +763,10 @@ namespace CPXnbExporter
                 dest[kv.Key] = kv.Value;
         }
 
-        private static void CopyPixels(Color[] src, int srcW, int srcH, int srcX, int srcY, int copyW, int copyH,
-                                       Color[] dst, int dstW, int dstH, int dstX, int dstY)
+        private static void CopyPixels(Color[] src, int srcW, int srcH,
+                                       int srcX, int srcY, int copyW, int copyH,
+                                       Color[] dst, int dstW, int dstH,
+                                       int dstX, int dstY)
         {
             for (int y = 0; y < copyH; y++)
                 for (int x = 0; x < copyW; x++)
@@ -348,61 +778,28 @@ namespace CPXnbExporter
                 }
         }
 
-        // ---- 数据结构 ----
+        private static int Gcd(int a, int b) { while (b != 0) { int t = b; b = a % b; a = t; } return a; }
+        private static int Lcm(int a, int b) => a / Gcd(a, b) * b;
 
-        private class VirtualSheetInfo
+        private class VirtualTileData
         {
-            public TileSheet TileSheet { get; set; }
-            public Texture2D Texture { get; set; }
-            public int AlignedWidth { get; set; }
-            public int AlignedHeight { get; set; }
-            public int OffsetX { get; set; }
-            public int OffsetY { get; set; }
+            public TileSheet Sheet;
+            public Texture2D Texture;
+            public Color[] Pixels;
+            public int PixelW, PixelH;
+            public int TileW, TileH;
+            public int OldSheetW, OldSheetH;
+            public int NewSheetW, NewSheetH;
+            public string Id;
+            public bool SameSizeAsHost;
 
-            // 切片信息（当贴图宽度超过宿主时）
-            public int SourceX { get; set; }
-            public int SourceY { get; set; }
-            public int StartTileCol { get; set; }
-            public int EndTileCol { get; set; }
-        }
+            public HashSet<(int x, int y)> ClampedCoords;
+            public int MinX, MinY, MaxX, MaxY;
+            public int BoundsW, BoundsH;
+            public int OffsetX, OffsetY;
 
-        private class VirtualSheetLayout
-        {
-            public TileSheet TileSheet { get; set; }
-            public int OffsetX { get; set; }
-            public int OffsetY { get; set; }
-            public int AlignedWidth { get; set; }
-            public int AlignedHeight { get; set; }
-            public int StartTileCol { get; set; }
-            public int EndTileCol { get; set; }
-        }
-
-        private class Shelf
-        {
-            public int Y { get; }
-            public int Height { get; private set; }
-            public int CurrentX { get; private set; }
-            public int RemainingWidth => _maxWidth - CurrentX;
-            private int _maxWidth;
-
-            public Shelf(int startY)
-            {
-                Y = startY;
-                Height = 0;
-                CurrentX = 0;
-            }
-
-            public bool TryPlace(VirtualSheetInfo info, int maxWidth)
-            {
-                _maxWidth = maxWidth;
-                if (info.AlignedWidth > RemainingWidth) return false;
-
-                info.OffsetX = CurrentX;
-                info.OffsetY = Y;
-                CurrentX += info.AlignedWidth;
-                Height = Math.Max(Height, info.AlignedHeight);
-                return true;
-            }
+            public Dictionary<(int oldX, int oldY), (int newX, int newY)> TileMap;
+            public Dictionary<(int, int), (int, int)> DedupMap;
         }
     }
 }

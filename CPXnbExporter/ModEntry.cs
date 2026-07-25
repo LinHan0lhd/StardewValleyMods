@@ -254,7 +254,9 @@ public class ModEntry : Mod
 
                 // 自动整合寄生：把 SMAPI 虚拟 tilesheet 合并到宿主 tilesheet（默认 Maps/busPeople）。
                 // 这绕过原版游戏的 ContentHashes.json 白名单限制，因为新增路径无法加载。
-                var mergedHostTexture = TileSheetMerger.MergeVirtualTileSheets(map, TileSheetMerger.DefaultHostAssetName, Helper, Monitor);
+                string troubleshootDir = _currentOptions.OutputUnpacked ? _currentOptions.TroubleshootDir : null;
+                if (troubleshootDir != null) System.IO.Directory.CreateDirectory(troubleshootDir);
+                var mergedHostTexture = TileSheetMerger.MergeVirtualTileSheets(map, TileSheetMerger.DefaultHostAssetName, Helper, Monitor, troubleshootDir);
                 if (mergedHostTexture != null)
                 {
                     string hostNormalizedPath = TileSheetMerger.DefaultHostAssetName;

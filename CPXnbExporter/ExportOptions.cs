@@ -18,6 +18,9 @@ namespace CPXnbExporter
         /// <summary>Unpacked 输出目录</summary>
         public string UnpackedDir => System.IO.Path.Combine(BaseDir, "unpacked");
 
+        /// <summary>Troubleshoot 排查输出目录</summary>
+        public string TroubleshootDir => System.IO.Path.Combine(BaseDir, "[Troubleshoot]");
+
         /// <summary>从命令参数解析</summary>
         public static ExportOptions Parse(string[] args, string baseDir)
         {
