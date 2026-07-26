@@ -13,7 +13,6 @@ namespace CPXnbExporter;
 public static class TBinWriter
 {
     /// <summary>
-    /// <summary>
     /// 当前正在导出的地图 assetName（如 "Maps/ArchaeologyHouse"）。
     /// 用于把 tilesheet 的 ImageSource 从"相对于 Content 的完整路径"
     /// 转换为"相对于地图所在目录的相对路径"。
@@ -149,9 +148,27 @@ public static class TBinWriter
                 }
                 else if (tile is AnimatedTile anim)
                 {
-                    // 写入 'A' + AnimatedTile
-                    writer.Write((byte)'A');
-                    WriteAnimatedTile(writer, anim, ref currentTileSheetId);
+                    // 官方实现：如果帧数为0，当作 StaticTile 处理
+                    if (anim.TileFrames.Length == 0)
+                    {
+                        string tsId = anim.TileSheet?.Id ?? "";
+                        if (tsId != currentTileSheetId)
+                        {
+                            writer.Write((byte)'T');
+                            WriteString(writer, tsId);
+                            currentTileSheetId = tsId;
+                        }
+                        writer.Write((byte)'S');
+                        writer.Write(anim.TileIndex);
+                        writer.Write((byte)anim.BlendMode);
+                        WriteProperties(writer, anim.Properties);
+                    }
+                    else
+                    {
+                        // 写入 'A' + AnimatedTile
+                        writer.Write((byte)'A');
+                        WriteAnimatedTile(writer, anim);
+                    }
                     x++;
                 }
                 else
@@ -165,10 +182,10 @@ public static class TBinWriter
         }
     }
 
-    private static void WriteAnimatedTile(BinaryWriter writer, AnimatedTile anim, ref string layerCurrentTileSheetId)
+    private static void WriteAnimatedTile(BinaryWriter writer, AnimatedTile anim)
     {
-        // FrameInterval (int32)
-        writer.Write(anim.FrameInterval);
+        // FrameInterval (int32) — xTile 内部是 long，但 tBIN 格式只存 int32
+        writer.Write((int)anim.FrameInterval);
 
         // FrameCount (int32)
         writer.Write(anim.TileFrames.Length);
@@ -187,7 +204,8 @@ public static class TBinWriter
             // 写入 'S' + StaticTile (TileIndex + BlendMode + Properties)
             writer.Write((byte)'S');
             writer.Write(frame.TileIndex);
-            writer.Write((byte)anim.BlendMode);
+            // ✅ 修复：使用 frame 自己的 BlendMode，而不是 anim.BlendMode
+            writer.Write((byte)frame.BlendMode);
             WriteProperties(writer, frame.Properties);
         }
 
@@ -222,11 +240,12 @@ public static class TBinWriter
         // 会错误地把"类型标记字段"当作"值字段"读取（例如 tag=3 被当成 int 值 3 写入）。
         // 因此必须跳过名字含 tag/type/kind 的字段，只取真正的值字段。
         object inner = null;
+
+        // 优先尝试找 object 类型的字段（通常是装箱后的值），这样类型判断最准确
         foreach (var f in _propertyValueFields)
         {
             string fname = f.Name ?? "";
             string fnameLower = fname.ToLowerInvariant();
-            // 跳过类型标记字段（tag/type/kind/discriminator/case）
             if (fnameLower.Contains("tag") ||
                 fnameLower.Contains("type") ||
                 fnameLower.Contains("kind") ||
@@ -237,13 +256,40 @@ public static class TBinWriter
             try
             {
                 var v = f.GetValue(value);
-                if (v is bool || v is int || v is float || v is string)
+                if (v != null && f.FieldType == typeof(object))
                 {
                     inner = v;
                     break;
                 }
             }
             catch { /* 忽略反射访问异常 */ }
+        }
+
+        // 如果没找到 object 字段，再按原来的方式遍历
+        if (inner == null)
+        {
+            foreach (var f in _propertyValueFields)
+            {
+                string fname = f.Name ?? "";
+                string fnameLower = fname.ToLowerInvariant();
+                if (fnameLower.Contains("tag") ||
+                    fnameLower.Contains("type") ||
+                    fnameLower.Contains("kind") ||
+                    fnameLower.Contains("discriminator") ||
+                    fnameLower.Contains("case"))
+                    continue;
+
+                try
+                {
+                    var v = f.GetValue(value);
+                    if (v is bool || v is int || v is float || v is string)
+                    {
+                        inner = v;
+                        break;
+                    }
+                }
+                catch { /* 忽略反射访问异常 */ }
+            }
         }
 
         switch (inner)
