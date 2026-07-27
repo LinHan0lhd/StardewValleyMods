@@ -1,4 +1,5 @@
 #nullable disable
+using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using System.Xml.Serialization;
@@ -30,7 +31,7 @@ public class ModEntry : Mod
     private const string ModDataOrigQualityKey = "MasterHand/OriginalQuality";
 
     internal static IMonitor Mon { get; private set; }
-    private static IModHelper Helper { get; set; }
+    private static new IModHelper Helper { get; set; }
     private static ModConfig Config { get; set; }
     private static long FavoredPlayerId => Config?.FavoredPlayerId ?? 0;
     private static readonly XmlSerializer ItemSerializer;
@@ -733,11 +734,11 @@ public class ModEntry : Mod
         }
 
         // 离线 farmhand
-        foreach (var farmhand in Game1.netWorldState?.Value?.farmhandData?.Values ?? Enumerable.Empty<NetFarmerRoot>())
+        foreach (var farmhand in Game1.netWorldState?.Value?.farmhandData?.Values ?? Enumerable.Empty<Farmer>())
         {
-            if (farmhand?.Value != null && IsInfiniteGiftsEnabled(farmhand.Value))
+            if (farmhand != null && IsInfiniteGiftsEnabled(farmhand))
             {
-                ReplaceAllFriendships(farmhand.Value);
+                ReplaceAllFriendships(farmhand);
             }
         }
     }
