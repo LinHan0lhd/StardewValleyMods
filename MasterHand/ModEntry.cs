@@ -106,12 +106,26 @@ namespace MasterHand
         private static bool TryParseArg(string[] args, int index, out int value, int min = int.MinValue, int max = int.MaxValue, int fallback = 0)
         {
             value = fallback;
+            // 用 ~ 显式跳过该参数，使用默认值
+            if (args.Length > index && args[index] == "~")
+                return false;
             if (args.Length > index && int.TryParse(args[index], out int parsed))
             {
                 value = Math.Clamp(parsed, min, max);
                 return true;
             }
             return false;
+        }
+
+        /// <summary>
+        /// 解析 bool 参数，支持 true/false、0/1、以及 ~ 跳过。
+        /// </summary>
+        private static bool TryParseBoolArg(string[] args, int index, bool fallback = false)
+        {
+            if (args.Length <= index || args[index] == "~") return fallback;
+            if (bool.TryParse(args[index], out bool b)) return b;
+            if (int.TryParse(args[index], out int i)) return i != 0;
+            return fallback;
         }
 
         /// <summary>
@@ -296,6 +310,7 @@ namespace MasterHand
             {
                 _monitor.Log("用法: mh_poolitem <玩家ID> <物品名称> [数量] [品质] [reset=true/false]", LogLevel.Info);
                 _monitor.Log("reset=true 时该物品会在玩家下线时自动重置到赠送状态", LogLevel.Info);
+                _monitor.Log("可用 ~ 跳过可选参数，例如: mh_poolitem <ID> Stardrop ~ ~ true", LogLevel.Info);
                 return;
             }
 
@@ -314,16 +329,7 @@ namespace MasterHand
             string itemName = args[1];
             TryParseArg(args, 2, out int qty, min: 1, fallback: 0);
             TryParseArg(args, 3, out int qua, min: 0, max: 4, fallback: -1);
-
-            // 原 int 解析改为 bool 解析，同时兼容 "0"/"1" 写法
-            bool resetOnDisconnect = false;
-            if (args.Length > 4)
-            {
-                if (bool.TryParse(args[4], out bool parsedBool))
-                    resetOnDisconnect = parsedBool;
-                else if (int.TryParse(args[4], out int parsedInt))
-                    resetOnDisconnect = parsedInt != 0;
-            }
+            bool resetOnDisconnect = TryParseBoolArg(args, 4, false);
 
             var item = LoadPoolItemInternal(itemName, qty, qua);
             if (item == null) return;
