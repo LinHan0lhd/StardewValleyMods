@@ -26,6 +26,11 @@ namespace MasterHand
         internal static IMonitor _monitor;
         private static IModHelper _helper;
         private const string ItemPoolFolder = "ItemPool";
+        // 物品 modData 标记键：用于下线时识别并重置的特殊赠送物品
+        private const string ModDataResetKey = "MasterHand/ResetOnDisconnect";
+        private const string ModDataPoolItemNameKey = "MasterHand/PoolItemName";
+        private const string ModDataOrigStackKey = "MasterHand/OriginalStack";
+        private const string ModDataOrigQualityKey = "MasterHand/OriginalQuality";
         private static readonly XmlSerializer ItemSerializer;
         private bool isTimeFrozen;
         private static long _favoredPlayerId = 0;
@@ -52,7 +57,7 @@ namespace MasterHand
             // ---------- 注册命令 ----------
             helper.ConsoleCommands.Add("mh_list", "列出所有在线玩家", (_, _) => ListPlayers());
             helper.ConsoleCommands.Add("mh_give", "赠送物品 > mh_give <玩家ID> <物品ID> [数量] [品质]", GiveItem);
-            helper.ConsoleCommands.Add("mh_poolitem", "赠送 poolitem 物品 > mh_poolitem list / <玩家ID> <物品名称> [数量] [品质]", GivePoolItem);
+            helper.ConsoleCommands.Add("mh_poolitem", "赠送 poolitem 物品 > mh_poolitem list / <玩家ID> <物品名称> [数量] [品质] [reset=0/1]", GivePoolItem);
             helper.ConsoleCommands.Add("mh_money", "修改主机金钱 > mh_money <金额>", SetMoney);
             helper.ConsoleCommands.Add("mh_time", "设置时间 > mh_time <600-2600>", SetTime);
             helper.ConsoleCommands.Add("mh_pause", "暂停/继续时间", (_, _) => TogglePause());
@@ -64,6 +69,7 @@ namespace MasterHand
             helper.ConsoleCommands.Add("mh_favored", "设置/清除眷者 > mh_favored <玩家ID> | clear | show", SetFavoredPlayer);
 
             helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
+            helper.Events.Multiplayer.PeerDisconnected += OnPeerDisconnected;
             LoadItemPool();
         }
 
@@ -207,15 +213,24 @@ namespace MasterHand
 
         internal static class GiftProposalManager
         {
-            public static bool Send(Farmer target, Item item)
+            public static bool Send(Farmer target, Item item, string poolItemName = null, bool resetOnDisconnect = false, int originalStack = 0, int originalQuality = -1)
             {
                 if (target == null || item == null) return false;
+
+                // 给物品打"下线重置"标记（仅对 poolitem 且 reset=1 时启用）
+                if (resetOnDisconnect && !string.IsNullOrEmpty(poolItemName))
+                {
+                    item.modData[ModDataResetKey] = "1";
+                    item.modData[ModDataPoolItemNameKey] = poolItemName;
+                    item.modData[ModDataOrigStackKey] = (originalStack > 0 ? originalStack : item.Stack).ToString();
+                    item.modData[ModDataOrigQualityKey] = (originalQuality >= 0 ? originalQuality : item.Quality).ToString();
+                }
 
                 if (target.UniqueMultiplayerID == Game1.player.UniqueMultiplayerID)
                 {
                     bool added = Game1.player.addItemToInventoryBool(item, true);
                     _monitor?.Log(added
-                        ? $"[成功] 已将 {item.DisplayName} x{item.Stack} 加入主机背包"
+                        ? $"[成功] 已将 {item.DisplayName} x{item.Stack} 加入主机背包{(resetOnDisconnect ? " (下线重置已启用)" : "")}"
                         : $"[失败] 无法添加 {item.DisplayName} 检查背包再尝试",
                         added ? LogLevel.Info : LogLevel.Warn);
                     return added;
@@ -229,7 +244,7 @@ namespace MasterHand
 
                 Game1.player.team.SendProposal(target, ProposalType.Gift, item);
 
-                _monitor?.Log($"[赠送] 已向 {target.Name} 发送 {item.DisplayName} x{item.Stack} 提议请求", LogLevel.Info);
+                _monitor?.Log($"[赠送] 已向 {target.Name} 发送 {item.DisplayName} x{item.Stack} 提议请求{(resetOnDisconnect ? " (下线重置已启用)" : "")}", LogLevel.Info);
                 return true;
             }
         }
@@ -276,11 +291,11 @@ namespace MasterHand
         private void GivePoolItem(string _, string[] args)
         {
             if (!RequireWorldReady()) return;
-            var poolDir = Path.Combine(Helper.DirectoryPath, ItemPoolFolder);
 
             if (args.Length == 0 || (args.Length == 1 && args[0].ToLower() != "list"))
             {
-                _monitor.Log("用法: mh_poolitem <玩家ID> <物品名称> [数量] [品质]", LogLevel.Info);
+                _monitor.Log("用法: mh_poolitem <玩家ID> <物品名称> [数量] [品质] [reset=0/1]", LogLevel.Info);
+                _monitor.Log("reset=1 时该物品会在玩家下线时自动重置到赠送状态", LogLevel.Info);
                 return;
             }
 
@@ -297,20 +312,33 @@ namespace MasterHand
             }
 
             string itemName = args[1];
-            string filePath = Path.Combine(poolDir, itemName + ".xml");
+            TryParseArg(args, 2, out int qty, min: 1, fallback: 0);
+            TryParseArg(args, 3, out int qua, min: 0, max: 4, fallback: -1);
+            TryParseArg(args, 4, out int resetFlag, min: 0, max: 1, fallback: 0);
+            bool resetOnDisconnect = resetFlag == 1;
+
+            var item = LoadPoolItemInternal(itemName, qty, qua);
+            if (item == null) return;
+
+            GiftProposalManager.Send(farmer, item, itemName, resetOnDisconnect, qty, qua);
+        }
+
+        /// <summary>
+        /// 从物品池 XML 重新加载一个物品实例（保留自定义参数）。
+        /// 赠送和下线重置共用此方法，确保自定义字段一致。
+        /// </summary>
+        private static Item LoadPoolItemInternal(string itemName, int stack, int quality)
+        {
+            string filePath = Path.Combine(_helper.DirectoryPath, ItemPoolFolder, itemName + ".xml");
             if (!File.Exists(filePath))
             {
                 _monitor.Log($"[警告] 物品 '{itemName}' 不存在于物品池", LogLevel.Warn);
-                return;
+                return null;
             }
-
-            TryParseArg(args, 2, out int qty, min: 1, fallback: 0);
-            TryParseArg(args, 3, out int qua, min: 0, max: 4, fallback: -1);
 
             try
             {
                 string xml = File.ReadAllText(filePath);
-                // 清理命名空间并补全必要的命名空间声明
                 xml = RemoveXsiNamespace(xml);
                 if (xml.Contains("xsi:type"))
                 {
@@ -323,33 +351,30 @@ namespace MasterHand
                 if (doc.Root == null)
                 {
                     _monitor.Log($"[错误] 物品 '{itemName}' 的 XML 根元素无效", LogLevel.Warn);
-                    return;
+                    return null;
                 }
 
                 Item item;
                 using (var sr = new StringReader(doc.Root.ToString()))
-                {
                     item = ItemSerializer.Deserialize(sr) as Item;
-                }
 
                 if (item == null)
                 {
                     _monitor.Log($"[错误] 无法从 '{itemName}' 解析出有效物品", LogLevel.Warn);
-                    return;
+                    return null;
                 }
 
-                // 应用可选覆盖
                 if (item is StardewValley.Object obj)
                 {
-                    if (qty > 0) obj.Stack = qty;
-                    if (qua >= 0) obj.Quality = qua;
+                    if (stack > 0) obj.Stack = stack;
+                    if (quality >= 0) obj.Quality = quality;
                 }
-
-                GiftProposalManager.Send(farmer, item);
+                return item;
             }
             catch (Exception ex)
             {
                 _monitor.Log($"[内部错误] 处理物品 '{itemName}' 时异常: {ex.Message}", LogLevel.Error);
+                return null;
             }
         }
 
@@ -415,6 +440,65 @@ namespace MasterHand
         {
             if (Context.IsWorldReady && isTimeFrozen)
                 Game1.gameTimeInterval = 0;
+        }
+
+        // ========== 玩家下线时重置特殊物品 ==========
+        //
+        // 关键点：星露谷多人模式下 farmhand 背包由本地客户端控制，
+        // 主机端在玩家在线时改背包不生效。必须在玩家下线后修改，
+        // 下次上线时 farmhand 才会从主机同步更新后的背包状态。
+        private void OnPeerDisconnected(object sender, PeerDisconnectedEventArgs e)
+        {
+            if (!Context.IsMainPlayer) return;
+
+            // 玩家刚断开连接，Farmer 对象仍在主机内存里（otherFarmers）
+            var farmer = Game1.GetPlayer(e.Peer.PlayerID, true);
+            if (farmer == null)
+            {
+                _monitor.Log($"[重置] 玩家 ID {e.Peer.PlayerID} 下线但找不到 Farmer 对象，跳过", LogLevel.Warn);
+                return;
+            }
+
+            ResetMarkedItemsOnDisconnect(farmer);
+        }
+
+        private void ResetMarkedItemsOnDisconnect(Farmer farmer)
+        {
+            int resetCount = 0;
+            for (int i = 0; i < farmer.Items.Count; i++)
+            {
+                var it = farmer.Items[i];
+                if (it == null) continue;
+                if (!it.modData.TryGetValue(ModDataResetKey, out var v) || v != "1") continue;
+                if (!it.modData.TryGetValue(ModDataPoolItemNameKey, out var poolItemName)) continue;
+
+                // 解析赠送时记录的原始参数
+                int origStack = 1, origQuality = 0;
+                if (it.modData.TryGetValue(ModDataOrigStackKey, out var s) && int.TryParse(s, out var st) && st > 0)
+                    origStack = st;
+                if (it.modData.TryGetValue(ModDataOrigQualityKey, out var q) && int.TryParse(q, out var qu) && qu >= 0)
+                    origQuality = qu;
+
+                // 从 XML 池重新加载物品（保证 price/edibility/category 等自定义字段全部还原）
+                var fresh = LoadPoolItemInternal(poolItemName, origStack, origQuality);
+                if (fresh == null)
+                {
+                    _monitor.Log($"[重置] {farmer.Name} 的 {poolItemName} 重新加载失败，保留原物品", LogLevel.Warn);
+                    continue;
+                }
+
+                // 重新打标记（让下次下线还能重置）
+                fresh.modData[ModDataResetKey] = "1";
+                fresh.modData[ModDataPoolItemNameKey] = poolItemName;
+                fresh.modData[ModDataOrigStackKey] = origStack.ToString();
+                fresh.modData[ModDataOrigQualityKey] = origQuality.ToString();
+
+                farmer.Items[i] = fresh;
+                resetCount++;
+            }
+
+            if (resetCount > 0)
+                _monitor.Log($"[重置] {farmer.Name} 已下线，{resetCount} 个特殊物品已重置到赠送状态（下次上线时生效）", LogLevel.Info);
         }
 
         // ========== 天气设置 ==========
