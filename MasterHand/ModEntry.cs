@@ -65,7 +65,7 @@ public class ModEntry : Mod
         helper.ConsoleCommands.Add("mh_year", "设置年份 > mh_year <年份>", SetYear);
         helper.ConsoleCommands.Add("mh_kick", "踢出玩家 > mh_kick <玩家ID>", KickPlayer);
         helper.ConsoleCommands.Add("mh_favored", "设置/清除眷者 > mh_favored <玩家ID> | clear | show", SetFavoredPlayer);
-        helper.ConsoleCommands.Add("mh_giftwl", "无限送礼白名单 > mh_giftwl on|off|list|add|remove|clear", GiftWhitelist);
+        helper.ConsoleCommands.Add("mh_giftwl", "无限送礼 > mh_giftwl on|off|list|add|remove|clear", GiftWhitelist);
 
         // 事件
         helper.Events.GameLoop.SaveLoaded += (_, _) => ApplyInfiniteGiftsToAllWhitelistedFarmers("存档加载");
@@ -88,9 +88,7 @@ public class ModEntry : Mod
         );
     }
 
-    // ============================================================
     // 工具方法
-    // ============================================================
 
     private static void SaveConfig() => Helper.Data.WriteJsonFile("config.json", Config);
 
@@ -147,7 +145,7 @@ public class ModEntry : Mod
         {
             if (FavoredPlayerId == 0)
             {
-                if (logError) Mon.Log("[错误] 眷者尚未设置，请先使用 mh_favored 设置", LogLevel.Warn);
+                if (logError) Mon.Log("[错误] 眷者尚未设置", LogLevel.Warn);
                 return 0;
             }
             return FavoredPlayerId;
@@ -158,9 +156,7 @@ public class ModEntry : Mod
         return 0;
     }
 
-    // ============================================================
     // 眷者管理
-    // ============================================================
 
     private static void SetFavoredPlayer(string _, string[] args)
     {
@@ -199,9 +195,7 @@ public class ModEntry : Mod
         }
     }
 
-    // ============================================================
     // 物品池
-    // ============================================================
 
     private void LoadItemPool()
     {
@@ -223,9 +217,7 @@ public class ModEntry : Mod
         }
     }
 
-    // ============================================================
     // 送礼
-    // ============================================================
 
     internal static class GiftProposalManager
     {
@@ -407,9 +399,7 @@ public class ModEntry : Mod
     private static string RemoveXsiNamespace(string xml)
         => Regex.Replace(xml, @"\s+xmlns:xsi\s*=\s*[""'][^""']*[""']", "");
 
-    // ============================================================
     // 金钱
-    // ============================================================
 
     private void SetMoney(string _, string[] args)
     {
@@ -424,9 +414,7 @@ public class ModEntry : Mod
         Mon.Log($"[金钱] 主机金钱已更新为 {amount.Value} 金", LogLevel.Info);
     }
 
-    // ============================================================
     // 时间
-    // ============================================================
 
     private void SetTime(string _, string[] args)
     {
@@ -470,15 +458,13 @@ public class ModEntry : Mod
         Mon.Log(isTimeFrozen ? "[暂停] 时间已冻结" : "[继续] 时间已恢复流动", LogLevel.Info);
     }
 
-    private void OnUpdateTicked(object sender, UpdateTickedEventArgs e)
+    private void OnUpdateTicked(object _, UpdateTickedEventArgs e)
     {
         if (Context.IsWorldReady && isTimeFrozen)
             Game1.gameTimeInterval = 0;
     }
 
-    // ============================================================
     // 下线重置特殊物品
-    // ============================================================
 
     private void OnPeerDisconnected(object sender, PeerDisconnectedEventArgs e)
     {
@@ -527,9 +513,7 @@ public class ModEntry : Mod
             Mon.Log($"[重置] {farmer.Name} 的 {resetCount} 个特殊物品已复原", LogLevel.Info);
     }
 
-    // ============================================================
     // 天气
-    // ============================================================
 
     private void SetWeather(string _, string[] args)
     {
@@ -543,7 +527,9 @@ public class ModEntry : Mod
         int? weatherId = TryParseIntArg(args, 0, 0, 5);
         if (weatherId == null)
         {
-            Mon.Log("用法: mh_weather <0-5> [地点/all]\n0晴 1风 2雨 3雷雨 4雪 5苔雨", LogLevel.Info);
+            Mon.Log("用法: mh_weather <天气代码> [地点]", LogLevel.Info);
+            Mon.Log("代码：晴天[0] 刮风[1] 降雨[2] 雷雨[3] 落雪[4] 苔雨[5]", LogLevel.Info);
+            Mon.Log("地点: default / island / desert / all", LogLevel.Info);
             return;
         }
 
@@ -553,7 +539,7 @@ public class ModEntry : Mod
 
         string weatherStr = weatherId.Value switch
         {
-            1 => "Wind", 2 => "Rain", 3 => "Stk" : "GreenRain", _ => "Sun"
+            1 => "Wind", 2 => "Rain", 3 => "Storm", 4 => "Snow", 5 => "GreenRain", _ => "Sun"
         };
         string weatherCn = weatherId.Value switch
         {
@@ -588,9 +574,7 @@ public class ModEntry : Mod
         _ => "Default"
     };
 
-    // ============================================================
     // 日期/季节/年份
-    // ============================================================
 
     private void SetSeason(string _, string[] args)
     {
@@ -598,7 +582,7 @@ public class ModEntry : Mod
         int? season = TryParseIntArg(args, 0, 0, 3);
         if (season == null)
         {
-            Mon.Log("用法: mh_season <0-3> (0春 1夏 2秋 3冬)", LogLevel.Info);
+            Mon.Log("用法: mh_season <0-3>", LogLevel.Info);
             return;
         }
         string seasonStr = season.Value switch { 0 => "spring", 1 => "summer", 2 => "fall", 3 => "winter", _ => "spring" };
@@ -652,9 +636,7 @@ public class ModEntry : Mod
         0 => "春季", 1 => "夏季", 2 => "秋季", 3 => "冬季", _ => "春季"
     };
 
-    // ============================================================
     // 玩家管理
-    // ============================================================
 
     private void KickPlayer(string _, string[] args)
     {
@@ -673,9 +655,7 @@ public class ModEntry : Mod
         Mon.Log($"[踢出] 已踢出玩家 ID {id}", LogLevel.Info);
     }
 
-    // ============================================================
     // 无限送礼
-    // ============================================================
 
     private static bool IsInfiniteGiftsEnabled(Farmer farmer) =>
         Config.InfiniteGiftsEnabled && farmer != null && Config.InfiniteGiftsWhitelist.Contains(farmer.UniqueMultiplayerID);
@@ -699,7 +679,7 @@ public class ModEntry : Mod
                 Mon.Log("[无限送礼] 已关闭", LogLevel.Info);
                 break;
             case "list":
-                Mon.Log($"[无限送礼] 状态: {(Config.InfiniteGiftsEnabled ? "开" : "关")}, 白名单 {Config.InfiniteGiftsWhitelist.Count} 人", LogLevel.Info);
+                Mon.Log($"[无限送礼] 状态{(Config.InfiniteGiftsEnabled ? "开启" : "关闭")}：白名单 {Config.InfiniteGiftsWhitelist.Count} 人", LogLevel.Info);
                 foreach (var id in Config.InfiniteGiftsWhitelist)
                 {
                     var f = Game1.GetPlayer(id, true);
@@ -745,13 +725,11 @@ public class ModEntry : Mod
     private static void ApplyInfiniteGiftsToAllWhitelistedFarmers(string context)
     {
         if (!Context.IsMainPlayer) return;
-        int count = 0;
 
         // 主机玩家
         if (IsInfiniteGiftsEnabled(Game1.player))
         {
             ReplaceAllFriendships(Game1.player);
-            count++;
         }
 
         // 离线 farmhand
@@ -760,12 +738,8 @@ public class ModEntry : Mod
             if (farmhand?.Value != null && IsInfiniteGiftsEnabled(farmhand.Value))
             {
                 ReplaceAllFriendships(farmhand.Value);
-                count++;
             }
         }
-
-        if (count > 0)
-            Mon.Log($"[无限送礼] {context}，已重置 {count} 名白名单玩家的 friendship", LogLevel.Info);
     }
 
     /// <summary>Harmony 补丁：阻止主机玩家过夜清零送礼记录</summary>
@@ -779,18 +753,18 @@ public class ModEntry : Mod
         return true;
     }
 
-    /// <summary>Harmony 补丁：farmhand 下线前重置友谊，确保下次上线数据正确</summary>
+    /// <summary>Harmony 补丁：farmhand 下线前重置友谊</summary>
     public static void Prefix_SaveFarmhand(NetFarmerRoot farmhand)
     {
         if (farmhand?.Value != null && IsInfiniteGiftsEnabled(farmhand.Value))
         {
             ReplaceAllFriendships(farmhand.Value);
-            Mon?.Log($"[无限送礼] farmhand {farmhand.Value.Name} 下线，已重置 friendship", LogLevel.Info);
         }
     }
 
     /// <summary>
-    /// 将所有可送礼 NPC 的 GiftsToday/GiftsThisWeek 设为 -999，
+    /// 将所有可送礼 NPC 的
+    /// GiftsToday/GiftsThisWeek 设为 -999，
     /// LastGiftDate 设为今天，实现无限送礼。
     /// </summary>
     public static void ReplaceAllFriendships(Farmer farmer)
