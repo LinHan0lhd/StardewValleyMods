@@ -73,7 +73,25 @@ namespace CPXnbExporter
 
         private static void ScanContentPack(string modDir, List<CpAssetInfo> result, HashSet<string> seenAssets)
         {
-            string contentJsonPath = Path.Combine(modDir, "content.json");
+            ScanContentFile(modDir, Path.Combine(modDir, "content.json"), result, seenAssets, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// 扫描单个 content.json 文件（支持 Include 动作递归）。
+        /// CP 的 Include 动作会引用另一个 content.json 文件，该文件有自己的 Changes 数组。
+        /// 不处理 Include 会导致 TileSheets/weapons 等被拆分到子文件的贴图漏检。
+        /// </summary>
+        private static void ScanContentFile(string modDir, string contentJsonPath, List<CpAssetInfo> result, HashSet<string> seenAssets, HashSet<string> includedFiles)
+        {
+            // 防止 Include 循环引用
+            string normalizedPath = Path.GetFullPath(contentJsonPath);
+            if (includedFiles.Contains(normalizedPath))
+            {
+                _monitor?.Log($"    跳过已扫描的 Include 文件: {contentJsonPath}", LogLevel.Trace);
+                return;
+            }
+            includedFiles.Add(normalizedPath);
+
             if (!File.Exists(contentJsonPath))
                 return;
 
@@ -98,7 +116,7 @@ namespace CPXnbExporter
                 var changes = contentData["Changes"] as JArray;
                 if (changes == null) return;
 
-                _monitor?.Log($"  扫描 CP 包: {modName} ({changes.Count} 个 patches)", LogLevel.Trace);
+                _monitor?.Log($"  扫描 CP 文件: {Path.GetFileName(contentJsonPath)} ({changes.Count} 个 patches)", LogLevel.Trace);
 
                 foreach (var change in changes)
                 {
@@ -109,8 +127,19 @@ namespace CPXnbExporter
                         string fromFile = change["FromFile"]?.ToString();
                         string logName = change["LogName"]?.ToString();
 
+                        // Include 动作：递归扫描引用的子 content.json
+                        if (action.Equals("Include", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (string.IsNullOrEmpty(fromFile)) continue;
+                            // CP 的 Include 支持通配符（如 "assets/*.json"）和逗号分隔多文件
+                            foreach (string includePath in ResolveIncludePaths(modDir, fromFile))
+                            {
+                                ScanContentFile(modDir, includePath, result, seenAssets, includedFiles);
+                            }
+                            continue;
+                        }
+
                         if (string.IsNullOrEmpty(targetRaw)) continue;
-                        if (action.Equals("Include", StringComparison.OrdinalIgnoreCase)) continue;
                         if (action.Equals("EditData", StringComparison.OrdinalIgnoreCase)) continue;
 
                         var targets = ParseTargets(targetRaw);
@@ -142,7 +171,7 @@ namespace CPXnbExporter
             }
             catch (Exception ex)
             {
-                _monitor?.Log($"  读取 content.json 失败 [{modDir}]: {ex.Message}", LogLevel.Trace);
+                _monitor?.Log($"  读取 content 文件失败 [{contentJsonPath}]: {ex.Message}", LogLevel.Trace);
             }
         }
 
@@ -158,6 +187,44 @@ namespace CPXnbExporter
                     targets.Add(trimmed);
             }
             return targets;
+        }
+
+        /// <summary>
+        /// 解析 Include 动作的 FromFile，支持通配符（如 "assets/*.json"）和逗号分隔多文件。
+        /// CP 的 Include 常用于把大型 content.json 拆分成多个子文件。
+        /// </summary>
+        private static List<string> ResolveIncludePaths(string modDir, string fromFile)
+        {
+            var paths = new List<string>();
+            foreach (string part in fromFile.Split(','))
+            {
+                string trimmed = part.Trim();
+                if (string.IsNullOrEmpty(trimmed)) continue;
+
+                string fullPath = Path.Combine(modDir, trimmed);
+
+                // 处理通配符（* 或 ?）
+                if (trimmed.Contains('*') || trimmed.Contains('?'))
+                {
+                    string dir = Path.GetDirectoryName(fullPath);
+                    string pattern = Path.GetFileName(fullPath);
+                    if (string.IsNullOrEmpty(dir)) dir = modDir;
+                    if (Directory.Exists(dir))
+                    {
+                        try
+                        {
+                            foreach (string matched in Directory.GetFiles(dir, pattern))
+                                paths.Add(matched);
+                        }
+                        catch { }
+                    }
+                }
+                else
+                {
+                    paths.Add(fullPath);
+                }
+            }
+            return paths;
         }
 
         private static CpAssetType DetectAssetType(string action, string fromFile, string target, string modDir)
