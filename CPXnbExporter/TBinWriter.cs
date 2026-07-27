@@ -87,6 +87,18 @@ public static class TBinWriter
         WriteProperties(writer, tileSheet.Properties);
     }
 
+    /// <summary>
+    /// 判断 tile 是否为空（null tile）。
+    /// xTile 中，空 tile 可能是 null 引用，也可能是 TileIndex == -1 的 StaticTile。
+    /// 官方 tBIN 写入器会把 TileIndex == -1 的 tile 当作空 tile 压缩为 'N' 标记。
+    /// </summary>
+    private static bool IsNullTile(Tile tile)
+    {
+        if (tile == null) return true;
+        if (tile is StaticTile st && st.TileIndex == -1) return true;
+        return false;
+    }
+
     private static void WriteLayer(BinaryWriter writer, Layer layer)
     {
         // Id
@@ -117,11 +129,11 @@ public static class TBinWriter
             while (x < layer.LayerWidth)
             {
                 var tile = layer.Tiles[x, y];
-                if (tile == null)
+                if (IsNullTile(tile))
                 {
                     // 计算连续空tile数量，用 'N' + count 压缩
                     int nullCount = 0;
-                    while (x < layer.LayerWidth && layer.Tiles[x, y] == null)
+                    while (x < layer.LayerWidth && IsNullTile(layer.Tiles[x, y]))
                     {
                         nullCount++;
                         x++;
@@ -204,7 +216,7 @@ public static class TBinWriter
             // 写入 'S' + StaticTile (TileIndex + BlendMode + Properties)
             writer.Write((byte)'S');
             writer.Write(frame.TileIndex);
-            // ✅ 修复：使用 frame 自己的 BlendMode，而不是 anim.BlendMode
+            // 使用 frame 自己的 BlendMode，而不是 anim.BlendMode
             writer.Write((byte)frame.BlendMode);
             WriteProperties(writer, frame.Properties);
         }
@@ -240,12 +252,11 @@ public static class TBinWriter
         // 会错误地把"类型标记字段"当作"值字段"读取（例如 tag=3 被当成 int 值 3 写入）。
         // 因此必须跳过名字含 tag/type/kind 的字段，只取真正的值字段。
         object inner = null;
-
-        // 优先尝试找 object 类型的字段（通常是装箱后的值），这样类型判断最准确
         foreach (var f in _propertyValueFields)
         {
             string fname = f.Name ?? "";
             string fnameLower = fname.ToLowerInvariant();
+            // 跳过类型标记字段（tag/type/kind/discriminator/case）
             if (fnameLower.Contains("tag") ||
                 fnameLower.Contains("type") ||
                 fnameLower.Contains("kind") ||
@@ -256,40 +267,13 @@ public static class TBinWriter
             try
             {
                 var v = f.GetValue(value);
-                if (v != null && f.FieldType == typeof(object))
+                if (v is bool || v is int || v is float || v is string)
                 {
                     inner = v;
                     break;
                 }
             }
             catch { /* 忽略反射访问异常 */ }
-        }
-
-        // 如果没找到 object 字段，再按原来的方式遍历
-        if (inner == null)
-        {
-            foreach (var f in _propertyValueFields)
-            {
-                string fname = f.Name ?? "";
-                string fnameLower = fname.ToLowerInvariant();
-                if (fnameLower.Contains("tag") ||
-                    fnameLower.Contains("type") ||
-                    fnameLower.Contains("kind") ||
-                    fnameLower.Contains("discriminator") ||
-                    fnameLower.Contains("case"))
-                    continue;
-
-                try
-                {
-                    var v = f.GetValue(value);
-                    if (v is bool || v is int || v is float || v is string)
-                    {
-                        inner = v;
-                        break;
-                    }
-                }
-                catch { /* 忽略反射访问异常 */ }
-            }
         }
 
         switch (inner)
@@ -351,9 +335,9 @@ public static class TBinWriter
 
         // 转换为相对于地图所在目录的路径。
         // 例如地图 Maps/ArchaeologyHouse：
-        //   "Maps/paths" → "paths"
-        //   "Maps/Mods/xxx" → "Mods/xxx"
-        //   "Mods/xxx" → "Mods/xxx"
+        //   "Maps/paths" -> "paths"
+        //   "Maps/Mods/xxx" -> "Mods/xxx"
+        //   "Mods/xxx" -> "Mods/xxx"
         imageSource = MakeRelativeToMapDir(imageSource, MapAssetName);
 
         return imageSource;
@@ -374,9 +358,9 @@ public static class TBinWriter
     ///   4. 否则如果 imagePath 以 Maps/ 开头，也去掉 Maps/ 前缀（兼容处理）
     ///
     /// 例如地图 assetName = "Maps/ArchaeologyHouse"，mapDir = "Maps/"：
-    ///   "Maps/paths"            → "paths"           （去掉 Maps/，xTile 加回 Maps/ → Maps/paths ✓）
-    ///   "Maps/Mods/xxx"         → "Mods/xxx"        （去掉 Maps/，xTile 加回 Maps/ → Maps/Mods/xxx ✓）
-    ///   "Mods/xxx"              → "Mods/xxx"        （xTile 加回 Maps/ → Maps/Mods/xxx ✓）
+    ///   "Maps/paths"            -> "paths"           （去掉 Maps/，xTile 加回 Maps/ -> Maps/paths 对）
+    ///   "Maps/Mods/xxx"         -> "Mods/xxx"        （去掉 Maps/，xTile 加回 Maps/ -> Maps/Mods/xxx 对）
+    ///   "Mods/xxx"              -> "Mods/xxx"        （xTile 加回 Maps/ -> Maps/Mods/xxx 对）
     /// </summary>
     private static string MakeRelativeToMapDir(string imagePath, string mapAssetName)
     {
@@ -390,7 +374,7 @@ public static class TBinWriter
             img = img.Substring(3);
 
         // 计算地图所在目录（去掉最后一级文件名，保留末尾斜杠）
-        // 例如 mapAssetName = "Maps/ArchaeologyHouse" → mapDir = "Maps/"
+        // 例如 mapAssetName = "Maps/ArchaeologyHouse" -> mapDir = "Maps/"
         string mapDir = "";
         if (!string.IsNullOrEmpty(mapAssetName))
         {
