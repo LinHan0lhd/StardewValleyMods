@@ -9,8 +9,11 @@ namespace InfiniteGifts
 {
     public class ModEntry : Mod
     {
+        private static IMonitor? SMonitor;
+
         public override void Entry(IModHelper helper)
         {
+            SMonitor = Monitor;
             // 纯主机方案：只在主机端运行，farmhand 无需安装此 mod。
             //
             // 原理限制（通过研究反编译源码确认）：
@@ -42,7 +45,7 @@ namespace InfiniteGifts
             );
         }
 
-        private void OnSaveLoaded(object sender, SaveLoadedEventArgs e)
+        private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
         {
             if (!Context.IsMainPlayer) return;
             // 主机自己
@@ -52,10 +55,10 @@ namespace InfiniteGifts
             {
                 ReplaceAllFriendships(farmhand);
             }
-            Monitor.Log($"[无限送礼] 存档加载完成，已重置主机 + {Game1.netWorldState.Value.farmhandData.Count} 个离线 farmhand", LogLevel.Info);
+            Monitor.Log($"[无限送礼] 存档加载完成，已重置主机 + {Game1.netWorldState.Value.farmhandData.Count()} 个离线 farmhand", LogLevel.Info);
         }
 
-        private void OnDayStarted(object sender, DayStartedEventArgs e)
+        private void OnDayStarted(object? sender, DayStartedEventArgs e)
         {
             if (!Context.IsMainPlayer) return;
             // 主机自己（防止过夜清零，虽然 prefix 已拦截，双保险）
@@ -92,7 +95,7 @@ namespace InfiniteGifts
             if (farmhand?.Value != null)
             {
                 ReplaceAllFriendships(farmhand.Value);
-                Monitor.Log($"[无限送礼] farmhand {farmhand.Value.Name} 下线，已重置 friendship 到 -999", LogLevel.Info);
+                SMonitor?.Log($"[无限送礼] farmhand {farmhand.Value.Name} 下线，已重置 friendship 到 -999", LogLevel.Info);
             }
         }
 
