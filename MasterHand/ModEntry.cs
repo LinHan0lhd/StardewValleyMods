@@ -106,7 +106,7 @@ namespace MasterHand
         private static bool TryParseArg(string[] args, int index, out int value, int min = int.MinValue, int max = int.MaxValue, int fallback = 0)
         {
             value = fallback;
-            // 用 ~ 显式跳过该参数，使用默认值
+            // 用 ~ 使用默认值
             if (args.Length > index && args[index] == "~")
                 return false;
             if (args.Length > index && int.TryParse(args[index], out int parsed))
@@ -118,7 +118,7 @@ namespace MasterHand
         }
 
         /// <summary>
-        /// 解析 bool 参数，支持 true/false、0/1、以及 ~ 跳过。
+        /// 解析 bool 参数：支持 true/false、0/1、以及 ~ 跳过
         /// </summary>
         private static bool TryParseBoolArg(string[] args, int index, bool fallback = false)
         {
@@ -244,7 +244,7 @@ namespace MasterHand
                 {
                     bool added = Game1.player.addItemToInventoryBool(item, true);
                     _monitor?.Log(added
-                        ? $"[成功] 已将 {item.DisplayName} x{item.Stack} 加入主机背包{(resetOnDisconnect ? " (下线重置已启用)" : "")}"
+                        ? $"[成功] 已将 {item.DisplayName} x{item.Stack} 加入主机背包"
                         : $"[失败] 无法添加 {item.DisplayName} 检查背包再尝试",
                         added ? LogLevel.Info : LogLevel.Warn);
                     return added;
@@ -258,7 +258,7 @@ namespace MasterHand
 
                 Game1.player.team.SendProposal(target, ProposalType.Gift, item);
 
-                _monitor?.Log($"[赠送] 已向 {target.Name} 发送 {item.DisplayName} x{item.Stack} 提议请求{(resetOnDisconnect ? " (下线重置已启用)" : "")}", LogLevel.Info);
+                _monitor?.Log($"[赠送] 已向 {target.Name} 发送 {item.DisplayName} x{item.Stack} 提议请求{(resetOnDisconnect ? " [下线重置已启用]" : "")}", LogLevel.Info);
                 return true;
             }
         }
@@ -338,8 +338,8 @@ namespace MasterHand
         }
 
         /// <summary>
-        /// 从物品池 XML 重新加载一个物品实例（保留自定义参数）。
-        /// 赠送和下线重置共用此方法，确保自定义字段一致。
+        /// 从物品池 XML 重新加载一个物品实例
+        /// 赠送和下线重置共用此方法，确保自定义字段一致
         /// </summary>
         private static Item LoadPoolItemInternal(string itemName, int stack, int quality)
         {
@@ -414,7 +414,7 @@ namespace MasterHand
             if (!RequireWorldReady() || !RequireHost()) return;
             if (!TryParseArg(args, 0, out int time, min: 600, max: 2600, fallback: -1))
             {
-                _monitor.Log("用法: mh_time <600-2600>  (例如 800 代表 08:00)", LogLevel.Info);
+                _monitor.Log("用法: mh_time <600-2600>", LogLevel.Info);
                 return;
             }
             ApplyTimeChange(time);
@@ -512,7 +512,7 @@ namespace MasterHand
             }
 
             if (resetCount > 0)
-                _monitor.Log($"[重置] {farmer.Name} 已下线，{resetCount} 个特殊物品已重置到赠送状态（下次上线时生效）", LogLevel.Info);
+                _monitor.Log($"[重置] {farmer.Name} {resetCount} 个特殊物品已重置到赠送状态", LogLevel.Info);
         }
 
         // ========== 天气设置 ==========
