@@ -7,6 +7,7 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using System.Xml.Serialization;
+using HarmonyLib;
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
@@ -19,6 +20,10 @@ namespace MasterHand
     public class ModConfig
     {
         public long FavoredPlayerId { get; set; } = 0;
+        /// <summary>无限送礼全局开关</summary>
+        public bool InfiniteGiftsEnabled { get; set; } = false;
+        /// <summary>无限送礼白名单（玩家 UniqueMultiplayerID 列表），仅白名单内玩家享受无限送礼</summary>
+        public List<long> InfiniteGiftsWhitelist { get; set; } = new();
     }
 
     public class ModEntry : Mod
@@ -67,10 +72,26 @@ namespace MasterHand
             helper.ConsoleCommands.Add("mh_year", "设置年份 > mh_year <年份>", SetYear);
             helper.ConsoleCommands.Add("mh_kick", "踢出玩家 > mh_kick <玩家ID>", KickPlayer);
             helper.ConsoleCommands.Add("mh_favored", "设置/清除眷者 > mh_favored <玩家ID> | clear | show", SetFavoredPlayer);
+            helper.ConsoleCommands.Add("mh_giftwl", "无限送礼白名单 > mh_giftwl on|off|list|add <ID>|remove <ID>|clear", GiftWhitelist);
 
+            helper.Events.GameLoop.SaveLoaded += OnSaveLoadedGifts;
+            helper.Events.GameLoop.DayStarted += OnDayStartedGifts;
             helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
             helper.Events.Multiplayer.PeerDisconnected += OnPeerDisconnected;
             LoadItemPool();
+
+            // ---------- Harmony patch：无限送礼 ----------
+            // 1. 阻止白名单内主机玩家过夜时 updateFriendshipGifts 清零
+            // 2. 白名单内 farmhand 下线时，saveFarmhand 写回前重置 friendship
+            var harmony = new Harmony(ModManifest.UniqueID);
+            harmony.Patch(
+                original: AccessTools.Method(typeof(Farmer), nameof(Farmer.updateFriendshipGifts)),
+                prefix: new HarmonyMethod(typeof(ModEntry), nameof(Prefix_UpdateFriendshipGifts))
+            );
+            harmony.Patch(
+                original: AccessTools.Method(typeof(Multiplayer), "saveFarmhand", new[] { typeof(NetFarmerRoot) }),
+                prefix: new HarmonyMethod(typeof(ModEntry), nameof(Prefix_SaveFarmhand))
+            );
         }
 
         // ========== 配置保存 ==========
@@ -656,6 +677,220 @@ namespace MasterHand
             }
             Game1.server.kick(playerId);
             _monitor.Log($"[踢出] 已踢出玩家 [ID: {playerId}]", LogLevel.Info);
+        }
+
+        // ========== 无限送礼（白名单控制） ==========
+        //
+        // 纯主机方案：只在主机端运行，farmhand 无需安装此功能。
+        // 仅对白名单内玩家生效：
+        // - 主机玩家：patch updateFriendshipGifts 阻止过夜清零
+        // - farmhand：下线时 saveFarmhand 写回前重置，重连时全量同步得到 -999
+        //   farmhand 在线过夜后会被本地清零，需重新下线上线才能恢复
+        //
+        // 关键原理（反编译研究确认）：
+        // - 每个 farmer 权威管理自己的 friendshipData，主机改在线 farmhand 数据不会同步
+        // - 送礼检查和修改都在 giver 本地执行（NPC.receiveGift 用 giver.friendshipData）
+        // - farmhand 重连时 Client.setUpGame 调用 updateFriendshipGifts，设 LastGiftDate=today 绕过清零
+
+        /// <summary>判断某玩家是否享受无限送礼（全局开关 + 白名单）</summary>
+        private static bool IsInfiniteGiftsEnabled(Farmer farmer)
+        {
+            if (!Config.InfiniteGiftsEnabled || farmer == null) return false;
+            return Config.InfiniteGiftsWhitelist.Contains(farmer.UniqueMultiplayerID);
+        }
+
+        /// <summary>白名单管理命令</summary>
+        private static void GiftWhitelist(string _, string[] args)
+        {
+            if (args.Length == 0)
+            {
+                _monitor.Log("用法: mh_giftwl on|off|list|add <ID>|remove <ID>|clear", LogLevel.Info);
+                _monitor.Log($"当前状态: {(Config.InfiniteGiftsEnabled ? "开启" : "关闭")}, 白名单 {Config.InfiniteGiftsWhitelist.Count} 人", LogLevel.Info);
+                return;
+            }
+
+            string cmd = args[0].ToLowerInvariant();
+            switch (cmd)
+            {
+                case "on":
+                    Config.InfiniteGiftsEnabled = true;
+                    SaveConfig();
+                    _monitor.Log($"[无限送礼] 已开启（白名单 {Config.InfiniteGiftsWhitelist.Count} 人）", LogLevel.Info);
+                    break;
+                case "off":
+                    Config.InfiniteGiftsEnabled = false;
+                    SaveConfig();
+                    _monitor.Log("[无限送礼] 已关闭", LogLevel.Info);
+                    break;
+                case "list":
+                    _monitor.Log($"[无限送礼] 全局: {(Config.InfiniteGiftsEnabled ? "开启" : "关闭")}", LogLevel.Info);
+                    if (Config.InfiniteGiftsWhitelist.Count == 0)
+                    {
+                        _monitor.Log("[无限送礼] 白名单为空", LogLevel.Info);
+                    }
+                    else
+                    {
+                        foreach (var id in Config.InfiniteGiftsWhitelist)
+                        {
+                            var f = Game1.GetPlayer(id, true);
+                            _monitor.Log($"  - {(f?.Name ?? "未知")} [ID: {id}]", LogLevel.Info);
+                        }
+                    }
+                    break;
+                case "add":
+                    if (args.Length < 2)
+                    {
+                        _monitor.Log("用法: mh_giftwl add <玩家ID>", LogLevel.Warn);
+                        return;
+                    }
+                    {
+                        long id = ResolvePlayerId(args[1], logError: false);
+                        if (id == 0 && long.TryParse(args[1], out long raw) && raw > 0) id = raw;
+                        if (id == 0)
+                        {
+                            _monitor.Log($"[错误] 无效的玩家ID: {args[1]}", LogLevel.Warn);
+                            return;
+                        }
+                        if (!Config.InfiniteGiftsWhitelist.Contains(id))
+                            Config.InfiniteGiftsWhitelist.Add(id);
+                        SaveConfig();
+                        var f = Game1.GetPlayer(id, true);
+                        _monitor.Log($"[无限送礼] 已添加 {(f?.Name ?? "未知")} [ID: {id}] 到白名单", LogLevel.Info);
+                    }
+                    break;
+                case "remove":
+                    if (args.Length < 2)
+                    {
+                        _monitor.Log("用法: mh_giftwl remove <玩家ID>", LogLevel.Warn);
+                        return;
+                    }
+                    {
+                        long id = ResolvePlayerId(args[1], logError: false);
+                        if (id == 0 && long.TryParse(args[1], out long raw) && raw > 0) id = raw;
+                        if (Config.InfiniteGiftsWhitelist.Remove(id))
+                        {
+                            SaveConfig();
+                            _monitor.Log($"[无限送礼] 已从白名单移除 [ID: {id}]", LogLevel.Info);
+                        }
+                        else
+                        {
+                            _monitor.Log($"[无限送礼] [ID: {id}] 不在白名单中", LogLevel.Warn);
+                        }
+                    }
+                    break;
+                case "clear":
+                    Config.InfiniteGiftsWhitelist.Clear();
+                    SaveConfig();
+                    _monitor.Log("[无限送礼] 白名单已清空", LogLevel.Info);
+                    break;
+                default:
+                    _monitor.Log($"[错误] 未知子命令: {cmd}", LogLevel.Warn);
+                    _monitor.Log("用法: mh_giftwl on|off|list|add <ID>|remove <ID>|clear", LogLevel.Info);
+                    break;
+            }
+        }
+
+        /// <summary>存档加载后：重置白名单内主机和所有离线 farmhand 的 friendship</summary>
+        private void OnSaveLoadedGifts(object sender, SaveLoadedEventArgs e)
+        {
+            if (!Context.IsMainPlayer) return;
+            int count = 0;
+            if (IsInfiniteGiftsEnabled(Game1.player))
+            {
+                ReplaceAllFriendships(Game1.player);
+                count++;
+            }
+            foreach (var farmhand in Game1.netWorldState.Value.farmhandData.Values)
+            {
+                if (IsInfiniteGiftsEnabled(farmhand))
+                {
+                    ReplaceAllFriendships(farmhand);
+                    count++;
+                }
+            }
+            if (count > 0)
+                _monitor.Log($"[无限送礼] 存档加载完成，已重置 {count} 名白名单玩家的 friendship", LogLevel.Info);
+        }
+
+        /// <summary>每天开始：再次重置白名单内玩家的 friendship（双保险）</summary>
+        private void OnDayStartedGifts(object sender, DayStartedEventArgs e)
+        {
+            if (!Context.IsMainPlayer) return;
+            int count = 0;
+            if (IsInfiniteGiftsEnabled(Game1.player))
+            {
+                ReplaceAllFriendships(Game1.player);
+                count++;
+            }
+            foreach (var farmhand in Game1.netWorldState.Value.farmhandData.Values)
+            {
+                if (IsInfiniteGiftsEnabled(farmhand))
+                {
+                    ReplaceAllFriendships(farmhand);
+                    count++;
+                }
+            }
+            if (count > 0)
+                _monitor.Log($"[无限送礼] 新一天，已重置 {count} 名白名单玩家的 friendship", LogLevel.Info);
+        }
+
+        /// <summary>
+        /// patch Farmer.updateFriendshipGifts prefix：阻止白名单内主机玩家过夜清零。
+        /// 仅对主机自己的 farmer 且在白名单内时跳过原方法，其他 farmer 正常执行。
+        /// </summary>
+        public static bool Prefix_UpdateFriendshipGifts(Farmer __instance)
+        {
+            if (__instance == Game1.player && IsInfiniteGiftsEnabled(__instance))
+            {
+                ReplaceAllFriendships(__instance);
+                return false;   // 跳过清零
+            }
+            return true;   // 其他 farmer 副本正常执行
+        }
+
+        /// <summary>
+        /// patch Multiplayer.saveFarmhand prefix：白名单内 farmhand 下线时，在写回 farmhandData 前重置 friendship。
+        /// farmhand 重连时从 farmhandData 全量同步得到 -999，LastGiftDate=today 绕过重连清零。
+        /// </summary>
+        public static void Prefix_SaveFarmhand(NetFarmerRoot farmhand)
+        {
+            if (farmhand?.Value != null && IsInfiniteGiftsEnabled(farmhand.Value))
+            {
+                ReplaceAllFriendships(farmhand.Value);
+                _monitor?.Log($"[无限送礼] farmhand {farmhand.Value.Name} 下线，已重置 friendship", LogLevel.Info);
+            }
+        }
+
+        /// <summary>
+        /// 把所有可送礼 NPC 的 GiftsToday/GiftsThisWeek 设为 -999，实现无限送礼。
+        /// 同时设置 LastGiftDate = 今天，避免 farmhand 重连时 updateFriendshipGifts 清零。
+        /// 必须遍历 Game1.NPCGiftTastes（全量可送礼 NPC）而非 friendshipData.Keys（懒加载）。
+        /// </summary>
+        public static void ReplaceAllFriendships(Farmer farmer)
+        {
+            if (farmer?.friendshipData == null) return;
+            if (Game1.NPCGiftTastes == null) return;
+
+            foreach (var npcName in Game1.NPCGiftTastes.Keys.ToArray())
+            {
+                var npc = Game1.getCharacterFromName(npcName, true, false);
+                if (npc == null || !npc.CanReceiveGifts()) continue;
+
+                Friendship friendship;
+                if (farmer.friendshipData.TryGetValue(npcName, out var old) && old != null)
+                {
+                    friendship = old;
+                }
+                else
+                {
+                    friendship = new Friendship(0);
+                    farmer.friendshipData[npcName] = friendship;
+                }
+
+                friendship.GiftsToday = -999;
+                friendship.GiftsThisWeek = -999;
+                friendship.LastGiftDate = new WorldDate(Game1.Date);
+            }
         }
     }
 }
