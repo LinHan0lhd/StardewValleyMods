@@ -55,7 +55,9 @@ namespace CPXnbExporter
                 string modsDir = Path.GetDirectoryName(_helper.DirectoryPath);
                 _monitor?.Log($"扫描 Mods 目录: {modsDir}", LogLevel.Trace);
 
-                foreach (var modDir in Directory.GetDirectories(modsDir))
+                // 递归扫描所有子目录，查找含 content.json 的 CP 内容包。
+                // 支持嵌套目录结构（如 Mods/我的/模组A），不只扫描一层。
+                foreach (var modDir in FindContentPacks(modsDir))
                 {
                     ScanContentPack(modDir, result, seenAssets);
                 }
@@ -74,6 +76,47 @@ namespace CPXnbExporter
         private static void ScanContentPack(string modDir, List<CpAssetInfo> result, HashSet<string> seenAssets)
         {
             ScanContentFile(modDir, Path.Combine(modDir, "content.json"), result, seenAssets, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// 递归查找所有含 content.json 的目录（CP 内容包）。
+        /// 支持嵌套目录结构，如 Mods/我的/模组A。
+        /// 一旦某目录含 content.json，不再深入其子目录（CP 包不会嵌套 CP 包）。
+        /// </summary>
+        private static IEnumerable<string> FindContentPacks(string rootDir)
+        {
+            if (!Directory.Exists(rootDir)) yield break;
+
+            var stack = new Stack<string>();
+            stack.Push(rootDir);
+
+            while (stack.Count > 0)
+            {
+                string currentDir = stack.Pop();
+
+                string[] subDirs;
+                try { subDirs = Directory.GetDirectories(currentDir); }
+                catch { continue; }
+
+                foreach (string subDir in subDirs)
+                {
+                    // 跳过导出器自身（避免扫描 exported 目录）
+                    if (subDir.Equals(_helper?.DirectoryPath, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    string contentJson = Path.Combine(subDir, "content.json");
+                    if (File.Exists(contentJson))
+                    {
+                        // 找到 CP 内容包，不再深入其子目录
+                        yield return subDir;
+                    }
+                    else
+                    {
+                        // 不是 CP 包，继续递归查找
+                        stack.Push(subDir);
+                    }
+                }
+            }
         }
 
         /// <summary>
