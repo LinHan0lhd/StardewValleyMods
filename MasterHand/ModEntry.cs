@@ -72,7 +72,7 @@ namespace MasterHand
             helper.ConsoleCommands.Add("mh_year", "设置年份 > mh_year <年份>", SetYear);
             helper.ConsoleCommands.Add("mh_kick", "踢出玩家 > mh_kick <玩家ID>", KickPlayer);
             helper.ConsoleCommands.Add("mh_favored", "设置/清除眷者 > mh_favored <玩家ID> | clear | show", SetFavoredPlayer);
-            helper.ConsoleCommands.Add("mh_giftwl", "无限送礼白名单 > mh_giftwl on|off|list|add <ID>|remove <ID>|clear", GiftWhitelist);
+            helper.ConsoleCommands.Add("mh_giftwl", "无限送礼 > mh_giftwl on|off|list|add <ID>|remove <ID>|clear", GiftWhitelist);
 
             helper.Events.GameLoop.SaveLoaded += OnSaveLoadedGifts;
             helper.Events.GameLoop.DayStarted += OnDayStartedGifts;
@@ -490,7 +490,7 @@ namespace MasterHand
             var farmer = Game1.GetPlayer(e.Peer.PlayerID, true);
             if (farmer == null)
             {
-                _monitor.Log($"[重置] 玩家 ID {e.Peer.PlayerID} 下线但找不到 Farmer 对象，跳过", LogLevel.Warn);
+                _monitor.Log($"[重置] 玩家 ID {e.Peer.PlayerID} 下线但找不到 Farmer 对象", LogLevel.Warn);
                 return;
             }
 
@@ -679,9 +679,9 @@ namespace MasterHand
             _monitor.Log($"[踢出] 已踢出玩家 [ID: {playerId}]", LogLevel.Info);
         }
 
-        // ========== 无限送礼（白名单控制） ==========
+        // ========== 无限送礼 ==========
         //
-        // 纯主机方案：只在主机端运行，farmhand 无需安装此功能。
+        // 纯主机方案：只在主机端运行
         // 仅对白名单内玩家生效：
         // - 主机玩家：patch updateFriendshipGifts 阻止过夜清零
         // - farmhand：下线时 saveFarmhand 写回前重置，重连时全量同步得到 -999
@@ -733,7 +733,7 @@ namespace MasterHand
                         foreach (var id in Config.InfiniteGiftsWhitelist)
                         {
                             var f = Game1.GetPlayer(id, true);
-                            _monitor.Log($"  - {(f?.Name ?? "未知")} [ID: {id}]", LogLevel.Info);
+                            _monitor.Log($"  - {f?.Name ?? "未知"} [ID: {id}]", LogLevel.Info);
                         }
                     }
                     break;
@@ -755,7 +755,7 @@ namespace MasterHand
                             Config.InfiniteGiftsWhitelist.Add(id);
                         SaveConfig();
                         var f = Game1.GetPlayer(id, true);
-                        _monitor.Log($"[无限送礼] 已添加 {(f?.Name ?? "未知")} [ID: {id}] 到白名单", LogLevel.Info);
+                        _monitor.Log($"[无限送礼] 已添加 {f?.Name ?? "未知"} [ID: {id}] 到白名单", LogLevel.Info);
                     }
                     break;
                 case "remove":
