@@ -57,7 +57,7 @@ namespace MasterHand
             // ---------- 注册命令 ----------
             helper.ConsoleCommands.Add("mh_list", "列出所有在线玩家", (_, _) => ListPlayers());
             helper.ConsoleCommands.Add("mh_give", "赠送物品 > mh_give <玩家ID> <物品ID> [数量] [品质]", GiveItem);
-            helper.ConsoleCommands.Add("mh_poolitem", "赠送 poolitem 物品 > mh_poolitem list / <玩家ID> <物品名称> [数量] [品质] [reset=0/1]", GivePoolItem);
+            helper.ConsoleCommands.Add("mh_poolitem", "赠送 poolitem 物品 > mh_poolitem list / <玩家ID> <物品名称> [数量] [品质] [reset=true/false]", GivePoolItem);
             helper.ConsoleCommands.Add("mh_money", "修改主机金钱 > mh_money <金额>", SetMoney);
             helper.ConsoleCommands.Add("mh_time", "设置时间 > mh_time <600-2600>", SetTime);
             helper.ConsoleCommands.Add("mh_pause", "暂停/继续时间", (_, _) => TogglePause());
@@ -294,8 +294,8 @@ namespace MasterHand
 
             if (args.Length == 0 || (args.Length == 1 && args[0].ToLower() != "list"))
             {
-                _monitor.Log("用法: mh_poolitem <玩家ID> <物品名称> [数量] [品质] [reset=0/1]", LogLevel.Info);
-                _monitor.Log("reset=1 时该物品会在玩家下线时自动重置到赠送状态", LogLevel.Info);
+                _monitor.Log("用法: mh_poolitem <玩家ID> <物品名称> [数量] [品质] [reset=true/false]", LogLevel.Info);
+                _monitor.Log("reset=true 时该物品会在玩家下线时自动重置到赠送状态", LogLevel.Info);
                 return;
             }
 
@@ -314,8 +314,16 @@ namespace MasterHand
             string itemName = args[1];
             TryParseArg(args, 2, out int qty, min: 1, fallback: 0);
             TryParseArg(args, 3, out int qua, min: 0, max: 4, fallback: -1);
-            TryParseArg(args, 4, out int resetFlag, min: 0, max: 1, fallback: 0);
-            bool resetOnDisconnect = resetFlag == 1;
+
+            // 原 int 解析改为 bool 解析，同时兼容 "0"/"1" 写法
+            bool resetOnDisconnect = false;
+            if (args.Length > 4)
+            {
+                if (bool.TryParse(args[4], out bool parsedBool))
+                    resetOnDisconnect = parsedBool;
+                else if (int.TryParse(args[4], out int parsedInt))
+                    resetOnDisconnect = parsedInt != 0;
+            }
 
             var item = LoadPoolItemInternal(itemName, qty, qua);
             if (item == null) return;
