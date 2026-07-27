@@ -56,32 +56,33 @@ namespace InfiniteGifts
         public static void ReplaceAllFriendships(Farmer farmer)
         {
             if (farmer?.friendshipData == null) return;
+            if (Game1.NPCGiftTastes == null) return;
 
-            foreach (var key in farmer.friendshipData.Keys.ToArray())
+            // 关键修复：friendshipData 是懒加载的，只有玩家互动过的 NPC 才有条目。
+            // 必须遍历 Game1.NPCGiftTastes（全量可送礼 NPC）才能覆盖所有人。
+            foreach (var npcName in Game1.NPCGiftTastes.Keys.ToArray())
             {
-                var old = farmer.friendshipData[key];
-                if (old == null) continue;
-                if (old.GiftsToday <= -999 && old.GiftsThisWeek <= -999) continue;
+                // 跳过不可社交/不可送礼的 NPC
+                var npc = Game1.getCharacterFromName(npcName, true, false);
+                if (npc == null || !npc.CanReceiveGifts()) continue;
 
-                var newFriendship = new Friendship(old.Points)
+                // 已有 friendship：保留所有元数据，只重置 GiftsToday/GiftsThisWeek
+                if (farmer.friendshipData.TryGetValue(npcName, out var old) && old != null)
                 {
-                    Status = old.Status,
-                    Proposer = old.Proposer,
-                    RoommateMarriage = old.RoommateMarriage,
-                    TalkedToToday = old.TalkedToToday,
-                    ProposalRejected = old.ProposalRejected,
+                    if (old.GiftsToday <= -999 && old.GiftsThisWeek <= -999) continue;
+
+                    old.GiftsToday = -999;
+                    old.GiftsThisWeek = -999;
+                    // 直接修改原对象，避免 new Friendship 丢失 NetField 同步链路
+                    continue;
+                }
+
+                // 没有 friendship：主动创建（这是"送谁谁才无限"问题的根因）
+                farmer.friendshipData[npcName] = new Friendship(0)
+                {
                     GiftsToday = -999,
                     GiftsThisWeek = -999
                 };
-
-                if (old.WeddingDate != null)
-                    newFriendship.WeddingDate = new WorldDate(old.WeddingDate);
-                if (old.LastGiftDate != null)
-                    newFriendship.LastGiftDate = new WorldDate(old.LastGiftDate);
-                if (old.NextBirthingDate != null)
-                    newFriendship.NextBirthingDate = new WorldDate(old.NextBirthingDate);
-
-                farmer.friendshipData[key] = newFriendship;
             }
         }
 
