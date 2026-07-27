@@ -1,9 +1,4 @@
-﻿#nullable disable
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Reflection;
+#nullable disable
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using System.Xml.Serialization;
@@ -15,882 +10,807 @@ using StardewModdingAPI.Utilities;
 using StardewValley;
 using StardewValley.Network;
 
-namespace MasterHand
+namespace MasterHand;
+
+// ───── 配置模型 ─────
+public class ModConfig
 {
-    public class ModConfig
+    public long FavoredPlayerId { get; set; }
+    public bool InfiniteGiftsEnabled { get; set; }
+    public List<long> InfiniteGiftsWhitelist { get; set; } = new();
+}
+
+// ───── 主入口 ─────
+public class ModEntry : Mod
+{
+    private const string ItemPoolFolder = "ItemPool";
+    private const string ModDataResetKey = "MasterHand/ResetOnDisconnect";
+    private const string ModDataPoolItemNameKey = "MasterHand/PoolItemName";
+    private const string ModDataOrigStackKey = "MasterHand/OriginalStack";
+    private const string ModDataOrigQualityKey = "MasterHand/OriginalQuality";
+
+    internal static IMonitor Mon { get; private set; }
+    private static IModHelper Helper { get; set; }
+    private static ModConfig Config { get; set; }
+    private static long FavoredPlayerId => Config?.FavoredPlayerId ?? 0;
+    private static readonly XmlSerializer ItemSerializer;
+
+    private bool isTimeFrozen;
+
+    static ModEntry()
     {
-        public long FavoredPlayerId { get; set; } = 0;
-        /// <summary>无限送礼全局开关</summary>
-        public bool InfiniteGiftsEnabled { get; set; } = false;
-        /// <summary>无限送礼白名单（玩家 UniqueMultiplayerID 列表），仅白名单内玩家享受无限送礼</summary>
-        public List<long> InfiniteGiftsWhitelist { get; set; } = new();
+        var itemTypes = Assembly.GetAssembly(typeof(Item))
+            .GetTypes()
+            .Where(t => t.IsSubclassOf(typeof(Item)) && !t.IsAbstract)
+            .ToArray();
+        ItemSerializer = new XmlSerializer(typeof(Item), itemTypes);
     }
 
-    public class ModEntry : Mod
+    public override void Entry(IModHelper helper)
     {
-        internal static IMonitor _monitor;
-        private static IModHelper _helper;
-        private const string ItemPoolFolder = "ItemPool";
-        // 物品 modData 标记键：用于下线时识别并重置的特殊赠送物品
-        private const string ModDataResetKey = "MasterHand/ResetOnDisconnect";
-        private const string ModDataPoolItemNameKey = "MasterHand/PoolItemName";
-        private const string ModDataOrigStackKey = "MasterHand/OriginalStack";
-        private const string ModDataOrigQualityKey = "MasterHand/OriginalQuality";
-        private static readonly XmlSerializer ItemSerializer;
-        private bool isTimeFrozen;
-        private static long _favoredPlayerId = 0;
-        private static ModConfig Config;
+        Mon = Monitor;
+        Helper = helper;
+        Config = Helper.Data.ReadJsonFile<ModConfig>("config.json") ?? new ModConfig();
 
-        static ModEntry()
-        {
-            var itemTypes = Assembly.GetAssembly(typeof(Item))
-                .GetTypes()
-                .Where(t => t.IsSubclassOf(typeof(Item)) && !t.IsAbstract)
-                .ToArray();
-            ItemSerializer = new XmlSerializer(typeof(Item), itemTypes);
-        }
+        // 注册命令
+        helper.ConsoleCommands.Add("mh_list", "列出在线玩家", (_, _) => ListPlayers());
+        helper.ConsoleCommands.Add("mh_give", "赠送物品 > mh_give <玩家ID> <物品ID> [数量] [品质]", GiveItem);
+        helper.ConsoleCommands.Add("mh_poolitem", "赠送 poolitem 物品 > mh_poolitem list / <玩家ID> <物品名称> [数量] [品质] [reset]", GivePoolItem);
+        helper.ConsoleCommands.Add("mh_money", "修改主机金钱 > mh_money <金额>", SetMoney);
+        helper.ConsoleCommands.Add("mh_time", "设置时间 > mh_time <600-2600>", SetTime);
+        helper.ConsoleCommands.Add("mh_pause", "暂停/继续时间", (_, _) => TogglePause());
+        helper.ConsoleCommands.Add("mh_weather", "设置明天天气 > mh_weather <0-5> [地点/all]", SetWeather);
+        helper.ConsoleCommands.Add("mh_season", "设置季节 > mh_season <0-3>", SetSeason);
+        helper.ConsoleCommands.Add("mh_day", "设置日期 > mh_day <1-28>", SetDay);
+        helper.ConsoleCommands.Add("mh_year", "设置年份 > mh_year <年份>", SetYear);
+        helper.ConsoleCommands.Add("mh_kick", "踢出玩家 > mh_kick <玩家ID>", KickPlayer);
+        helper.ConsoleCommands.Add("mh_favored", "设置/清除眷者 > mh_favored <玩家ID> | clear | show", SetFavoredPlayer);
+        helper.ConsoleCommands.Add("mh_giftwl", "无限送礼白名单 > mh_giftwl on|off|list|add|remove|clear", GiftWhitelist);
 
-        public override void Entry(IModHelper helper)
-        {
-            _monitor = Monitor;
-            _helper = helper;
+        // 事件
+        helper.Events.GameLoop.SaveLoaded += (_, _) => ApplyInfiniteGiftsToAllWhitelistedFarmers("存档加载");
+        helper.Events.GameLoop.DayStarted += (_, _) => ApplyInfiniteGiftsToAllWhitelistedFarmers("新一天");
+        helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
+        helper.Events.Multiplayer.PeerDisconnected += OnPeerDisconnected;
 
-            // ---------- 加载配置 ----------
-            Config = _helper.Data.ReadJsonFile<ModConfig>("config.json") ?? new ModConfig();
-            _favoredPlayerId = Config.FavoredPlayerId;
+        // 物品池
+        LoadItemPool();
 
-            // ---------- 注册命令 ----------
-            helper.ConsoleCommands.Add("mh_list", "列出所有在线玩家", (_, _) => ListPlayers());
-            helper.ConsoleCommands.Add("mh_give", "赠送物品 > mh_give <玩家ID> <物品ID> [数量] [品质]", GiveItem);
-            helper.ConsoleCommands.Add("mh_poolitem", "赠送 poolitem 物品 > mh_poolitem list / <玩家ID> <物品名称> [数量] [品质] [reset=true/false]", GivePoolItem);
-            helper.ConsoleCommands.Add("mh_money", "修改主机金钱 > mh_money <金额>", SetMoney);
-            helper.ConsoleCommands.Add("mh_time", "设置时间 > mh_time <600-2600>", SetTime);
-            helper.ConsoleCommands.Add("mh_pause", "暂停/继续时间", (_, _) => TogglePause());
-            helper.ConsoleCommands.Add("mh_weather", "设置明天天气 > mh_weather <0-5> [地点/all]", SetWeather);
-            helper.ConsoleCommands.Add("mh_season", "设置季节 > mh_season <0-3>", SetSeason);
-            helper.ConsoleCommands.Add("mh_day", "设置日期 > mh_day <1-28>", SetDay);
-            helper.ConsoleCommands.Add("mh_year", "设置年份 > mh_year <年份>", SetYear);
-            helper.ConsoleCommands.Add("mh_kick", "踢出玩家 > mh_kick <玩家ID>", KickPlayer);
-            helper.ConsoleCommands.Add("mh_favored", "设置/清除眷者 > mh_favored <玩家ID> | clear | show", SetFavoredPlayer);
-            helper.ConsoleCommands.Add("mh_giftwl", "无限送礼 > mh_giftwl on|off|list|add <ID>|remove <ID>|clear", GiftWhitelist);
+        // Harmony 补丁：无限送礼
+        var harmony = new Harmony(ModManifest.UniqueID);
+        harmony.Patch(
+            original: AccessTools.Method(typeof(Farmer), nameof(Farmer.updateFriendshipGifts)),
+            prefix: new HarmonyMethod(typeof(ModEntry), nameof(Prefix_UpdateFriendshipGifts))
+        );
+        harmony.Patch(
+            original: AccessTools.Method(typeof(Multiplayer), "saveFarmhand", new[] { typeof(NetFarmerRoot) }),
+            prefix: new HarmonyMethod(typeof(ModEntry), nameof(Prefix_SaveFarmhand))
+        );
+    }
 
-            helper.Events.GameLoop.SaveLoaded += OnSaveLoadedGifts;
-            helper.Events.GameLoop.DayStarted += OnDayStartedGifts;
-            helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
-            helper.Events.Multiplayer.PeerDisconnected += OnPeerDisconnected;
-            LoadItemPool();
+    // ============================================================
+    // 工具方法
+    // ============================================================
 
-            // ---------- Harmony patch：无限送礼 ----------
-            // 1. 阻止白名单内主机玩家过夜时 updateFriendshipGifts 清零
-            // 2. 白名单内 farmhand 下线时，saveFarmhand 写回前重置 friendship
-            var harmony = new Harmony(ModManifest.UniqueID);
-            harmony.Patch(
-                original: AccessTools.Method(typeof(Farmer), nameof(Farmer.updateFriendshipGifts)),
-                prefix: new HarmonyMethod(typeof(ModEntry), nameof(Prefix_UpdateFriendshipGifts))
-            );
-            harmony.Patch(
-                original: AccessTools.Method(typeof(Multiplayer), "saveFarmhand", new[] { typeof(NetFarmerRoot) }),
-                prefix: new HarmonyMethod(typeof(ModEntry), nameof(Prefix_SaveFarmhand))
-            );
-        }
+    private static void SaveConfig() => Helper.Data.WriteJsonFile("config.json", Config);
 
-        // ========== 配置保存 ==========
-        private static void SaveConfig()
-        {
-            _helper.Data.WriteJsonFile("config.json", Config);
-        }
+    private static bool RequireWorldReady()
+    {
+        if (!Context.IsWorldReady)
+            Mon.Log("[警告] 尚未载入存档，无法执行命令", LogLevel.Warn);
+        return Context.IsWorldReady;
+    }
 
-        // ========== 核心工具方法 ==========
+    private static bool RequireHost()
+    {
+        if (!Context.IsMainPlayer)
+            Mon.Log("[提示] 仅限主机执行此命令", LogLevel.Warn);
+        return Context.IsMainPlayer;
+    }
 
-        private static bool RequireWorldReady()
-        {
-            if (!Context.IsWorldReady)
-                _monitor.Log("[警告] 尚未载入存档因此无法执行命令", LogLevel.Warn);
-            return Context.IsWorldReady;
-        }
+    private static Farmer GetOnlinePlayer(long id, bool logError = true)
+    {
+        var farmer = Game1.GetPlayer(id, true);
+        if (farmer == null && logError)
+            Mon.Log($"[警告] 玩家 ID {id} 不在线或不存在", LogLevel.Warn);
+        return farmer;
+    }
 
-        private static bool RequireHost()
-        {
-            if (!Context.IsMainPlayer)
-                _monitor.Log("[提示] 仅限主机可执行此命令", LogLevel.Warn);
-            return Context.IsMainPlayer;
-        }
-
-        private static Farmer GetOnlinePlayer(long playerId, bool logError = true)
-        {
-            var farmer = Game1.GetPlayer(playerId, true);
-            if (farmer == null && logError)
-                _monitor.Log($"[警告] 玩家 ID {playerId} 不在线或不存在", LogLevel.Warn);
-            return farmer;
-        }
-
-        private static bool TryParseArg(string[] args, int index, out int value, int min = int.MinValue, int max = int.MaxValue, int fallback = 0)
-        {
-            value = fallback;
-            // 用 ~ 使用默认值
-            if (args.Length > index && args[index] == "~")
-                return false;
-            if (args.Length > index && int.TryParse(args[index], out int parsed))
-            {
-                value = Math.Clamp(parsed, min, max);
-                return true;
-            }
-            return false;
-        }
-
-        /// <summary>
-        /// 解析 bool 参数：支持 true/false、0/1、以及 ~ 跳过
-        /// </summary>
-        private static bool TryParseBoolArg(string[] args, int index, bool fallback = false)
-        {
-            if (args.Length <= index || args[index] == "~") return fallback;
-            if (bool.TryParse(args[index], out bool b)) return b;
-            if (int.TryParse(args[index], out int i)) return i != 0;
+    /// <summary>解析整数参数，支持 ~ 代表默认值</summary>
+    private static int? TryParseIntArg(string[] args, int index, int? min = null, int? max = null, int? fallback = null)
+    {
+        if (args.Length <= index || args[index] == "~")
             return fallback;
+        if (int.TryParse(args[index], out int val))
+        {
+            if (min.HasValue) val = Math.Max(min.Value, val);
+            if (max.HasValue) val = Math.Min(max.Value, val);
+            return val;
+        }
+        return fallback;
+    }
+
+    /// <summary>解析 bool 参数，支持 true/false/0/1/~</summary>
+    private static bool? TryParseBoolArg(string[] args, int index, bool? fallback = null)
+    {
+        if (args.Length <= index || args[index] == "~")
+            return fallback;
+        if (bool.TryParse(args[index], out bool b)) return b;
+        if (int.TryParse(args[index], out int i)) return i != 0;
+        return fallback;
+    }
+
+    /// <summary>解析玩家 ID，支持 ~ 代指眷者</summary>
+    private static long ResolvePlayerId(string arg, bool logError = true)
+    {
+        if (arg == "~")
+        {
+            if (FavoredPlayerId == 0)
+            {
+                if (logError) Mon.Log("[错误] 眷者尚未设置，请先使用 mh_favored 设置", LogLevel.Warn);
+                return 0;
+            }
+            return FavoredPlayerId;
+        }
+        if (long.TryParse(arg, out long id) && id > 0)
+            return id;
+        if (logError) Mon.Log($"[错误] 无效的玩家ID: {arg}", LogLevel.Warn);
+        return 0;
+    }
+
+    // ============================================================
+    // 眷者管理
+    // ============================================================
+
+    private static void SetFavoredPlayer(string _, string[] args)
+    {
+        if (args.Length == 0)
+        {
+            Mon.Log("用法: mh_favored <玩家ID> | clear | show", LogLevel.Info);
+            return;
         }
 
-        /// <summary>
-        /// 解析玩家 ID：支持 ~ 代指眷者
-        /// </summary>
-        private static long ResolvePlayerId(string arg, bool logError = true)
+        string cmd = args[0].ToLowerInvariant();
+        switch (cmd)
         {
-            if (arg == "~")
-            {
-                if (_favoredPlayerId == 0)
-                {
-                    if (logError) _monitor.Log("[错误] 请先使用 mh_favored 设置眷者", LogLevel.Warn);
-                    return 0;
-                }
-                return _favoredPlayerId;
-            }
-            if (long.TryParse(arg, out long id) && id > 0)
-                return id;
-            if (logError) _monitor.Log($"[错误] 无效的玩家ID: {arg}", LogLevel.Warn);
-            return 0;
-        }
-
-        // ========== 眷者管理 ==========
-
-        private static void SetFavoredPlayer(string _, string[] args)
-        {
-            if (args.Length == 0)
-            {
-                _monitor.Log("描述：可用 ~ 代指眷者", LogLevel.Info);
-                _monitor.Log("用法: mh_favored <玩家ID> | clear | show", LogLevel.Info);
-                return;
-            }
-
-            string cmd = args[0].ToLower();
-            if (cmd == "clear")
-            {
-                _favoredPlayerId = 0;
+            case "clear":
                 Config.FavoredPlayerId = 0;
                 SaveConfig();
-                _monitor.Log("[眷者] 已清除", LogLevel.Info);
-                return;
-            }
-            if (cmd == "show")
-            {
-                if (_favoredPlayerId == 0)
+                Mon.Log("[眷者] 已清除", LogLevel.Info);
+                break;
+
+            case "show":
+                var f = FavoredPlayerId != 0 ? Game1.GetPlayer(FavoredPlayerId, true) : null;
+                Mon.Log(f != null
+                    ? $"[眷者] {f.Name} [ID: {FavoredPlayerId}]"
+                    : $"[眷者] 未设置或不在线 (ID:{FavoredPlayerId})", LogLevel.Info);
+                break;
+
+            default:
+                if (long.TryParse(cmd, out long id) && id > 0)
                 {
-                    _monitor.Log("[眷者] 未设置", LogLevel.Info);
-                    return;
+                    var farmer = Game1.GetPlayer(id, true);
+                    Config.FavoredPlayerId = id;
+                    SaveConfig();
+                    Mon.Log($"[眷者] 已设置为 {farmer?.Name ?? "未知"} [ID: {id}]", LogLevel.Info);
                 }
-                var farmer = Game1.GetPlayer(_favoredPlayerId, true);
-                if (farmer != null)
-                    _monitor.Log($"[眷者] {farmer.Name} [ID: {_favoredPlayerId}]", LogLevel.Info);
-                else
-                    _monitor.Log($"[眷者] 已设置 [ID: {_favoredPlayerId}] 暂时不在线或不存在", LogLevel.Warn);
-                return;
+                else Mon.Log("[错误] 无效的玩家 ID", LogLevel.Warn);
+                break;
+        }
+    }
+
+    // ============================================================
+    // 物品池
+    // ============================================================
+
+    private void LoadItemPool()
+    {
+        var poolDir = Path.Combine(Helper.DirectoryPath, ItemPoolFolder);
+        Directory.CreateDirectory(poolDir);
+        var samplePath = Path.Combine(poolDir, "Stardrop.xml");
+        if (!File.Exists(samplePath))
+        {
+            File.WriteAllText(samplePath,
+                "<Item xsi:type=\"Object\">\n" +
+                "  <name>Stardrop</name>\n" +
+                "  <parentSheetIndex>434</parentSheetIndex>\n" +
+                "  <itemId>434</itemId>\n" +
+                "  <price>7777</price>\n" +
+                "  <edibility>100</edibility>\n" +
+                "  <category>0</category>\n" +
+                "  <type>Crafting</type>\n" +
+                "</Item>");
+        }
+    }
+
+    // ============================================================
+    // 送礼
+    // ============================================================
+
+    internal static class GiftProposalManager
+    {
+        public static bool Send(Farmer target, Item item, string poolItemName = null, bool resetOnDisconnect = false, int? originalStack = null, int? originalQuality = null)
+        {
+            if (target == null || item == null) return false;
+
+            // 标记重置信息
+            if (resetOnDisconnect && !string.IsNullOrEmpty(poolItemName))
+            {
+                item.modData[ModDataResetKey] = "1";
+                item.modData[ModDataPoolItemNameKey] = poolItemName;
+                item.modData[ModDataOrigStackKey] = (originalStack ?? item.Stack).ToString();
+                item.modData[ModDataOrigQualityKey] = (originalQuality ?? item.Quality).ToString();
             }
 
-            if (long.TryParse(cmd, out long id) && id > 0)
+            if (target.UniqueMultiplayerID == Game1.player.UniqueMultiplayerID)
             {
-                var farmer = Game1.GetPlayer(id, true);
-                if (farmer == null)
-                {
-                    _monitor.Log($"[警告] 已设置 [ID: {id}] 暂时不在线", LogLevel.Warn);
-                }
-                _favoredPlayerId = id;
-                Config.FavoredPlayerId = id;
-                SaveConfig();
-                _monitor.Log($"[眷者] 已设置为 {farmer?.Name ?? "未知"} [ID: {id}]", LogLevel.Info);
+                bool added = Game1.player.addItemToInventoryBool(item, true);
+                Mon?.Log(added
+                    ? $"[成功] 已将 {item.DisplayName} x{item.Stack} 加入主机背包"
+                    : $"[失败] 无法添加 {item.DisplayName} (背包可能已满)",
+                    added ? LogLevel.Info : LogLevel.Warn);
+                return added;
             }
-            else
+
+            if (!target.isActive())
             {
-                _monitor.Log("[错误] 无效的玩家 ID 或 参数不正确", LogLevel.Warn);
+                Mon?.Log($"[警告] 目标玩家 {target.Name} 当前离线", LogLevel.Warn);
+                return false;
             }
+
+            Game1.player.team.SendProposal(target, ProposalType.Gift, item);
+            Mon?.Log($"[赠送] 已向 {target.Name} 发送 {item.DisplayName} x{item.Stack} 提议请求{(resetOnDisconnect ? " [下线重置]" : "")}", LogLevel.Info);
+            return true;
+        }
+    }
+
+    // ─── 命令 ───
+
+    private static void ListPlayers()
+    {
+        var farmers = Game1.getOnlineFarmers();
+        if (!farmers.Any())
+        {
+            Mon.Log("[列表] 当前无在线玩家", LogLevel.Info);
+            return;
+        }
+        foreach (var f in farmers)
+            Mon.Log($"  {f.Name} [ID: {f.UniqueMultiplayerID}]", LogLevel.Info);
+    }
+
+    private static void GiveItem(string _, string[] args)
+    {
+        if (!RequireWorldReady() || args.Length < 2)
+        {
+            Mon.Log("用法: mh_give <玩家ID> <物品ID> [数量] [品质]", LogLevel.Info);
+            return;
+        }
+        long playerId = ResolvePlayerId(args[0]);
+        if (playerId == 0) return;
+        var farmer = GetOnlinePlayer(playerId);
+        if (farmer == null) return;
+
+        string itemId = args[1];
+        int amount = TryParseIntArg(args, 2, 1, 999, 1) ?? 1;
+        int quality = TryParseIntArg(args, 3, 0, 4, 0) ?? 0;
+
+        var item = ItemRegistry.Create(itemId, amount, quality);
+        if (item == null)
+        {
+            Mon.Log($"[错误] 物品 ID '{itemId}' 无效", LogLevel.Warn);
+            return;
+        }
+        GiftProposalManager.Send(farmer, item);
+    }
+
+    private void GivePoolItem(string _, string[] args)
+    {
+        if (!RequireWorldReady() || args.Length == 0)
+        {
+            Mon.Log("用法: mh_poolitem <玩家ID> <物品名称> [数量] [品质] [reset] | list", LogLevel.Info);
+            return;
         }
 
-        // ========== 物品池初始化 ==========
-
-        private void LoadItemPool()
+        if (args[0].Equals("list", StringComparison.OrdinalIgnoreCase))
         {
-            var poolDir = Path.Combine(Helper.DirectoryPath, ItemPoolFolder);
-            Directory.CreateDirectory(poolDir);
-            var samplePath = Path.Combine(poolDir, "Stardrop.xml");
-            if (!File.Exists(samplePath))
-            {
-                File.WriteAllText(samplePath,
-                    "<Item xsi:type=\"Object\">\n" +
-                    "  <name>Stardrop</name>\n" +
-                    "  <parentSheetIndex>434</parentSheetIndex>\n" +
-                    "  <itemId>434</itemId>\n" +
-                    "  <price>7777</price>\n" +
-                    "  <edibility>100</edibility>\n" +
-                    "  <category>0</category>\n" +
-                    "  <type>Crafting</type>\n" +
-                    "</Item>");
-            }
+            ListPoolItems();
+            return;
         }
 
-        // ========== 送礼管理器 ==========
+        long playerId = ResolvePlayerId(args[0]);
+        if (playerId == 0) return;
+        var farmer = GetOnlinePlayer(playerId);
+        if (farmer == null) return;
 
-        internal static class GiftProposalManager
+        if (args.Length < 2)
         {
-            public static bool Send(Farmer target, Item item, string poolItemName = null, bool resetOnDisconnect = false, int originalStack = 0, int originalQuality = -1)
-            {
-                if (target == null || item == null) return false;
-
-                // 给物品打"下线重置"标记（仅对 poolitem 且 reset=1 时启用）
-                if (resetOnDisconnect && !string.IsNullOrEmpty(poolItemName))
-                {
-                    item.modData[ModDataResetKey] = "1";
-                    item.modData[ModDataPoolItemNameKey] = poolItemName;
-                    item.modData[ModDataOrigStackKey] = (originalStack > 0 ? originalStack : item.Stack).ToString();
-                    item.modData[ModDataOrigQualityKey] = (originalQuality >= 0 ? originalQuality : item.Quality).ToString();
-                }
-
-                if (target.UniqueMultiplayerID == Game1.player.UniqueMultiplayerID)
-                {
-                    bool added = Game1.player.addItemToInventoryBool(item, true);
-                    _monitor?.Log(added
-                        ? $"[成功] 已将 {item.DisplayName} x{item.Stack} 加入主机背包"
-                        : $"[失败] 无法添加 {item.DisplayName} 检查背包再尝试",
-                        added ? LogLevel.Info : LogLevel.Warn);
-                    return added;
-                }
-
-                if (!target.isActive())
-                {
-                    _monitor?.Log($"[警告] 目标玩家 {target.Name} 当前离线", LogLevel.Warn);
-                    return false;
-                }
-
-                Game1.player.team.SendProposal(target, ProposalType.Gift, item);
-
-                _monitor?.Log($"[赠送] 已向 {target.Name} 发送 {item.DisplayName} x{item.Stack} 提议请求{(resetOnDisconnect ? " [下线重置已启用]" : "")}", LogLevel.Info);
-                return true;
-            }
+            Mon.Log("[警告] 未指定物品名称", LogLevel.Warn);
+            return;
         }
 
-        // ========== 命令实现 ==========
+        string itemName = args[1];
+        int? qty = TryParseIntArg(args, 2, 1, null);
+        int? qua = TryParseIntArg(args, 3, 0, 4);
+        bool reset = TryParseBoolArg(args, 4, false) ?? false;
 
-        private static void ListPlayers()
+        var item = LoadPoolItemInternal(itemName, qty ?? 0, qua ?? -1);
+        if (item == null) return;
+
+        GiftProposalManager.Send(farmer, item, itemName, reset, qty, qua);
+    }
+
+    private static void ListPoolItems()
+    {
+        var poolDir = Path.Combine(Helper.DirectoryPath, ItemPoolFolder);
+        if (!Directory.Exists(poolDir))
         {
-            var farmers = Game1.getOnlineFarmers();
-            if (!farmers.Any()) return;
+            Mon.Log("[列表] 物品池文件夹不存在", LogLevel.Warn);
+            return;
+        }
+        var files = Directory.GetFiles(poolDir, "*.xml");
+        if (files.Length == 0)
+        {
+            Mon.Log("[列表] 物品池为空", LogLevel.Info);
+            return;
+        }
+        Mon.Log($"━━━ 物品池（共 {files.Length} 件）━━━", LogLevel.Info);
+        for (int i = 0; i < files.Length; i++)
+            Mon.Log($"  {i + 1,2}. {Path.GetFileNameWithoutExtension(files[i])}", LogLevel.Info);
+    }
 
-            foreach (var f in farmers)
-                _monitor.Log($"{f.Name}  [ID: {f.UniqueMultiplayerID}]", LogLevel.Info);
+    /// <summary>从池文件加载物品实例</summary>
+    private static Item LoadPoolItemInternal(string itemName, int stack, int quality)
+    {
+        string filePath = Path.Combine(Helper.DirectoryPath, ItemPoolFolder, itemName + ".xml");
+        if (!File.Exists(filePath))
+        {
+            Mon.Log($"[警告] 物品 '{itemName}' 不存在于物品池", LogLevel.Warn);
+            return null;
         }
 
-        private static void GiveItem(string _, string[] args)
+        try
         {
-            if (!RequireWorldReady()) return;
-            if (args.Length < 2)
+            string xml = File.ReadAllText(filePath);
+            xml = RemoveXsiNamespace(xml);
+            if (xml.Contains("xsi:type"))
             {
-                _monitor.Log("用法: mh_give <玩家ID> <物品ID> [数量] [品质]", LogLevel.Info);
-                return;
+                int tagEnd = xml.IndexOf('>');
+                if (tagEnd > 0)
+                    xml = xml.Insert(tagEnd, " xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"");
             }
 
-            long playerId = ResolvePlayerId(args[0]);
-            if (playerId == 0) return;
-
-            var farmer = GetOnlinePlayer(playerId);
-            if (farmer == null) return;
-
-            string itemId = args[1];
-            TryParseArg(args, 2, out int amount, min: 1, max: 999, fallback: 1);
-            TryParseArg(args, 3, out int quality, min: 0, max: 4);
-
-            var item = ItemRegistry.Create(itemId, amount, quality);
-            if (item == null)
+            var doc = XDocument.Parse(xml);
+            if (doc.Root == null)
             {
-                _monitor.Log($"[错误] 物品 ID '{itemId}' 无效", LogLevel.Warn);
-                return;
-            }
-            GiftProposalManager.Send(farmer, item);
-        }
-
-        private void GivePoolItem(string _, string[] args)
-        {
-            if (!RequireWorldReady()) return;
-
-            if (args.Length == 0 || (args.Length == 1 && args[0].ToLower() != "list"))
-            {
-                _monitor.Log("用法: mh_poolitem <玩家ID> <物品名称> [数量] [品质] [reset=true/false]", LogLevel.Info);
-                _monitor.Log("reset=true 时该物品会在玩家下线时自动重置到赠送状态", LogLevel.Info);
-                _monitor.Log("可用 ~ 跳过可选参数，例如: mh_poolitem <ID> Stardrop ~ ~ true", LogLevel.Info);
-                return;
-            }
-
-            long playerId = ResolvePlayerId(args[0]);
-            if (playerId == 0) return;
-
-            var farmer = GetOnlinePlayer(playerId);
-            if (farmer == null) return;
-
-            if (args.Length < 2)
-            {
-                _monitor.Log("[警告] 未指定有效的物品名称（不含 .xml）", LogLevel.Warn);
-                return;
-            }
-
-            string itemName = args[1];
-            TryParseArg(args, 2, out int qty, min: 1, fallback: 0);
-            TryParseArg(args, 3, out int qua, min: 0, max: 4, fallback: -1);
-            bool resetOnDisconnect = TryParseBoolArg(args, 4, false);
-
-            var item = LoadPoolItemInternal(itemName, qty, qua);
-            if (item == null) return;
-
-            GiftProposalManager.Send(farmer, item, itemName, resetOnDisconnect, qty, qua);
-        }
-
-        /// <summary>
-        /// 从物品池 XML 重新加载一个物品实例
-        /// 赠送和下线重置共用此方法，确保自定义字段一致
-        /// </summary>
-        private static Item LoadPoolItemInternal(string itemName, int stack, int quality)
-        {
-            string filePath = Path.Combine(_helper.DirectoryPath, ItemPoolFolder, itemName + ".xml");
-            if (!File.Exists(filePath))
-            {
-                _monitor.Log($"[警告] 物品 '{itemName}' 不存在于物品池", LogLevel.Warn);
+                Mon.Log($"[错误] 物品 '{itemName}' 的 XML 根元素无效", LogLevel.Warn);
                 return null;
             }
 
-            try
-            {
-                string xml = File.ReadAllText(filePath);
-                xml = RemoveXsiNamespace(xml);
-                if (xml.Contains("xsi:type"))
-                {
-                    int tagEnd = xml.IndexOf('>');
-                    if (tagEnd > 0)
-                        xml = xml.Insert(tagEnd, " xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"");
-                }
+            Item item;
+            using (var sr = new StringReader(doc.Root.ToString()))
+                item = ItemSerializer.Deserialize(sr) as Item;
 
-                var doc = XDocument.Parse(xml);
-                if (doc.Root == null)
-                {
-                    _monitor.Log($"[错误] 物品 '{itemName}' 的 XML 根元素无效", LogLevel.Warn);
-                    return null;
-                }
-
-                Item item;
-                using (var sr = new StringReader(doc.Root.ToString()))
-                    item = ItemSerializer.Deserialize(sr) as Item;
-
-                if (item == null)
-                {
-                    _monitor.Log($"[错误] 无法从 '{itemName}' 解析出有效物品", LogLevel.Warn);
-                    return null;
-                }
-
-                if (item is StardewValley.Object obj)
-                {
-                    if (stack > 0) obj.Stack = stack;
-                    if (quality >= 0) obj.Quality = quality;
-                }
+            if (item is not StardewValley.Object obj)
                 return item;
-            }
-            catch (Exception ex)
+
+            if (stack > 0) obj.Stack = stack;
+            if (quality >= 0) obj.Quality = quality;
+            return obj;
+        }
+        catch (Exception ex)
+        {
+            Mon.Log($"[内部错误] 处理物品 '{itemName}' 时异常: {ex.Message}", LogLevel.Error);
+            return null;
+        }
+    }
+
+    private static string RemoveXsiNamespace(string xml)
+        => Regex.Replace(xml, @"\s+xmlns:xsi\s*=\s*[""'][^""']*[""']", "");
+
+    // ============================================================
+    // 金钱
+    // ============================================================
+
+    private void SetMoney(string _, string[] args)
+    {
+        if (!RequireWorldReady() || !RequireHost()) return;
+        int? amount = TryParseIntArg(args, 0, 0);
+        if (amount == null)
+        {
+            Mon.Log("用法: mh_money <金额>", LogLevel.Info);
+            return;
+        }
+        Game1.player.Money = amount.Value;
+        Mon.Log($"[金钱] 主机金钱已更新为 {amount.Value} 金", LogLevel.Info);
+    }
+
+    // ============================================================
+    // 时间
+    // ============================================================
+
+    private void SetTime(string _, string[] args)
+    {
+        if (!RequireWorldReady() || !RequireHost()) return;
+        int? time = TryParseIntArg(args, 0, 600, 2600);
+        if (time == null)
+        {
+            Mon.Log("用法: mh_time <600-2600>", LogLevel.Info);
+            return;
+        }
+        ApplyTimeChange(time.Value);
+        Mon.Log($"[时间] 已调整为 {Game1.timeOfDay / 100:D2}:{Game1.timeOfDay % 100:D2}", LogLevel.Info);
+    }
+
+    private static void ApplyTimeChange(int targetTime)
+    {
+        int intervals = Utility.CalculateMinutesBetweenTimes(Game1.timeOfDay, targetTime) / 10;
+        if (intervals > 0)
+        {
+            for (int i = 0; i < intervals; i++)
+                Game1.performTenMinuteClockUpdate();
+        }
+        else
+        {
+            for (int i = 0; i < -intervals; i++)
             {
-                _monitor.Log($"[内部错误] 处理物品 '{itemName}' 时异常: {ex.Message}", LogLevel.Error);
-                return null;
+                Game1.timeOfDay = Utility.ModifyTime(Game1.timeOfDay, -20);
+                Game1.performTenMinuteClockUpdate();
             }
         }
+        Game1.outdoorLight = Color.White;
+        Game1.ambientLight = Color.White;
+        Game1.gameTimeInterval = 0;
+        Game1.UpdateGameClock(Game1.currentGameTime);
+    }
 
-        private static string RemoveXsiNamespace(string xml)
-            => Regex.Replace(xml, @"\s+xmlns:xsi\s*=\s*[""'][^""']*[""']", "");
+    private void TogglePause()
+    {
+        if (!RequireWorldReady() || !RequireHost()) return;
+        isTimeFrozen = !isTimeFrozen;
+        Mon.Log(isTimeFrozen ? "[暂停] 时间已冻结" : "[继续] 时间已恢复流动", LogLevel.Info);
+    }
 
-        private void SetMoney(string _, string[] args)
-        {
-            if (!RequireWorldReady() || !RequireHost()) return;
-            if (!TryParseArg(args, 0, out int amount, min: 0))
-            {
-                _monitor.Log("用法: mh_money <金额>", LogLevel.Info);
-                return;
-            }
-            Game1.player.Money = amount;
-            _monitor.Log($"[金钱] 主机金钱已更新为 {amount} 金", LogLevel.Info);
-        }
-
-        // ========== 时间控制 ==========
-
-        private void SetTime(string _, string[] args)
-        {
-            if (!RequireWorldReady() || !RequireHost()) return;
-            if (!TryParseArg(args, 0, out int time, min: 600, max: 2600, fallback: -1))
-            {
-                _monitor.Log("用法: mh_time <600-2600>", LogLevel.Info);
-                return;
-            }
-            ApplyTimeChange(time);
-            _monitor.Log($"[时间] 已调整 {Game1.timeOfDay / 100:D2}:{Game1.timeOfDay % 100:D2} 作为游戏时间", LogLevel.Info);
-        }
-
-        private static void ApplyTimeChange(int targetTime)
-        {
-            int intervals = Utility.CalculateMinutesBetweenTimes(Game1.timeOfDay, targetTime) / 10;
-            if (intervals > 0)
-            {
-                for (int i = 0; i < intervals; i++)
-                    Game1.performTenMinuteClockUpdate();
-            }
-            else if (intervals < 0)
-            {
-                for (int i = 0; i > intervals; i--)
-                {
-                    Game1.timeOfDay = Utility.ModifyTime(Game1.timeOfDay, -20);
-                    Game1.performTenMinuteClockUpdate();
-                }
-            }
-            Game1.outdoorLight = Color.White;
-            Game1.ambientLight = Color.White;
+    private void OnUpdateTicked(object sender, UpdateTickedEventArgs e)
+    {
+        if (Context.IsWorldReady && isTimeFrozen)
             Game1.gameTimeInterval = 0;
-            Game1.UpdateGameClock(Game1.currentGameTime);
-        }
+    }
 
-        private void TogglePause()
+    // ============================================================
+    // 下线重置特殊物品
+    // ============================================================
+
+    private void OnPeerDisconnected(object sender, PeerDisconnectedEventArgs e)
+    {
+        if (!Context.IsMainPlayer) return;
+        var farmer = Game1.GetPlayer(e.Peer.PlayerID, true);
+        if (farmer == null)
         {
-            if (!RequireWorldReady() || !RequireHost()) return;
-            isTimeFrozen = !isTimeFrozen;
-            _monitor.Log(isTimeFrozen ? "[暂停] 时间已冻结" : "[继续] 时间已恢复流动", LogLevel.Info);
+            Mon.Log($"[重置] 下线玩家 {e.Peer.PlayerID} 未找到", LogLevel.Warn);
+            return;
         }
+        ResetMarkedItemsOnDisconnect(farmer);
+    }
 
-        private void OnUpdateTicked(object sender, UpdateTickedEventArgs e)
+    private void ResetMarkedItemsOnDisconnect(Farmer farmer)
+    {
+        int resetCount = 0;
+        for (int i = 0; i < farmer.Items.Count; i++)
         {
-            if (Context.IsWorldReady && isTimeFrozen)
-                Game1.gameTimeInterval = 0;
-        }
+            var item = farmer.Items[i];
+            if (item == null || !item.modData.TryGetValue(ModDataResetKey, out var v) || v != "1")
+                continue;
+            if (!item.modData.TryGetValue(ModDataPoolItemNameKey, out var poolName))
+                continue;
 
-        // ========== 玩家下线时重置特殊物品 ==========
-        //
-        // 关键点：星露谷多人模式下 farmhand 背包由本地客户端控制，
-        // 主机端在玩家在线时改背包不生效。必须在玩家下线后修改，
-        // 下次上线时 farmhand 才会从主机同步更新后的背包状态。
-        private void OnPeerDisconnected(object sender, PeerDisconnectedEventArgs e)
-        {
-            if (!Context.IsMainPlayer) return;
+            int origStack = int.TryParse(item.modData.GetValueOrDefault(ModDataOrigStackKey, "1"), out var s) ? s : 1;
+            int origQuality = int.TryParse(item.modData.GetValueOrDefault(ModDataOrigQualityKey, "0"), out var q) ? q : 0;
 
-            // 玩家刚断开连接，Farmer 对象仍在主机内存里（otherFarmers）
-            var farmer = Game1.GetPlayer(e.Peer.PlayerID, true);
-            if (farmer == null)
+            var fresh = LoadPoolItemInternal(poolName, origStack, origQuality);
+            if (fresh == null)
             {
-                _monitor.Log($"[重置] 玩家 ID {e.Peer.PlayerID} 下线但找不到 Farmer 对象", LogLevel.Warn);
-                return;
+                Mon.Log($"[重置] 重新加载 {poolName} 失败，保留原物品", LogLevel.Warn);
+                continue;
             }
 
-            ResetMarkedItemsOnDisconnect(farmer);
+            // 重新打标记，使下次下线仍可重置
+            fresh.modData[ModDataResetKey] = "1";
+            fresh.modData[ModDataPoolItemNameKey] = poolName;
+            fresh.modData[ModDataOrigStackKey] = origStack.ToString();
+            fresh.modData[ModDataOrigQualityKey] = origQuality.ToString();
+
+            farmer.Items[i] = fresh;
+            resetCount++;
         }
 
-        private void ResetMarkedItemsOnDisconnect(Farmer farmer)
+        if (resetCount > 0)
+            Mon.Log($"[重置] {farmer.Name} 的 {resetCount} 个特殊物品已复原", LogLevel.Info);
+    }
+
+    // ============================================================
+    // 天气
+    // ============================================================
+
+    private void SetWeather(string _, string[] args)
+    {
+        if (!RequireWorldReady() || Game1.netWorldState?.Value == null)
         {
-            int resetCount = 0;
-            for (int i = 0; i < farmer.Items.Count; i++)
-            {
-                var it = farmer.Items[i];
-                if (it == null) continue;
-                if (!it.modData.TryGetValue(ModDataResetKey, out var v) || v != "1") continue;
-                if (!it.modData.TryGetValue(ModDataPoolItemNameKey, out var poolItemName)) continue;
+            Mon.Log("[错误] 网络世界状态未就绪", LogLevel.Error);
+            return;
+        }
+        if (!RequireHost()) return;
 
-                // 解析赠送时记录的原始参数
-                int origStack = 1, origQuality = 0;
-                if (it.modData.TryGetValue(ModDataOrigStackKey, out var s) && int.TryParse(s, out var st) && st > 0)
-                    origStack = st;
-                if (it.modData.TryGetValue(ModDataOrigQualityKey, out var q) && int.TryParse(q, out var qu) && qu >= 0)
-                    origQuality = qu;
-
-                // 从 XML 池重新加载物品（保证 price/edibility/category 等自定义字段全部还原）
-                var fresh = LoadPoolItemInternal(poolItemName, origStack, origQuality);
-                if (fresh == null)
-                {
-                    _monitor.Log($"[重置] {farmer.Name} 的 {poolItemName} 重新加载失败，保留原物品", LogLevel.Warn);
-                    continue;
-                }
-
-                // 重新打标记（让下次下线还能重置）
-                fresh.modData[ModDataResetKey] = "1";
-                fresh.modData[ModDataPoolItemNameKey] = poolItemName;
-                fresh.modData[ModDataOrigStackKey] = origStack.ToString();
-                fresh.modData[ModDataOrigQualityKey] = origQuality.ToString();
-
-                farmer.Items[i] = fresh;
-                resetCount++;
-            }
-
-            if (resetCount > 0)
-                _monitor.Log($"[重置] {farmer.Name} {resetCount} 个特殊物品已重置到赠送状态", LogLevel.Info);
+        int? weatherId = TryParseIntArg(args, 0, 0, 5);
+        if (weatherId == null)
+        {
+            Mon.Log("用法: mh_weather <0-5> [地点/all]\n0晴 1风 2雨 3雷雨 4雪 5苔雨", LogLevel.Info);
+            return;
         }
 
-        // ========== 天气设置 ==========
+        List<string> targets = args.Length > 1 && args[1].Equals("all", StringComparison.OrdinalIgnoreCase)
+            ? new() { "Default", "Island", "Desert" }
+            : new() { ResolveLocationKey(args.ElementAtOrDefault(1)) };
 
-        private void SetWeather(string _, string[] args)
+        string weatherStr = weatherId.Value switch
         {
-            if (!RequireWorldReady() || Game1.netWorldState?.Value == null)
-            {
-                _monitor.Log("[错误] 网络世界状态未就绪", LogLevel.Error);
-                return;
-            }
-            if (!RequireHost()) return;
-
-            if (!TryParseArg(args, 0, out int weatherId, min: 0, max: 5, fallback: -1))
-            {
-                _monitor.Log("用法: mh_weather <天气代码> [地点]", LogLevel.Info);
-                _monitor.Log("代码：晴天[0] 刮风[1] 降雨[2] 雷雨[3] 落雪[4] 苔雨[5]", LogLevel.Info);
-                _monitor.Log("地点: default / island / desert / all", LogLevel.Info);
-                return;
-            }
-
-            // 解析目标区域
-            List<string> targets = args.Length >= 2 && args[1].ToLowerInvariant() == "all"
-                ? new() { "Default", "Island", "Desert" }
-                : new() { ResolveLocationKey(args.ElementAtOrDefault(1)) };
-
-            string weatherStr = weatherId switch
-            {
-                1 => "Wind", 2 => "Rain", 3 => "Storm", 4 => "Snow", 5 => "GreenRain", _ => "Sun"
-            };
-            string weatherCn = weatherId switch
-            {
-                1 => "刮风", 2 => "雨天", 3 => "雷雨", 4 => "降雪", 5 => "苔雨", _ => "晴天"
-            };
-
-            try
-            {
-                foreach (var key in targets)
-                {
-                    var weather = Game1.netWorldState.Value.GetWeatherForLocation(key);
-                    if (weather == null)
-                    {
-                        _monitor.Log($"[警告] 无法获取地点 {key} 的天气数据", LogLevel.Warn);
-                        continue;
-                    }
-                    weather.WeatherForTomorrow = weatherStr;
-                    if (key == "Default") Game1.weatherForTomorrow = weatherStr;
-                    _monitor.Log($"[天气] 已设置 {key} 次日天气为 {weatherCn} ({weatherStr})", LogLevel.Info);
-                }
-            }
-            catch (Exception ex)
-            {
-                _monitor.Log($"[异常] 设置天气失败: {ex.Message}", LogLevel.Error);
-            }
-        }
-
-        private static string ResolveLocationKey(string raw)
+            1 => "Wind", 2 => "Rain", 3 => "Stk" : "GreenRain", _ => "Sun"
+        };
+        string weatherCn = weatherId.Value switch
         {
-            return raw?.ToLowerInvariant() switch
-            {
-                "island" or "ginger" => "Island",
-                "desert" => "Desert",
-                "default" or "main" => "Default",
-                _ => "Default"
-            };
-        }
-
-        // ========== 日期/季节/年份 ==========
-
-        private void SetSeason(string _, string[] args)
-        {
-            if (!RequireWorldReady() || !RequireHost()) return;
-            if (!TryParseArg(args, 0, out int season, min: 0, max: 3, fallback: -1))
-            {
-                _monitor.Log("用法: mh_season <0-3>", LogLevel.Info);
-                return;
-            }
-            string seasonStr = season switch { 0 => "spring", 1 => "summer", 2 => "fall", 3 => "winter", _ => "spring" };
-            ApplyDate(Game1.dayOfMonth, seasonStr, Game1.year);
-            _monitor.Log($"[季节] 已切换 {GetSeasonCnName(season)} 作为主旋律", LogLevel.Info);
-        }
-
-        private void SetDay(string _, string[] args)
-        {
-            if (!RequireWorldReady() || !RequireHost()) return;
-            if (!TryParseArg(args, 0, out int day, min: 1, max: 28, fallback: -1))
-            {
-                _monitor.Log("用法: mh_day <1-28>", LogLevel.Info);
-                return;
-            }
-            ApplyDate(day, Game1.currentSeason, Game1.year);
-            _monitor.Log($"[日期] 已设为第 {day} 天", LogLevel.Info);
-        }
-
-        private void SetYear(string _, string[] args)
-        {
-            if (!RequireWorldReady() || !RequireHost()) return;
-            if (!TryParseArg(args, 0, out int year, min: 1, fallback: -1))
-            {
-                _monitor.Log("用法: mh_year <年份>", LogLevel.Info);
-                return;
-            }
-            ApplyDate(Game1.dayOfMonth, Game1.currentSeason, year);
-            _monitor.Log($"[年份] 已设为第 {year} 年", LogLevel.Info);
-        }
-
-        private static void ApplyDate(int day, string season, int year)
-        {
-            bool seasonChanged = season != Game1.currentSeason;
-            Game1.dayOfMonth = day;
-            Game1.currentSeason = season;
-            Game1.year = year;
-            Game1.stats.DaysPlayed = (uint)SDate.Now().DaysSinceStart;
-
-            if (Context.IsMainPlayer && Game1.netWorldState?.Value != null)
-                Game1.netWorldState.Value.UpdateFromGame1();
-
-            if (seasonChanged)
-                Game1.setGraphicsForSeason();
-        }
-
-        private static string GetSeasonCnName(int season) => season switch
-        {
-            0 => "春季", 1 => "夏季", 2 => "秋季", 3 => "冬季", _ => "春季"
+            1 => "刮风", 2 => "雨天", 3 => "雷雨", 4 => "降雪", 5 => "苔雨", _ => "晴天"
         };
 
-        // ========== 玩家管理 ==========
-
-        private void KickPlayer(string _, string[] args)
+        try
         {
-            if (!RequireHost()) return;
-            if (args.Length < 1 || !long.TryParse(args[0], out long playerId))
+            foreach (var key in targets)
             {
-                _monitor.Log("用法: mh_kick <玩家ID>", LogLevel.Info);
-                return;
-            }
-            if (Game1.server == null)
-            {
-                _monitor.Log("[错误] 服务器未运行", LogLevel.Warn);
-                return;
-            }
-            Game1.server.kick(playerId);
-            _monitor.Log($"[踢出] 已踢出玩家 [ID: {playerId}]", LogLevel.Info);
-        }
-
-        // ========== 无限送礼 ==========
-        //
-        // 纯主机方案：只在主机端运行
-        // 仅对白名单内玩家生效：
-        // - 主机玩家：patch updateFriendshipGifts 阻止过夜清零
-        // - farmhand：下线时 saveFarmhand 写回前重置，重连时全量同步得到 -999
-        //   farmhand 在线过夜后会被本地清零，需重新下线上线才能恢复
-        //
-        // 关键原理（反编译研究确认）：
-        // - 每个 farmer 权威管理自己的 friendshipData，主机改在线 farmhand 数据不会同步
-        // - 送礼检查和修改都在 giver 本地执行（NPC.receiveGift 用 giver.friendshipData）
-        // - farmhand 重连时 Client.setUpGame 调用 updateFriendshipGifts，设 LastGiftDate=today 绕过清零
-
-        /// <summary>判断某玩家是否享受无限送礼（全局开关 + 白名单）</summary>
-        private static bool IsInfiniteGiftsEnabled(Farmer farmer)
-        {
-            if (!Config.InfiniteGiftsEnabled || farmer == null) return false;
-            return Config.InfiniteGiftsWhitelist.Contains(farmer.UniqueMultiplayerID);
-        }
-
-        /// <summary>白名单管理命令</summary>
-        private static void GiftWhitelist(string _, string[] args)
-        {
-            if (args.Length == 0)
-            {
-                _monitor.Log("用法: mh_giftwl on|off|list|add <ID>|remove <ID>|clear", LogLevel.Info);
-                _monitor.Log($"当前状态: {(Config.InfiniteGiftsEnabled ? "开启" : "关闭")}, 白名单 {Config.InfiniteGiftsWhitelist.Count} 人", LogLevel.Info);
-                return;
-            }
-
-            string cmd = args[0].ToLowerInvariant();
-            switch (cmd)
-            {
-                case "on":
-                    Config.InfiniteGiftsEnabled = true;
-                    SaveConfig();
-                    _monitor.Log($"[无限送礼] 已开启（白名单 {Config.InfiniteGiftsWhitelist.Count} 人）", LogLevel.Info);
-                    break;
-                case "off":
-                    Config.InfiniteGiftsEnabled = false;
-                    SaveConfig();
-                    _monitor.Log("[无限送礼] 已关闭", LogLevel.Info);
-                    break;
-                case "list":
-                    _monitor.Log($"[无限送礼] 全局: {(Config.InfiniteGiftsEnabled ? "开启" : "关闭")}", LogLevel.Info);
-                    if (Config.InfiniteGiftsWhitelist.Count == 0)
-                    {
-                        _monitor.Log("[无限送礼] 白名单为空", LogLevel.Info);
-                    }
-                    else
-                    {
-                        foreach (var id in Config.InfiniteGiftsWhitelist)
-                        {
-                            var f = Game1.GetPlayer(id, true);
-                            _monitor.Log($"  - {f?.Name ?? "未知"} [ID: {id}]", LogLevel.Info);
-                        }
-                    }
-                    break;
-                case "add":
-                    if (args.Length < 2)
-                    {
-                        _monitor.Log("用法: mh_giftwl add <玩家ID>", LogLevel.Warn);
-                        return;
-                    }
-                    {
-                        long id = ResolvePlayerId(args[1], logError: false);
-                        if (id == 0 && long.TryParse(args[1], out long raw) && raw > 0) id = raw;
-                        if (id == 0)
-                        {
-                            _monitor.Log($"[错误] 无效的玩家ID: {args[1]}", LogLevel.Warn);
-                            return;
-                        }
-                        if (!Config.InfiniteGiftsWhitelist.Contains(id))
-                            Config.InfiniteGiftsWhitelist.Add(id);
-                        SaveConfig();
-                        var f = Game1.GetPlayer(id, true);
-                        _monitor.Log($"[无限送礼] 已添加 {f?.Name ?? "未知"} [ID: {id}] 到白名单", LogLevel.Info);
-                    }
-                    break;
-                case "remove":
-                    if (args.Length < 2)
-                    {
-                        _monitor.Log("用法: mh_giftwl remove <玩家ID>", LogLevel.Warn);
-                        return;
-                    }
-                    {
-                        long id = ResolvePlayerId(args[1], logError: false);
-                        if (id == 0 && long.TryParse(args[1], out long raw) && raw > 0) id = raw;
-                        if (Config.InfiniteGiftsWhitelist.Remove(id))
-                        {
-                            SaveConfig();
-                            _monitor.Log($"[无限送礼] 已从白名单移除 [ID: {id}]", LogLevel.Info);
-                        }
-                        else
-                        {
-                            _monitor.Log($"[无限送礼] [ID: {id}] 不在白名单中", LogLevel.Warn);
-                        }
-                    }
-                    break;
-                case "clear":
-                    Config.InfiniteGiftsWhitelist.Clear();
-                    SaveConfig();
-                    _monitor.Log("[无限送礼] 白名单已清空", LogLevel.Info);
-                    break;
-                default:
-                    _monitor.Log($"[错误] 未知子命令: {cmd}", LogLevel.Warn);
-                    _monitor.Log("用法: mh_giftwl on|off|list|add <ID>|remove <ID>|clear", LogLevel.Info);
-                    break;
-            }
-        }
-
-        /// <summary>存档加载后：重置白名单内主机和所有离线 farmhand 的 friendship</summary>
-        private void OnSaveLoadedGifts(object sender, SaveLoadedEventArgs e)
-        {
-            if (!Context.IsMainPlayer) return;
-            int count = 0;
-            if (IsInfiniteGiftsEnabled(Game1.player))
-            {
-                ReplaceAllFriendships(Game1.player);
-                count++;
-            }
-            foreach (var farmhand in Game1.netWorldState.Value.farmhandData.Values)
-            {
-                if (IsInfiniteGiftsEnabled(farmhand))
+                var weather = Game1.netWorldState.Value.GetWeatherForLocation(key);
+                if (weather == null)
                 {
-                    ReplaceAllFriendships(farmhand);
-                    count++;
+                    Mon.Log($"[警告] 无法获取 {key} 天气数据", LogLevel.Warn);
+                    continue;
                 }
+                weather.WeatherForTomorrow = weatherStr;
+                if (key == "Default") Game1.weatherForTomorrow = weatherStr;
+                Mon.Log($"[天气] {key} 明日天气: {weatherCn} ({weatherStr})", LogLevel.Info);
             }
-            if (count > 0)
-                _monitor.Log($"[无限送礼] 存档加载完成，已重置 {count} 名白名单玩家的 friendship", LogLevel.Info);
+        }
+        catch (Exception ex)
+        {
+            Mon.Log($"[异常] 设置天气失败: {ex.Message}", LogLevel.Error);
+        }
+    }
+
+    private static string ResolveLocationKey(string raw) => raw?.ToLowerInvariant() switch
+    {
+        "island" or "ginger" => "Island",
+        "desert" => "Desert",
+        _ => "Default"
+    };
+
+    // ============================================================
+    // 日期/季节/年份
+    // ============================================================
+
+    private void SetSeason(string _, string[] args)
+    {
+        if (!RequireWorldReady() || !RequireHost()) return;
+        int? season = TryParseIntArg(args, 0, 0, 3);
+        if (season == null)
+        {
+            Mon.Log("用法: mh_season <0-3> (0春 1夏 2秋 3冬)", LogLevel.Info);
+            return;
+        }
+        string seasonStr = season.Value switch { 0 => "spring", 1 => "summer", 2 => "fall", 3 => "winter", _ => "spring" };
+        ApplyDate(Game1.dayOfMonth, seasonStr, Game1.year);
+        Mon.Log($"[季节] 已切换为 {GetSeasonCnName(season.Value)}", LogLevel.Info);
+    }
+
+    private void SetDay(string _, string[] args)
+    {
+        if (!RequireWorldReady() || !RequireHost()) return;
+        int? day = TryParseIntArg(args, 0, 1, 28);
+        if (day == null)
+        {
+            Mon.Log("用法: mh_day <1-28>", LogLevel.Info);
+            return;
+        }
+        ApplyDate(day.Value, Game1.currentSeason, Game1.year);
+        Mon.Log($"[日期] 已设为第 {day.Value} 天", LogLevel.Info);
+    }
+
+    private void SetYear(string _, string[] args)
+    {
+        if (!RequireWorldReady() || !RequireHost()) return;
+        int? year = TryParseIntArg(args, 0, 1);
+        if (year == null)
+        {
+            Mon.Log("用法: mh_year <年份>", LogLevel.Info);
+            return;
+        }
+        ApplyDate(Game1.dayOfMonth, Game1.currentSeason, year.Value);
+        Mon.Log($"[年份] 已设为第 {year.Value} 年", LogLevel.Info);
+    }
+
+    private static void ApplyDate(int day, string season, int year)
+    {
+        bool seasonChanged = season != Game1.currentSeason;
+        Game1.dayOfMonth = day;
+        Game1.currentSeason = season;
+        Game1.year = year;
+        Game1.stats.DaysPlayed = (uint)SDate.Now().DaysSinceStart;
+
+        if (Context.IsMainPlayer && Game1.netWorldState?.Value != null)
+            Game1.netWorldState.Value.UpdateFromGame1();
+
+        if (seasonChanged)
+            Game1.setGraphicsForSeason();
+    }
+
+    private static string GetSeasonCnName(int season) => season switch
+    {
+        0 => "春季", 1 => "夏季", 2 => "秋季", 3 => "冬季", _ => "春季"
+    };
+
+    // ============================================================
+    // 玩家管理
+    // ============================================================
+
+    private void KickPlayer(string _, string[] args)
+    {
+        if (!RequireHost()) return;
+        if (args.Length < 1 || !long.TryParse(args[0], out long id) || id <= 0)
+        {
+            Mon.Log("用法: mh_kick <玩家ID>", LogLevel.Info);
+            return;
+        }
+        if (Game1.server == null)
+        {
+            Mon.Log("[错误] 服务器未运行", LogLevel.Warn);
+            return;
+        }
+        Game1.server.kick(id);
+        Mon.Log($"[踢出] 已踢出玩家 ID {id}", LogLevel.Info);
+    }
+
+    // ============================================================
+    // 无限送礼
+    // ============================================================
+
+    private static bool IsInfiniteGiftsEnabled(Farmer farmer) =>
+        Config.InfiniteGiftsEnabled && farmer != null && Config.InfiniteGiftsWhitelist.Contains(farmer.UniqueMultiplayerID);
+
+    private static void GiftWhitelist(string _, string[] args)
+    {
+        if (args.Length == 0)
+        {
+            Mon.Log("用法: mh_giftwl on|off|list|add <ID>|remove <ID>|clear", LogLevel.Info);
+            return;
         }
 
-        /// <summary>每天开始：再次重置白名单内玩家的 friendship（双保险）</summary>
-        private void OnDayStartedGifts(object sender, DayStartedEventArgs e)
+        switch (args[0].ToLowerInvariant())
         {
-            if (!Context.IsMainPlayer) return;
-            int count = 0;
-            if (IsInfiniteGiftsEnabled(Game1.player))
-            {
-                ReplaceAllFriendships(Game1.player);
-                count++;
-            }
-            foreach (var farmhand in Game1.netWorldState.Value.farmhandData.Values)
-            {
-                if (IsInfiniteGiftsEnabled(farmhand))
+            case "on":
+                Config.InfiniteGiftsEnabled = true; SaveConfig();
+                Mon.Log("[无限送礼] 已开启", LogLevel.Info);
+                break;
+            case "off":
+                Config.InfiniteGiftsEnabled = false; SaveConfig();
+                Mon.Log("[无限送礼] 已关闭", LogLevel.Info);
+                break;
+            case "list":
+                Mon.Log($"[无限送礼] 状态: {(Config.InfiniteGiftsEnabled ? "开" : "关")}, 白名单 {Config.InfiniteGiftsWhitelist.Count} 人", LogLevel.Info);
+                foreach (var id in Config.InfiniteGiftsWhitelist)
                 {
-                    ReplaceAllFriendships(farmhand);
-                    count++;
+                    var f = Game1.GetPlayer(id, true);
+                    Mon.Log($"  {f?.Name ?? "未知"} [ID: {id}]", LogLevel.Info);
                 }
-            }
-            if (count > 0)
-                _monitor.Log($"[无限送礼] 新一天，已重置 {count} 名白名单玩家的 friendship", LogLevel.Info);
-        }
-
-        /// <summary>
-        /// patch Farmer.updateFriendshipGifts prefix：阻止白名单内主机玩家过夜清零。
-        /// 仅对主机自己的 farmer 且在白名单内时跳过原方法，其他 farmer 正常执行。
-        /// </summary>
-        public static bool Prefix_UpdateFriendshipGifts(Farmer __instance)
-        {
-            if (__instance == Game1.player && IsInfiniteGiftsEnabled(__instance))
+                break;
+            case "add":
             {
-                ReplaceAllFriendships(__instance);
-                return false;   // 跳过清零
+                if (args.Length < 2) { Mon.Log("用法: mh_giftwl add <玩家ID>", LogLevel.Warn); return; }
+                long id = ResolvePlayerId(args[1], logError: false);
+                if (id == 0 && long.TryParse(args[1], out long raw) && raw > 0) id = raw;
+                if (id == 0) { Mon.Log("[错误] 无效的玩家 ID", LogLevel.Warn); return; }
+                if (!Config.InfiniteGiftsWhitelist.Contains(id))
+                    Config.InfiniteGiftsWhitelist.Add(id);
+                SaveConfig();
+                Mon.Log($"[无限送礼] 已添加 {Game1.GetPlayer(id, true)?.Name ?? "未知"} [ID: {id}]", LogLevel.Info);
+                break;
             }
-            return true;   // 其他 farmer 副本正常执行
+            case "remove":
+            {
+                if (args.Length < 2) { Mon.Log("用法: mh_giftwl remove <玩家ID>", LogLevel.Warn); return; }
+                long id = ResolvePlayerId(args[1], logError: false);
+                if (id == 0 && long.TryParse(args[1], out long raw) && raw > 0) id = raw;
+                if (Config.InfiniteGiftsWhitelist.Remove(id))
+                {
+                    SaveConfig();
+                    Mon.Log($"[无限送礼] 已移除 [ID: {id}]", LogLevel.Info);
+                }
+                else Mon.Log($"[无限送礼] [ID: {id}] 不在白名单", LogLevel.Warn);
+                break;
+            }
+            case "clear":
+                Config.InfiniteGiftsWhitelist.Clear(); SaveConfig();
+                Mon.Log("[无限送礼] 白名单已清空", LogLevel.Info);
+                break;
+            default:
+                Mon.Log($"[错误] 未知子命令: {args[0]}", LogLevel.Warn);
+                break;
+        }
+    }
+
+    /// <summary>对所有在线及离线白名单玩家重置友谊数据</summary>
+    private static void ApplyInfiniteGiftsToAllWhitelistedFarmers(string context)
+    {
+        if (!Context.IsMainPlayer) return;
+        int count = 0;
+
+        // 主机玩家
+        if (IsInfiniteGiftsEnabled(Game1.player))
+        {
+            ReplaceAllFriendships(Game1.player);
+            count++;
         }
 
-        /// <summary>
-        /// patch Multiplayer.saveFarmhand prefix：白名单内 farmhand 下线时，在写回 farmhandData 前重置 friendship。
-        /// farmhand 重连时从 farmhandData 全量同步得到 -999，LastGiftDate=today 绕过重连清零。
-        /// </summary>
-        public static void Prefix_SaveFarmhand(NetFarmerRoot farmhand)
+        // 离线 farmhand
+        foreach (var farmhand in Game1.netWorldState?.Value?.farmhandData?.Values ?? Enumerable.Empty<NetFarmerRoot>())
         {
             if (farmhand?.Value != null && IsInfiniteGiftsEnabled(farmhand.Value))
             {
                 ReplaceAllFriendships(farmhand.Value);
-                _monitor?.Log($"[无限送礼] farmhand {farmhand.Value.Name} 下线，已重置 friendship", LogLevel.Info);
+                count++;
             }
         }
 
-        /// <summary>
-        /// 把所有可送礼 NPC 的 GiftsToday/GiftsThisWeek 设为 -999，实现无限送礼。
-        /// 同时设置 LastGiftDate = 今天，避免 farmhand 重连时 updateFriendshipGifts 清零。
-        /// 必须遍历 Game1.NPCGiftTastes（全量可送礼 NPC）而非 friendshipData.Keys（懒加载）。
-        /// </summary>
-        public static void ReplaceAllFriendships(Farmer farmer)
+        if (count > 0)
+            Mon.Log($"[无限送礼] {context}，已重置 {count} 名白名单玩家的 friendship", LogLevel.Info);
+    }
+
+    /// <summary>Harmony 补丁：阻止主机玩家过夜清零送礼记录</summary>
+    public static bool Prefix_UpdateFriendshipGifts(Farmer __instance)
+    {
+        if (__instance == Game1.player && IsInfiniteGiftsEnabled(__instance))
         {
-            if (farmer?.friendshipData == null) return;
-            if (Game1.NPCGiftTastes == null) return;
+            ReplaceAllFriendships(__instance);
+            return false; // 跳过原方法
+        }
+        return true;
+    }
 
-            foreach (var npcName in Game1.NPCGiftTastes.Keys.ToArray())
+    /// <summary>Harmony 补丁：farmhand 下线前重置友谊，确保下次上线数据正确</summary>
+    public static void Prefix_SaveFarmhand(NetFarmerRoot farmhand)
+    {
+        if (farmhand?.Value != null && IsInfiniteGiftsEnabled(farmhand.Value))
+        {
+            ReplaceAllFriendships(farmhand.Value);
+            Mon?.Log($"[无限送礼] farmhand {farmhand.Value.Name} 下线，已重置 friendship", LogLevel.Info);
+        }
+    }
+
+    /// <summary>
+    /// 将所有可送礼 NPC 的 GiftsToday/GiftsThisWeek 设为 -999，
+    /// LastGiftDate 设为今天，实现无限送礼。
+    /// </summary>
+    public static void ReplaceAllFriendships(Farmer farmer)
+    {
+        if (farmer?.friendshipData == null || Game1.NPCGiftTastes == null) return;
+
+        foreach (var npcName in Game1.NPCGiftTastes.Keys)
+        {
+            var npc = Game1.getCharacterFromName(npcName, true, false);
+            if (npc == null || !npc.CanReceiveGifts()) continue;
+
+            if (!farmer.friendshipData.TryGetValue(npcName, out var friendship))
             {
-                var npc = Game1.getCharacterFromName(npcName, true, false);
-                if (npc == null || !npc.CanReceiveGifts()) continue;
-
-                Friendship friendship;
-                if (farmer.friendshipData.TryGetValue(npcName, out var old) && old != null)
-                {
-                    friendship = old;
-                }
-                else
-                {
-                    friendship = new Friendship(0);
-                    farmer.friendshipData[npcName] = friendship;
-                }
-
-                friendship.GiftsToday = -999;
-                friendship.GiftsThisWeek = -999;
-                friendship.LastGiftDate = new WorldDate(Game1.Date);
+                friendship = new Friendship(0);
+                farmer.friendshipData[npcName] = friendship;
             }
+
+            friendship.GiftsToday = -999;
+            friendship.GiftsThisWeek = -999;
+            friendship.LastGiftDate = new WorldDate(Game1.Date);
         }
     }
 }
