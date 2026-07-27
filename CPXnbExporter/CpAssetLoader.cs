@@ -163,7 +163,8 @@ namespace CPXnbExporter
         private static CpAssetType DetectAssetType(string action, string fromFile, string target, string modDir)
         {
             string actionLower = action.ToLowerInvariant();
-            string targetLower = target.ToLowerInvariant();
+            // 规范化路径分隔符：统一为正斜杠，避免反斜杠导致 StartsWith 匹配失败
+            string targetLower = target.ToLowerInvariant().Replace('\\', '/');
             string ext = Path.GetExtension(fromFile ?? "").ToLowerInvariant();
 
             // 1. FromFile 扩展名（最可靠）
@@ -172,7 +173,7 @@ namespace CPXnbExporter
                 if (ext == ".png") return CpAssetType.Texture;
                 if (ext == ".tmx" || ext == ".tbin") return CpAssetType.Map;
             }
-            // 2. FromFile 没有扩展名，查 CP 包目录下实际文件
+            // 2. FromFile 没有扩展名，查 CP 包目录下实际文件（尝试常见扩展名）
             else if (!string.IsNullOrEmpty(fromFile) && !string.IsNullOrEmpty(modDir))
             {
                 string fullPath = Path.Combine(modDir, fromFile);
@@ -182,6 +183,9 @@ namespace CPXnbExporter
                     if (realExt == ".png") return CpAssetType.Texture;
                     if (realExt == ".tmx" || realExt == ".tbin") return CpAssetType.Map;
                 }
+                // 尝试补常见扩展名（CP 的 FromFile 有时会省略扩展名）
+                if (File.Exists(fullPath + ".png")) return CpAssetType.Texture;
+                if (File.Exists(fullPath + ".tbin") || File.Exists(fullPath + ".tmx")) return CpAssetType.Map;
             }
 
             // 3. Action 判断
@@ -189,7 +193,11 @@ namespace CPXnbExporter
             if (actionLower == "editdata") return CpAssetType.Data;
             if (actionLower == "editimage") return CpAssetType.Texture;
 
-            // 4. 已知贴图目录兜底
+            // 3.5 Data 路径判断（Load/Include 动作可能也指向 Data）
+            if (targetLower.StartsWith("data/"))
+                return CpAssetType.Data;
+
+            // 4. 已知贴图目录兜底（这些目录下的资产一定是贴图）
             var textureDirs = new[]
             {
                 "characters/", "loosesprites/", "tilesheets/", "terrainfeatures/",
@@ -206,6 +214,27 @@ namespace CPXnbExporter
             foreach (var dir in textureDirs)
             {
                 if (targetLower.StartsWith(dir))
+                    return CpAssetType.Texture;
+            }
+
+            // 4.5 Maps/ 目录下已知贴图资产（非地图）
+            // 这些是 Maps/ 下的 .png 精灵图，不是 .tbin 地图。
+            // 物品贴图（springobjects）是最常被漏检的，因为它在 Maps/ 下但不是地图。
+            var mapsTextures = new[]
+            {
+                "maps/springobjects", "maps/summerobjects",
+                "maps/fallobjects", "maps/winterobjects",
+                "maps/craftables", "maps/crops", "maps/bushes",
+                "maps/concessions", "maps/parrotupgrade",
+                "maps/festival", "maps/festivals",
+                "maps/extras", "maps/walls",
+                "maps/equippable", "maps/objectinfo",
+                "maps/fruit_tree", "maps/wild_tree"
+            };
+            foreach (var tex in mapsTextures)
+            {
+                // 精确匹配或带语言后缀（如 maps/springobjects.zh-cn）
+                if (targetLower == tex || targetLower.StartsWith(tex + "."))
                     return CpAssetType.Texture;
             }
 

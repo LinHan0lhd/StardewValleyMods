@@ -215,19 +215,19 @@ public class ModEntry : Mod
     /// </summary>
     private bool LoadAndEnqueue(CpAssetLoader.CpAssetInfo asset)
     {
+        // rawAssetName: SMAPI 虚拟资产路径，用于 ContentManager 加载
+        // normalizedAssetName: 规范化后的导出路径，用于文件写入和去重
+        // 声明在 try 外，以便 catch 中的贴图回退能访问
+        string rawAssetName = asset.AssetName;
+        string normalizedAssetName = NormalizeAssetPath(rawAssetName);
+        string safeName = GetExportAssetName(normalizedAssetName)
+            .Replace('/', Path.DirectorySeparatorChar)
+            .Replace('\\', Path.DirectorySeparatorChar);
+        string packedBase = Path.Combine(_currentOptions.PackedDir, safeName);
+        string unpackedBase = _currentOptions.OutputUnpacked ? Path.Combine(_currentOptions.UnpackedDir, safeName) : null;
+
         try
         {
-            // rawAssetName: SMAPI 虚拟资产路径，用于 ContentManager 加载
-            // normalizedAssetName: 规范化后的导出路径，用于文件写入和去重
-            string rawAssetName = asset.AssetName;
-            string normalizedAssetName = NormalizeAssetPath(rawAssetName);
-            string safeName = GetExportAssetName(normalizedAssetName)
-                .Replace('/', Path.DirectorySeparatorChar)
-                .Replace('\\', Path.DirectorySeparatorChar);
-
-            string packedBase = Path.Combine(_currentOptions.PackedDir, safeName);
-            string unpackedBase = _currentOptions.OutputUnpacked ? Path.Combine(_currentOptions.UnpackedDir, safeName) : null;
-
             if (asset.AssetType == CpAssetLoader.CpAssetType.Texture)
             {
                 // 用原始路径加载（SMAPI 虚拟资产路径），导出到规范化路径
@@ -336,6 +336,28 @@ public class ModEntry : Mod
         }
         catch (Exception ex)
         {
+            // Map/Unknown 加载失败时，尝试作为贴图加载（兜底）
+            // 这处理了贴图被误分类为 Unknown/Map 的情况——最常见的是 Maps/ 下的贴图
+            // （如 Maps/springobjects）在检测阶段未被识别为贴图。
+            if (asset.AssetType != CpAssetLoader.CpAssetType.Texture
+                && asset.AssetType != CpAssetLoader.CpAssetType.Data)
+            {
+                try
+                {
+                    if (EnqueueTexture(rawAssetName, packedBase, unpackedBase))
+                    {
+                        _exportedAssetNames.Add(normalizedAssetName);
+                        Monitor.Log($"  ↳ [{rawAssetName}] 作为贴图导出（地图加载失败的回退）", LogLevel.Trace);
+                        return true;
+                    }
+                    return false; // 队列满，下一帧重试
+                }
+                catch (Exception texEx)
+                {
+                    Monitor.Log($"加载失败 [{asset.AssetName}]: 地图({ex.Message}) 贴图({texEx.Message})", LogLevel.Trace);
+                    return true;
+                }
+            }
             Monitor.Log($"加载失败 [{asset.AssetName}]: {ex.Message}", LogLevel.Trace);
             return true; // 标记为已处理（失败），继续下一个
         }
@@ -427,6 +449,12 @@ public class ModEntry : Mod
     {
         if (string.IsNullOrEmpty(assetName))
             return assetName;
+
+        // 规范化路径分隔符：统一为正斜杠
+        // 这对 _cpAssetNamesSet 匹配至关重要——CP 的 Target 可能用反斜杠（Maps\springobjects），
+        // 而地图 tilesheet 的 ImageSource 用正斜杠（Maps/springobjects），
+        // 不规范化会导致自动补全时匹配失败，tilesheet 贴图被跳过。
+        assetName = assetName.Replace('\\', '/');
 
         if (assetName.StartsWith("SMAPI/", StringComparison.OrdinalIgnoreCase))
         {
