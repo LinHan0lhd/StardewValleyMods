@@ -161,28 +161,13 @@ namespace CPXnbExporter
             // 注：预乘 Alpha 处理已在 EnqueueTexture 入队前完成（ModEntry.PremultiplyAlpha），
             // 此处直接写入即可。调用方（如单资产导出命令）需自行确保像素格式正确。
 
-            // iOS 版 Stardew Valley 要求 Texture2D 尺寸为 2 的幂（POT）。
-            // 非 POT 纹理需要 padding 到 POT，并把 width/height 编码为：
-            //   高 16 位 = 原始使用尺寸（usedWidth/usedHeight）
-            //   低 16 位 = POT 后的实际尺寸（actualWidth/actualHeight）
-            // Android 目前未发现此要求，仅对 iOS 处理。
-            int usedWidth = width;
-            int usedHeight = height;
+            // 注：曾尝试 iOS POT padding（高16位=used，低16位=actual），
+            // 但导致 iOS 1.6 纹理完全解析错乱（彩虹漫色、背景图块）。
+            // xnb.js 的该逻辑是针对 Stardew Valley 1.5 iOS，1.6 似乎已不需要。
+            // 现直接按原始尺寸写入。
             int actualWidth = width;
             int actualHeight = height;
             Color[] finalPixels = pixels;
-
-            if (platform == 'i')
-            {
-                int potWidth = NextPowerOfTwo(width);
-                int potHeight = NextPowerOfTwo(height);
-                if (potWidth != width || potHeight != height)
-                {
-                    actualWidth = potWidth;
-                    actualHeight = potHeight;
-                    finalPixels = PadPixelsToSize(pixels, width, height, actualWidth, actualHeight);
-                }
-            }
 
             using var ms = new MemoryStream();
             using var writer = new BinaryWriter(ms);
@@ -221,11 +206,8 @@ namespace CPXnbExporter
             // Surface format
             writer.Write((int)0);
 
-            // iOS POT 编码：高16位=used，低16位=actual
-            int encodedWidth = platform == 'i' ? ((usedWidth << 16) | (actualWidth & 0xFFFF)) : actualWidth;
-            int encodedHeight = platform == 'i' ? ((usedHeight << 16) | (actualHeight & 0xFFFF)) : actualHeight;
-            writer.Write(encodedWidth);
-            writer.Write(encodedHeight);
+            writer.Write(actualWidth);
+            writer.Write(actualHeight);
             writer.Write(1);
 
             int dataSize = actualWidth * actualHeight * 4;
@@ -278,56 +260,6 @@ namespace CPXnbExporter
                 output.Flush();
                 return uncompressedData.Length;
             }
-        }
-
-        /// <summary>
-        /// 计算不小于 value 的最小 2 的幂（Power of Two）。
-        /// 若 value 本身已是 POT，则返回 value；最大支持到 65535（16 位）。
-        /// </summary>
-        private static int NextPowerOfTwo(int value)
-        {
-            if (value <= 1) return 1;
-            if (value > 0x8000) return 0x10000; // 65536
-
-            int pot = 1;
-            while (pot < value)
-                pot <<= 1;
-            return pot;
-        }
-
-        /// <summary>
-        /// 把像素数组 padding 到更大的尺寸。
-        /// 新区域用原始内容的边缘像素"extrude"填充，而不是透明黑色，
-        /// 避免 iOS GPU block compression 把黑色/白色污染到有效内容边缘。
-        /// 用于 iOS 版 Stardew Valley 的 POT 纹理要求。
-        /// </summary>
-        private static Color[] PadPixelsToSize(Color[] pixels, int srcWidth, int srcHeight, int dstWidth, int dstHeight)
-        {
-            var result = new Color[dstWidth * dstHeight];
-            // 1. 复制原始内容到左上角
-            for (int y = 0; y < srcHeight; y++)
-            {
-                int srcOffset = y * srcWidth;
-                int dstOffset = y * dstWidth;
-                Array.Copy(pixels, srcOffset, result, dstOffset, srcWidth);
-            }
-            // 2. 把最右列复制到右侧 padding
-            for (int y = 0; y < srcHeight; y++)
-            {
-                int dstOffset = y * dstWidth + srcWidth - 1;
-                Color rightEdge = result[dstOffset];
-                for (int x = srcWidth; x < dstWidth; x++)
-                    result[y * dstWidth + x] = rightEdge;
-            }
-            // 3. 把最底行复制到底部 padding（包括右下角区域）
-            int lastSrcRow = (srcHeight - 1) * dstWidth;
-            for (int y = srcHeight; y < dstHeight; y++)
-            {
-                int dstRowOffset = y * dstWidth;
-                for (int x = 0; x < dstWidth; x++)
-                    result[dstRowOffset + x] = result[lastSrcRow + x];
-            }
-            return result;
         }
 
         /// <summary>
