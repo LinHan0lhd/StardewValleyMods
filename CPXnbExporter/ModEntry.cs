@@ -426,6 +426,14 @@ public class ModEntry : Mod
             AlphaBleed(xnbPixels, original.Width, original.Height, maxIterations: 1);
         }
 
+        // TileSheet 边缘像素复制：减少 iOS 线性过滤导致的 tile 缝隙。
+        // 仅对 Maps/ 下的贴图生效（TileSheet 判断），独立贴图不受影响。
+        if (_config.EnableTileSheetEdgePadding && IsTileSheetAsset(fileName))
+        {
+            int ts = _config.TileSheetTileSize;
+            XnbWriter.PadTileSheetEdges(xnbPixels, original.Width, original.Height, ts, ts);
+        }
+
         var item = new ExportWorkItem
         {
             Type = WorkItemType.Texture,
@@ -544,6 +552,20 @@ public class ModEntry : Mod
     }
 
     /// <summary>
+    /// 判断资产是否为 TileSheet（地图用的 tile 合图）。
+    /// 启发式规则：Maps/ 下的贴图都是 TileSheet，LooseSprites/Cursors 也是。
+    /// </summary>
+    private static bool IsTileSheetAsset(string assetName)
+    {
+        if (string.IsNullOrEmpty(assetName)) return false;
+        return assetName.StartsWith("Maps/", StringComparison.OrdinalIgnoreCase)
+            || assetName.StartsWith("maps/", StringComparison.OrdinalIgnoreCase)
+            || assetName.IndexOf("TileSheet", StringComparison.OrdinalIgnoreCase) >= 0
+            || assetName.IndexOf("tilesheet", StringComparison.OrdinalIgnoreCase) >= 0
+            || assetName.IndexOf("Cursors", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    /// <summary>
     /// 将预乘 Alpha 像素还原为 Straight Alpha。
     /// 完全透明(A=0)的像素 RGB 无法恢复，保持黑色（不影响渲染）。
     /// </summary>
@@ -656,7 +678,10 @@ public class ModEntry : Mod
             // 用原始路径加载（SMAPI 虚拟资产路径）
             Texture2D original = Helper.GameContent.Load<Texture2D>(assetName);
             tempCopy = CloneTexture(original);
-            XnbWriter.ExportTextureSet(packedBase, unpackedBase, tempCopy, options.Platform);
+            int edgePadding = (_config.EnableTileSheetEdgePadding && IsTileSheetAsset(assetName))
+                ? _config.TileSheetTileSize : 0;
+            XnbWriter.ExportTextureSet(packedBase, unpackedBase, tempCopy, options.Platform,
+                tileSheetEdgePadding: edgePadding);
 
             Monitor.Log($"✓ [T] {assetName} ({original.Width}x{original.Height})", LogLevel.Info);
             return true;

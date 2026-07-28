@@ -30,6 +30,17 @@ namespace CPXnbExporter
         /// </summary>
         public bool EnableAlphaBleeding { get; set; } = false;
 
+        /// <summary>
+        /// 是否对 TileSheet 做边缘像素复制来减少 tile 缝隙（默认 false）。
+        /// 原理：把每个 tile 最外一圈像素向内复制一份，
+        /// 让 GPU 线性过滤在 tile 边界采样时采到的颜色和 tile 内部一致。
+        /// 仅对 Maps/ 下的贴图生效（TileSheet 判断），非 Maps/ 的独立贴图不受影响。
+        /// </summary>
+        public bool EnableTileSheetEdgePadding { get; set; } = false;
+
+        /// <summary>TileSheet 的 tile 尺寸（默认 16）</summary>
+        public int TileSheetTileSize { get; set; } = 16;
+
         /// <summary>验证配置有效性</summary>
         public void Validate(IMonitor monitor)
         {

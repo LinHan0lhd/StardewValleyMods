@@ -26,7 +26,8 @@ namespace CPXnbExporter
             string unpackedBasePath,
             Texture2D texture,
             char platform = 'a',
-            byte xnbVersion = 5)
+            byte xnbVersion = 5,
+            int tileSheetEdgePadding = 0)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(packedBasePath));
             if (!string.IsNullOrEmpty(unpackedBasePath))
@@ -103,6 +104,12 @@ namespace CPXnbExporter
                         }
                     }
                 }
+            }
+
+            // TileSheet 边缘像素复制（单资产导出路径）
+            if (tileSheetEdgePadding > 0)
+            {
+                PadTileSheetEdges(xnbPixels, width, height, tileSheetEdgePadding, tileSheetEdgePadding);
             }
 
             // XNB
@@ -262,6 +269,65 @@ namespace CPXnbExporter
                 output.Write(uncompressedData, 0, uncompressedData.Length);
                 output.Flush();
                 return uncompressedData.Length;
+            }
+        }
+
+        /// <summary>
+        /// TileSheet 边缘像素复制：把每个 tile 最外一圈像素向内复制一份。
+        /// 这样 GPU 线性过滤在 tile 边界采样时，采到的颜色和 tile 内部一致，
+        /// 能有效减少相邻 tile 之间的可见缝隙。
+        /// 仅对 OPAQUE 像素（A>0）做复制，避免把颜色灌进透明区域。
+        /// </summary>
+        public static void PadTileSheetEdges(Color[] pixels, int width, int height, int tileWidth, int tileHeight)
+        {
+            if (tileWidth < 3 || tileHeight < 3) return; // 太小没法做
+            int cols = width / tileWidth;
+            int rows = height / tileHeight;
+            if (cols < 1 || rows < 1) return;
+
+            for (int ty = 0; ty < rows; ty++)
+            {
+                for (int tx = 0; tx < cols; tx++)
+                {
+                    int sx = tx * tileWidth;
+                    int sy = ty * tileHeight;
+
+                    // 右边缘：倒数第二列 → 最后一列
+                    for (int y = 0; y < tileHeight; y++)
+                    {
+                        int src = (sy + y) * width + (sx + tileWidth - 2);
+                        int dst = (sy + y) * width + (sx + tileWidth - 1);
+                        if (pixels[src].A > 0)
+                            pixels[dst] = pixels[src];
+                    }
+
+                    // 左边缘：第二列 → 第一列
+                    for (int y = 0; y < tileHeight; y++)
+                    {
+                        int src = (sy + y) * width + (sx + 1);
+                        int dst = (sy + y) * width + (sx);
+                        if (pixels[src].A > 0)
+                            pixels[dst] = pixels[src];
+                    }
+
+                    // 下边缘：倒数第二行 → 最后一行
+                    for (int x = 0; x < tileWidth; x++)
+                    {
+                        int src = (sy + tileHeight - 2) * width + (sx + x);
+                        int dst = (sy + tileHeight - 1) * width + (sx + x);
+                        if (pixels[src].A > 0)
+                            pixels[dst] = pixels[src];
+                    }
+
+                    // 上边缘：第二行 → 第一行
+                    for (int x = 0; x < tileWidth; x++)
+                    {
+                        int src = (sy + 1) * width + (sx + x);
+                        int dst = (sy) * width + (sx + x);
+                        if (pixels[src].A > 0)
+                            pixels[dst] = pixels[src];
+                    }
+                }
             }
         }
 
