@@ -37,12 +37,67 @@ namespace CPXnbExporter
             var pixels = new Color[width * height];
             texture.GetData(pixels);
 
+            // 检测 Alpha 格式并转换为预乘（XNB SurfaceFormat.Color 要求预乘 Alpha）
+            bool isStraightAlpha = false;
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                var p = pixels[i];
+                if (p.R > p.A || p.G > p.A || p.B > p.A)
+                {
+                    isStraightAlpha = true;
+                    break;
+                }
+            }
+
+            // XNB 像素（预乘格式）
+            Color[] xnbPixels = pixels;
+            // PNG 像素（Straight Alpha 格式）
+            Color[] pngPixels = null;
+
+            if (isStraightAlpha)
+            {
+                // 原始是 Straight Alpha：XNB 需预乘，PNG 直接用原始
+                xnbPixels = (Color[])pixels.Clone();
+                for (int i = 0; i < xnbPixels.Length; i++)
+                {
+                    int a = xnbPixels[i].A;
+                    if (a == 0)
+                        xnbPixels[i] = new Color(0, 0, 0, 0);
+                    else if (a < 255)
+                        xnbPixels[i] = new Color(
+                            (byte)(xnbPixels[i].R * a / 255),
+                            (byte)(xnbPixels[i].G * a / 255),
+                            (byte)(xnbPixels[i].B * a / 255), a);
+                }
+                if (unpackedBasePath != null)
+                    pngPixels = pixels;
+            }
+            else if (unpackedBasePath != null)
+            {
+                // 原始是预乘 Alpha：PNG 需反预乘
+                pngPixels = (Color[])pixels.Clone();
+                for (int i = 0; i < pngPixels.Length; i++)
+                {
+                    var p = pngPixels[i];
+                    if (p.A == 0)
+                        pngPixels[i] = new Color(0, 0, 0, 0);
+                    else if (p.A < 255)
+                    {
+                        float scale = 255f / p.A;
+                        pngPixels[i] = new Color(
+                            (byte)Math.Min(255, p.R * scale),
+                            (byte)Math.Min(255, p.G * scale),
+                            (byte)Math.Min(255, p.B * scale), p.A);
+                    }
+                }
+            }
+
             // XNB
             string xnbPath = packedBasePath + ".xnb";
             long xnbFileSize;
             using (var fs = new FileStream(xnbPath, FileMode.Create, FileAccess.Write))
             {
-                xnbFileSize = WriteXnbBinaryFromPixels(fs, pixels, width, height, platform, xnbVersion);
+                xnbFileSize = WriteXnbBinaryFromPixels(fs, xnbPixels, width, height, platform, xnbVersion);
             }
 
             var metadata = new XnbMetadata
@@ -63,8 +118,10 @@ namespace CPXnbExporter
             if (!string.IsNullOrEmpty(unpackedBasePath))
             {
                 string pngPath = unpackedBasePath + ".png";
+                using var pngTex = new Texture2D(texture.GraphicsDevice, width, height);
+                pngTex.SetData(pngPixels);
                 using (var fs = new FileStream(pngPath, FileMode.Create, FileAccess.Write))
-                    texture.SaveAsPng(fs, width, height);
+                    pngTex.SaveAsPng(fs, width, height);
 
                 string configPath = unpackedBasePath + ".config";
                 File.WriteAllText(configPath, metadata.ToConfig(), Encoding.UTF8);
@@ -88,6 +145,8 @@ namespace CPXnbExporter
             bool isMobile = (platform == 'a' || platform == 'i');
             string readerName = isMobile ? Texture2DReaderShort : Texture2DReaderFull;
 
+            // 注：预乘 Alpha 处理已在 EnqueueTexture 入队前完成（ModEntry.PremultiplyAlpha），
+            // 此处直接写入即可。调用方（如单资产导出命令）需自行确保像素格式正确。
             using var ms = new MemoryStream();
             using var writer = new BinaryWriter(ms);
 

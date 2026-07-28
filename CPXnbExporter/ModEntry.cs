@@ -381,17 +381,39 @@ public class ModEntry : Mod
         var pixels = new Color[original.Width * original.Height];
         original.GetData(pixels);
 
-        // 预生成 PNG 字节（还原为 Straight Alpha，确保 unpacked 预览正确）
+        // 检测原始像素是预乘还是 Straight Alpha（CP 的 Load 动作可能返回 Straight Alpha）
+        bool isStraightAlpha = IsStraightAlpha(pixels);
+
+        // 预生成 PNG 字节（PNG 格式要求 Straight Alpha）
         byte[] pngData = null;
         if (unpackedBase != null)
         {
-            Color[] pngPixels = (Color[])pixels.Clone();
-            UnpremultiplyAlpha(pngPixels);
+            Color[] pngPixels;
+            if (isStraightAlpha)
+            {
+                // 原始已经是 Straight Alpha，直接用
+                pngPixels = (Color[])pixels.Clone();
+            }
+            else
+            {
+                // 原始是预乘 Alpha，需要反预乘还原为 Straight Alpha
+                pngPixels = (Color[])pixels.Clone();
+                UnpremultiplyAlpha(pngPixels);
+            }
             using var pngTex = new Texture2D(original.GraphicsDevice, original.Width, original.Height);
             pngTex.SetData(pngPixels);
             using var pngMs = new MemoryStream();
             pngTex.SaveAsPng(pngMs, original.Width, original.Height);
             pngData = pngMs.ToArray();
+        }
+
+        // 如果原始是 Straight Alpha，预乘后存入 PixelData（XNB 要求预乘格式）
+        // 如果原始已经是预乘，直接用
+        Color[] xnbPixels = pixels;
+        if (isStraightAlpha)
+        {
+            xnbPixels = (Color[])pixels.Clone();
+            PremultiplyAlpha(xnbPixels);
         }
 
         var item = new ExportWorkItem
@@ -401,13 +423,51 @@ public class ModEntry : Mod
             PackedBasePath = packedBase,
             UnpackedBasePath = unpackedBase,
             Platform = _currentOptions.Platform,
-            PixelData = pixels,
+            PixelData = xnbPixels,
             PngData = pngData,
             Width = original.Width,
             Height = original.Height
         };
 
         return _pipeline.TryAdd(item);
+    }
+
+    /// <summary>
+    /// 检测像素数组是否为 Straight Alpha（非预乘）格式。
+    /// 预乘格式下 R ≤ A、G ≤ A、B ≤ A 恒成立；若任一像素违反则为 Straight Alpha。
+    /// </summary>
+    private static bool IsStraightAlpha(Color[] pixels)
+    {
+        for (int i = 0; i < pixels.Length; i++)
+        {
+            var p = pixels[i];
+            if (p.R > p.A || p.G > p.A || p.B > p.A)
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// 将 Straight Alpha 像素转换为预乘 Alpha（XNB SurfaceFormat.Color 要求）。
+    /// </summary>
+    private static void PremultiplyAlpha(Color[] pixels)
+    {
+        for (int i = 0; i < pixels.Length; i++)
+        {
+            int a = pixels[i].A;
+            if (a == 0)
+            {
+                pixels[i] = new Color(0, 0, 0, 0);
+            }
+            else if (a < 255)
+            {
+                pixels[i] = new Color(
+                    (byte)(pixels[i].R * a / 255),
+                    (byte)(pixels[i].G * a / 255),
+                    (byte)(pixels[i].B * a / 255),
+                    a);
+            }
+        }
     }
 
     /// <summary>
