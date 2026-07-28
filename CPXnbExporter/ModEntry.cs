@@ -414,11 +414,15 @@ public class ModEntry : Mod
         if (isStraightAlpha)
         {
             xnbPixels = (Color[])pixels.Clone();
-            PremultiplyAlpha(xnbPixels); // Straight -> 预乘
+            PremultiplyAlpha(xnbPixels); // Straight -> 预乘（含 A=0 清零）
         }
         else
         {
-            xnbPixels = (Color[])pixels.Clone(); // 已是预乘，直接写入
+            xnbPixels = (Color[])pixels.Clone();
+            // SMAPI 的 PremultiplyTransparency 只处理半透明像素，跳过 A=0 像素，
+            // 导致 A=0 像素仍保留原始 RGB（通常为白色）。若不清零，GPU 线性过滤
+            // 在边缘采样时会把白色 RGB 混入可见像素，产生白线。
+            ZeroTransparentPixels(xnbPixels);
         }
 
         if (_config.EnableAlphaBleeding)
@@ -494,6 +498,20 @@ public class ModEntry : Mod
                     (byte)(pixels[i].B * a / 255),
                     (byte)a);
             }
+        }
+    }
+
+    /// <summary>
+    /// 清零所有完全透明（A=0）像素的 RGB。
+    /// 预乘 Alpha 格式中 A=0 的像素 RGB 必须为 0，否则 GPU 线性过滤
+    /// 在边缘采样时会把这些残留颜色混入可见像素，产生白线/色边。
+    /// </summary>
+    private static void ZeroTransparentPixels(Color[] pixels)
+    {
+        for (int i = 0; i < pixels.Length; i++)
+        {
+            if (pixels[i].A == 0)
+                pixels[i] = new Color((byte)0, (byte)0, (byte)0, (byte)0);
         }
     }
 

@@ -80,9 +80,11 @@ namespace CPXnbExporter
             }
             else
             {
-                // 原始已是预乘 Alpha：直接克隆，保持 A=0 像素 RGB 为 0
-                // （SMAPI 的 PremultiplyTransparency 已将 A=0 像素清零）。
                 xnbPixels = (Color[])pixels.Clone();
+                // SMAPI 的 PremultiplyTransparency 只处理半透明像素，跳过 A=0 像素，
+                // 导致 A=0 像素仍保留原始 RGB。必须清零，否则 GPU 线性过滤在边缘采样时
+                // 会把残留颜色混入可见像素，产生白线。
+                ZeroTransparentPixels(xnbPixels);
 
                 if (unpackedBasePath != null)
                 {
@@ -328,6 +330,20 @@ namespace CPXnbExporter
                             pixels[dst] = pixels[src];
                     }
                 }
+            }
+        }
+
+        /// <summary>
+        /// 清零所有完全透明（A=0）像素的 RGB。
+        /// 预乘 Alpha 格式中 A=0 的像素 RGB 必须为 0，否则 GPU 线性过滤
+        /// 在边缘采样时会把这些残留颜色混入可见像素，产生白线/色边。
+        /// </summary>
+        private static void ZeroTransparentPixels(Color[] pixels)
+        {
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                if (pixels[i].A == 0)
+                    pixels[i] = new Color((byte)0, (byte)0, (byte)0, (byte)0);
             }
         }
 
