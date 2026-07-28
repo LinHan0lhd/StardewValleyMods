@@ -23,6 +23,13 @@ namespace CPXnbExporter
         /// <summary>每帧加载的最大资产数（建议保持1避免卡顿）</summary>
         public int AssetsPerFrame { get; set; } = 1;
 
+        /// <summary>
+        /// 是否启用 Alpha Bleeding（默认 false）。
+        /// 对非 tile 的独立贴图（如头像、物品）可减少压缩边缘白边；
+        /// 对 TileSheet 会跨 tile 污染颜色，使缝隙更明显，因此默认关闭。
+        /// </summary>
+        public bool EnableAlphaBleeding { get; set; } = false;
+
         /// <summary>验证配置有效性</summary>
         public void Validate(IMonitor monitor)
         {

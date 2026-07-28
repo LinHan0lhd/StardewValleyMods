@@ -40,9 +40,11 @@ namespace CPXnbExporter
                     case "mobile":
                     case "a":
                     case "android":
+                        platform = 'a';
+                        break;
                     case "i":
                     case "ios":
-                        platform = 'a';
+                        platform = 'i';
                         break;
                     case "unpacked":
                     case "u":

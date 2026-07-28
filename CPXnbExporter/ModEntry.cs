@@ -407,19 +407,23 @@ public class ModEntry : Mod
             pngData = pngMs.ToArray();
         }
 
-        // 如果原始是 Straight Alpha，预乘后存入 PixelData（XNB 要求预乘格式）
-        // 无论原始格式如何，都做 Alpha Bleeding，防止移动端 block compression 污染边缘。
+        // XNB 要求预乘 Alpha 格式。默认不做 Alpha Bleeding，因为泛用 bleeding
+        // 对 TileSheet 会跨 tile 污染颜色，反而让缝隙/白线更明显。
+        // 如需对独立贴图（头像、物品等）启用，可在 config.json 中设置 EnableAlphaBleeding。
         Color[] xnbPixels;
         if (isStraightAlpha)
         {
             xnbPixels = (Color[])pixels.Clone();
-            PremultiplyAlpha(xnbPixels); // 先预乘
-            AlphaBleed(xnbPixels, original.Width, original.Height); // 再 bleeding
+            PremultiplyAlpha(xnbPixels); // Straight -> 预乘
         }
         else
         {
-            xnbPixels = (Color[])pixels.Clone();
-            AlphaBleed(xnbPixels, original.Width, original.Height); // 填充 A=0 像素 RGB
+            xnbPixels = (Color[])pixels.Clone(); // 已是预乘，直接写入
+        }
+
+        if (_config.EnableAlphaBleeding)
+        {
+            AlphaBleed(xnbPixels, original.Width, original.Height, maxIterations: 1);
         }
 
         var item = new ExportWorkItem
@@ -472,7 +476,7 @@ public class ModEntry : Mod
             if (a == 0)
             {
                 // 清零 RGB 残留：防止线性过滤采样透明边缘像素的 RGB
-                pixels[i] = new Color(0, 0, 0, 0);
+                pixels[i] = new Color((byte)0, (byte)0, (byte)0, (byte)0);
             }
             else if (a < 255)
             {
@@ -480,19 +484,17 @@ public class ModEntry : Mod
                     (byte)(pixels[i].R * a / 255),
                     (byte)(pixels[i].G * a / 255),
                     (byte)(pixels[i].B * a / 255),
-                    a);
+                    (byte)a);
             }
         }
     }
 
     /// <summary>
     /// 对完全透明（A=0）像素做 Alpha Bleeding：用最近的不透明像素颜色填充其 RGB。
-    /// SMAPI 的 PremultiplyTransparency 跳过 A=0 像素，导致透明区域 RGB 残留（常为白色）。
-    /// 在 iOS/Android 等移动端，GPU 会把纹理压缩为 PVRTC/ETC 等 block-based 格式，
-    /// A=0 像素的 RGB 会污染相邻半透明边缘，形成白线/黑缝/透明缝隙。
-    /// Alpha Bleeding 让透明像素的 RGB 与内容边缘一致，避免 block compression 污染。
+    /// 仅对独立贴图（头像、物品等）有益，可减少压缩边缘白边。
+    /// 对 TileSheet 会跨 tile 污染颜色，使缝隙更明显，因此默认不启用。
     /// </summary>
-    private static void AlphaBleed(Color[] pixels, int width, int height, int maxIterations = 32)
+    private static void AlphaBleed(Color[] pixels, int width, int height, int maxIterations = 1)
     {
         int count = width * height;
         var filled = new bool[count];
@@ -501,28 +503,30 @@ public class ModEntry : Mod
 
         for (int iter = 0; iter < maxIterations; iter++)
         {
+            // 使用本轮开始前的 filled 掩码作为源，避免同一次迭代内级联扩散
+            var sourceMask = (bool[])filled.Clone();
             bool changed = false;
             for (int y = 0; y < height; y++)
             {
                 for (int x = 0; x < width; x++)
                 {
                     int i = y * width + x;
-                    if (filled[i]) continue;
+                    if (sourceMask[i]) continue;
 
                     int r = 0, g = 0, b = 0, n = 0;
-                    if (x > 0 && filled[i - 1])
+                    if (x > 0 && sourceMask[i - 1])
                     {
                         r += pixels[i - 1].R; g += pixels[i - 1].G; b += pixels[i - 1].B; n++;
                     }
-                    if (x < width - 1 && filled[i + 1])
+                    if (x < width - 1 && sourceMask[i + 1])
                     {
                         r += pixels[i + 1].R; g += pixels[i + 1].G; b += pixels[i + 1].B; n++;
                     }
-                    if (y > 0 && filled[i - width])
+                    if (y > 0 && sourceMask[i - width])
                     {
                         r += pixels[i - width].R; g += pixels[i - width].G; b += pixels[i - width].B; n++;
                     }
-                    if (y < height - 1 && filled[i + width])
+                    if (y < height - 1 && sourceMask[i + width])
                     {
                         r += pixels[i + width].R; g += pixels[i + width].G; b += pixels[i + width].B; n++;
                     }
@@ -550,7 +554,7 @@ public class ModEntry : Mod
             var p = pixels[i];
             if (p.A == 0)
             {
-                pixels[i] = new Color(0, 0, 0, 0);
+                pixels[i] = new Color((byte)0, (byte)0, (byte)0, (byte)0);
             }
             else if (p.A < 255)
             {

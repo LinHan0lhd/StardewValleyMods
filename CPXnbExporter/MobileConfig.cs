@@ -7,7 +7,7 @@ namespace CPXnbExporter
         {
             public const char Windows = 'w';
             public const char Android = 'a';
-            public const char IOS = 'a';
+            public const char IOS = 'i';
         }
 
         public static class Paths

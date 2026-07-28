@@ -22,9 +22,11 @@ namespace CPXnbExporter
         /// </summary>
         public static void WriteMapXnbFromTbin(Stream output, byte[] tbinData, char platform)
         {
-            bool isMobile = (platform == 'a' || platform == 'i');
             // 地图 reader 在所有平台均使用全名，与 XnbConverter 参考实现一致
             string readerName = MapReaderFull;
+            // Android 保持 LZ4 压缩；iOS/PC 不压缩（与贴图逻辑一致）
+            bool compressed = platform == 'a';
+            byte flags = compressed ? (byte)0x41 : (byte)0x01;
 
             using var ms = new MemoryStream();
             using var writer = new BinaryWriter(ms, Encoding.UTF8);
@@ -36,14 +38,13 @@ namespace CPXnbExporter
             writer.Write((byte)platform);
             writer.Write((byte)5);
 
-            byte flags = isMobile ? (byte)0x41 : (byte)0x01;
             writer.Write(flags);
 
             int fileSizePos = (int)ms.Position;
             writer.Write((uint)0);
 
             int contentSizePos = -1;
-            if (isMobile)
+            if (compressed)
             {
                 contentSizePos = (int)ms.Position;
                 writer.Write((uint)0);
@@ -72,10 +73,10 @@ namespace CPXnbExporter
             writer.Flush();
 
             byte[] rawData = ms.ToArray();
-            int headerSize = isMobile ? 14 : 10;
+            int headerSize = compressed ? 14 : 10;
             int bodySize = rawData.Length - headerSize;
 
-            if (isMobile)
+            if (compressed)
             {
                 byte[] bodyBytes = new byte[bodySize];
                 Array.Copy(rawData, headerSize, bodyBytes, 0, bodySize);

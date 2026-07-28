@@ -60,29 +60,28 @@ namespace CPXnbExporter
 
             if (isStraightAlpha)
             {
-                // 原始是 Straight Alpha：XNB 需预乘，再做 Alpha Bleeding，PNG 直接用原始
+                // 原始是 Straight Alpha：XNB 需预乘，并清零 A=0 像素 RGB。
                 xnbPixels = (Color[])pixels.Clone();
                 for (int i = 0; i < xnbPixels.Length; i++)
                 {
                     int a = xnbPixels[i].A;
                     if (a == 0)
-                        xnbPixels[i] = new Color(0, 0, 0, 0);
+                        xnbPixels[i] = new Color((byte)0, (byte)0, (byte)0, (byte)0);
                     else if (a < 255)
                         xnbPixels[i] = new Color(
                             (byte)(xnbPixels[i].R * a / 255),
                             (byte)(xnbPixels[i].G * a / 255),
-                            (byte)(xnbPixels[i].B * a / 255), a);
+                            (byte)(xnbPixels[i].B * a / 255),
+                            (byte)a);
                 }
-                AlphaBleed(xnbPixels, width, height);
                 if (unpackedBasePath != null)
                     pngPixels = pixels;
             }
             else
             {
-                // 原始已是预乘 Alpha：做 Alpha Bleeding 填充 A=0 像素 RGB，
-                // 防止移动端 GPU block compression 污染半透明边缘形成白线/黑缝。
+                // 原始已是预乘 Alpha：直接克隆，保持 A=0 像素 RGB 为 0
+                // （SMAPI 的 PremultiplyTransparency 已将 A=0 像素清零）。
                 xnbPixels = (Color[])pixels.Clone();
-                AlphaBleed(xnbPixels, width, height);
 
                 if (unpackedBasePath != null)
                 {
@@ -92,14 +91,15 @@ namespace CPXnbExporter
                     {
                         var p = pngPixels[i];
                         if (p.A == 0)
-                            pngPixels[i] = new Color(0, 0, 0, 0);
+                            pngPixels[i] = new Color((byte)0, (byte)0, (byte)0, (byte)0);
                         else if (p.A < 255)
                         {
                             float scale = 255f / p.A;
                             pngPixels[i] = new Color(
                                 (byte)Math.Min(255, p.R * scale),
                                 (byte)Math.Min(255, p.G * scale),
-                                (byte)Math.Min(255, p.B * scale), p.A);
+                                (byte)Math.Min(255, p.B * scale),
+                                p.A);
                         }
                     }
                 }
@@ -122,7 +122,7 @@ namespace CPXnbExporter
                 MipCount = 1,
                 Platform = platform.ToString(),
                 Version = xnbVersion,
-                Compressed = (platform == 'a' || platform == 'i'),
+                Compressed = (platform == 'a'),
                 SharedResources = 0,
                 FileSize = xnbFileSize
             };
@@ -262,57 +262,6 @@ namespace CPXnbExporter
                 output.Write(uncompressedData, 0, uncompressedData.Length);
                 output.Flush();
                 return uncompressedData.Length;
-            }
-        }
-
-        /// <summary>
-        /// 对完全透明（A=0）像素做 Alpha Bleeding：用最近的不透明像素颜色填充其 RGB。
-        /// 防止移动端 GPU 的 PVRTC/ETC 等 block compression 把透明像素 RGB 污染到半透明边缘。
-        /// </summary>
-        private static void AlphaBleed(Color[] pixels, int width, int height, int maxIterations = 32)
-        {
-            int count = width * height;
-            var filled = new bool[count];
-            for (int i = 0; i < count; i++)
-                filled[i] = pixels[i].A > 0;
-
-            for (int iter = 0; iter < maxIterations; iter++)
-            {
-                bool changed = false;
-                for (int y = 0; y < height; y++)
-                {
-                    for (int x = 0; x < width; x++)
-                    {
-                        int i = y * width + x;
-                        if (filled[i]) continue;
-
-                        int r = 0, g = 0, b = 0, n = 0;
-                        if (x > 0 && filled[i - 1])
-                        {
-                            r += pixels[i - 1].R; g += pixels[i - 1].G; b += pixels[i - 1].B; n++;
-                        }
-                        if (x < width - 1 && filled[i + 1])
-                        {
-                            r += pixels[i + 1].R; g += pixels[i + 1].G; b += pixels[i + 1].B; n++;
-                        }
-                        if (y > 0 && filled[i - width])
-                        {
-                            r += pixels[i - width].R; g += pixels[i - width].G; b += pixels[i - width].B; n++;
-                        }
-                        if (y < height - 1 && filled[i + width])
-                        {
-                            r += pixels[i + width].R; g += pixels[i + width].G; b += pixels[i + width].B; n++;
-                        }
-
-                        if (n > 0)
-                        {
-                            pixels[i] = new Color((byte)(r / n), (byte)(g / n), (byte)(b / n), (byte)0);
-                            filled[i] = true;
-                            changed = true;
-                        }
-                    }
-                }
-                if (!changed) break;
             }
         }
 

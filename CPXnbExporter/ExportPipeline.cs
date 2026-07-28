@@ -187,7 +187,7 @@ namespace CPXnbExporter
             sb.AppendLine("  \"Header\": {");
             sb.AppendLine("    \"Target\": \"" + GetPlatformName(platform) + "\",");
             sb.AppendLine("    \"FormatVersion\": 5,");
-            sb.AppendLine("    \"CompressedFlag\": \"" + (platform == 'a' || platform == 'i' ? "Lz4" : "None") + "\"");
+            sb.AppendLine("    \"CompressedFlag\": \"" + (platform == 'a' ? "Lz4" : "None") + "\"");
             sb.AppendLine("  },");
             sb.AppendLine("  \"Readers\": [");
             sb.AppendLine("    {");
@@ -204,7 +204,7 @@ private static string GetPlatformName(char platform)
             return platform switch
             {
                 'a' => "Android",
-                'i' => "Android",  // iOS uses Android format
+                'i' => "iOS",
                 'w' => "Windows",
                 'm' => "WindowsPhone7",
                 'x' => "Xbox360",
