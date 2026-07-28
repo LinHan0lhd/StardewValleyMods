@@ -408,12 +408,17 @@ public class ModEntry : Mod
         }
 
         // 如果原始是 Straight Alpha，预乘后存入 PixelData（XNB 要求预乘格式）
-        // 如果原始已经是预乘，直接用
-        Color[] xnbPixels = pixels;
+        // 如果原始已经是预乘，仍需清零 A=0 像素的 RGB 残留（SMAPI 跳过 A=0 导致）
+        Color[] xnbPixels;
         if (isStraightAlpha)
         {
             xnbPixels = (Color[])pixels.Clone();
-            PremultiplyAlpha(xnbPixels);
+            PremultiplyAlpha(xnbPixels); // 内部会清零 A=0 的 RGB
+        }
+        else
+        {
+            xnbPixels = (Color[])pixels.Clone();
+            ClearTransparentPixelRgb(xnbPixels); // 清零 A=0 的 RGB 残留，防止边缘白线
         }
 
         var item = new ExportWorkItem
@@ -435,20 +440,28 @@ public class ModEntry : Mod
     /// <summary>
     /// 检测像素数组是否为 Straight Alpha（非预乘）格式。
     /// 预乘格式下 R ≤ A、G ≤ A、B ≤ A 恒成立；若任一像素违反则为 Straight Alpha。
+    /// 注意：A=0 的像素 RGB 可能有残留（SMAPI 的 PremultiplyTransparency 跳过 A=0），
+    /// 所以只检查半透明像素（0 &lt; A &lt; 255）来判断格式。
     /// </summary>
     private static bool IsStraightAlpha(Color[] pixels)
     {
         for (int i = 0; i < pixels.Length; i++)
         {
             var p = pixels[i];
-            if (p.R > p.A || p.G > p.A || p.B > p.A)
-                return true;
+            // 只检查半透明像素：A=0 的 RGB 残留不代表格式，A=255 时 R≤A 恒成立无法判断
+            if (p.A > 0 && p.A < 255)
+            {
+                if (p.R > p.A || p.G > p.A || p.B > p.A)
+                    return true;
+            }
         }
         return false;
     }
 
     /// <summary>
     /// 将 Straight Alpha 像素转换为预乘 Alpha（XNB SurfaceFormat.Color 要求）。
+    /// 同时清零所有完全透明（A=0）像素的 RGB，防止线性过滤采样时边缘出现白线。
+    /// （SMAPI 的 PremultiplyTransparency 跳过了 A=0 像素，导致 RGB 残留）
     /// </summary>
     private static void PremultiplyAlpha(Color[] pixels)
     {
@@ -457,6 +470,7 @@ public class ModEntry : Mod
             int a = pixels[i].A;
             if (a == 0)
             {
+                // 清零 RGB 残留：防止线性过滤采样透明边缘像素的 RGB
                 pixels[i] = new Color(0, 0, 0, 0);
             }
             else if (a < 255)
@@ -466,6 +480,22 @@ public class ModEntry : Mod
                     (byte)(pixels[i].G * a / 255),
                     (byte)(pixels[i].B * a / 255),
                     a);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 清零完全透明（A=0）像素的 RGB 残留。
+    /// 用于已预乘但 A=0 像素 RGB 未清零的情况（SMAPI 跳过 A=0 导致的残留）。
+    /// 线性过滤采样时，透明像素的非零 RGB 会被混合到边缘，形成白线/缝隙。
+    /// </summary>
+    private static void ClearTransparentPixelRgb(Color[] pixels)
+    {
+        for (int i = 0; i < pixels.Length; i++)
+        {
+            if (pixels[i].A == 0 && (pixels[i].R != 0 || pixels[i].G != 0 || pixels[i].B != 0))
+            {
+                pixels[i] = new Color(0, 0, 0, 0);
             }
         }
     }

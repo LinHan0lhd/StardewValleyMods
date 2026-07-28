@@ -37,15 +37,19 @@ namespace CPXnbExporter
             var pixels = new Color[width * height];
             texture.GetData(pixels);
 
-            // 检测 Alpha 格式并转换为预乘（XNB SurfaceFormat.Color 要求预乘 Alpha）
+            // 检测 Alpha 格式：只检查半透明像素（0 < A < 255）
+            // A=0 的 RGB 残留不代表格式（SMAPI 跳过 A=0），A=255 时 R≤A 恒成立无法判断
             bool isStraightAlpha = false;
             for (int i = 0; i < pixels.Length; i++)
             {
                 var p = pixels[i];
-                if (p.R > p.A || p.G > p.A || p.B > p.A)
+                if (p.A > 0 && p.A < 255)
                 {
-                    isStraightAlpha = true;
-                    break;
+                    if (p.R > p.A || p.G > p.A || p.B > p.A)
+                    {
+                        isStraightAlpha = true;
+                        break;
+                    }
                 }
             }
 
@@ -56,7 +60,7 @@ namespace CPXnbExporter
 
             if (isStraightAlpha)
             {
-                // 原始是 Straight Alpha：XNB 需预乘，PNG 直接用原始
+                // 原始是 Straight Alpha：XNB 需预乘（同时清零 A=0 的 RGB），PNG 直接用原始
                 xnbPixels = (Color[])pixels.Clone();
                 for (int i = 0; i < xnbPixels.Length; i++)
                 {
@@ -72,22 +76,34 @@ namespace CPXnbExporter
                 if (unpackedBasePath != null)
                     pngPixels = pixels;
             }
-            else if (unpackedBasePath != null)
+            else
             {
-                // 原始是预乘 Alpha：PNG 需反预乘
-                pngPixels = (Color[])pixels.Clone();
-                for (int i = 0; i < pngPixels.Length; i++)
+                // 原始已是预乘 Alpha：仍需清零 A=0 像素的 RGB 残留（SMAPI 跳过 A=0 导致）
+                // 线性过滤采样时透明像素的非零 RGB 会混合到边缘，形成白线/缝隙
+                xnbPixels = (Color[])pixels.Clone();
+                for (int i = 0; i < xnbPixels.Length; i++)
                 {
-                    var p = pngPixels[i];
-                    if (p.A == 0)
-                        pngPixels[i] = new Color(0, 0, 0, 0);
-                    else if (p.A < 255)
+                    if (xnbPixels[i].A == 0 && (xnbPixels[i].R != 0 || xnbPixels[i].G != 0 || xnbPixels[i].B != 0))
+                        xnbPixels[i] = new Color(0, 0, 0, 0);
+                }
+
+                if (unpackedBasePath != null)
+                {
+                    // PNG 需反预乘还原为 Straight Alpha
+                    pngPixels = (Color[])pixels.Clone();
+                    for (int i = 0; i < pngPixels.Length; i++)
                     {
-                        float scale = 255f / p.A;
-                        pngPixels[i] = new Color(
-                            (byte)Math.Min(255, p.R * scale),
-                            (byte)Math.Min(255, p.G * scale),
-                            (byte)Math.Min(255, p.B * scale), p.A);
+                        var p = pngPixels[i];
+                        if (p.A == 0)
+                            pngPixels[i] = new Color(0, 0, 0, 0);
+                        else if (p.A < 255)
+                        {
+                            float scale = 255f / p.A;
+                            pngPixels[i] = new Color(
+                                (byte)Math.Min(255, p.R * scale),
+                                (byte)Math.Min(255, p.G * scale),
+                                (byte)Math.Min(255, p.B * scale), p.A);
+                        }
                     }
                 }
             }
