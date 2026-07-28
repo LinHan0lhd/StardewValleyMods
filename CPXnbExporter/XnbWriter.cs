@@ -163,6 +163,30 @@ namespace CPXnbExporter
 
             // 注：预乘 Alpha 处理已在 EnqueueTexture 入队前完成（ModEntry.PremultiplyAlpha），
             // 此处直接写入即可。调用方（如单资产导出命令）需自行确保像素格式正确。
+
+            // iOS 版 Stardew Valley 要求 Texture2D 尺寸为 2 的幂（POT）。
+            // 非 POT 纹理需要 padding 到 POT，并把 width/height 编码为：
+            //   高 16 位 = 原始使用尺寸（usedWidth/usedHeight）
+            //   低 16 位 = POT 后的实际尺寸（actualWidth/actualHeight）
+            // Android 目前未发现此要求，仅对 iOS 处理。
+            int usedWidth = width;
+            int usedHeight = height;
+            int actualWidth = width;
+            int actualHeight = height;
+            Color[] finalPixels = pixels;
+
+            if (platform == 'i')
+            {
+                int potWidth = NextPowerOfTwo(width);
+                int potHeight = NextPowerOfTwo(height);
+                if (potWidth != width || potHeight != height)
+                {
+                    actualWidth = potWidth;
+                    actualHeight = potHeight;
+                    finalPixels = PadPixelsToSize(pixels, width, height, actualWidth, actualHeight);
+                }
+            }
+
             using var ms = new MemoryStream();
             using var writer = new BinaryWriter(ms);
 
@@ -199,20 +223,24 @@ namespace CPXnbExporter
 
             // Surface format
             writer.Write((int)0);
-            writer.Write(width);
-            writer.Write(height);
+
+            // iOS POT 编码：高16位=used，低16位=actual
+            int encodedWidth = platform == 'i' ? ((usedWidth << 16) | (actualWidth & 0xFFFF)) : actualWidth;
+            int encodedHeight = platform == 'i' ? ((usedHeight << 16) | (actualHeight & 0xFFFF)) : actualHeight;
+            writer.Write(encodedWidth);
+            writer.Write(encodedHeight);
             writer.Write(1);
 
-            int dataSize = width * height * 4;
+            int dataSize = actualWidth * actualHeight * 4;
             writer.Write(dataSize);
 
             byte[] pixelData = new byte[dataSize];
-            for (int i = 0; i < pixels.Length; i++)
+            for (int i = 0; i < finalPixels.Length; i++)
             {
-                pixelData[i * 4 + 0] = pixels[i].R;
-                pixelData[i * 4 + 1] = pixels[i].G;
-                pixelData[i * 4 + 2] = pixels[i].B;
-                pixelData[i * 4 + 3] = pixels[i].A;
+                pixelData[i * 4 + 0] = finalPixels[i].R;
+                pixelData[i * 4 + 1] = finalPixels[i].G;
+                pixelData[i * 4 + 2] = finalPixels[i].B;
+                pixelData[i * 4 + 3] = finalPixels[i].A;
             }
             writer.Write(pixelData);
             writer.Flush();
@@ -253,6 +281,38 @@ namespace CPXnbExporter
                 output.Flush();
                 return uncompressedData.Length;
             }
+        }
+
+        /// <summary>
+        /// 计算不小于 value 的最小 2 的幂（Power of Two）。
+        /// 若 value 本身已是 POT，则返回 value；最大支持到 65535（16 位）。
+        /// </summary>
+        private static int NextPowerOfTwo(int value)
+        {
+            if (value <= 1) return 1;
+            if (value > 0x8000) return 0x10000; // 65536
+
+            int pot = 1;
+            while (pot < value)
+                pot <<= 1;
+            return pot;
+        }
+
+        /// <summary>
+        /// 把像素数组 padding 到更大的尺寸，新区域填充透明黑色（A=0, RGB=0）。
+        /// 用于 iOS 版 Stardew Valley 的 POT 纹理要求。
+        /// </summary>
+        private static Color[] PadPixelsToSize(Color[] pixels, int srcWidth, int srcHeight, int dstWidth, int dstHeight)
+        {
+            var result = new Color[dstWidth * dstHeight];
+            // 默认已经是 Color(0,0,0,0)（struct 默认初始化），无需再清零
+            for (int y = 0; y < srcHeight; y++)
+            {
+                int srcOffset = y * srcWidth;
+                int dstOffset = y * dstWidth;
+                Array.Copy(pixels, srcOffset, result, dstOffset, srcWidth);
+            }
+            return result;
         }
 
         private static void Write7BitEncodedInt(BinaryWriter writer, int value)
