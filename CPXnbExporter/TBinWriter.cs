@@ -122,7 +122,10 @@ public static class TBinWriter
         WriteProperties(writer, layer.Properties);
 
         // Tiles (逐行写入，支持压缩)
-        string currentTileSheetId = "";
+        // 使用 null 作为初始值，与官方 TbinFormat 的 previousTileSheet = null 语义一致。
+        // 不能用 "" 初始化：如果 tilesheet 的 Id 恰好为 ""，字符串比较会误判为"未变化"，
+        // 导致第一个 tile 的 'T' 标记被跳过，reader 用 null tilesheet 创建 StaticTile 而崩溃。
+        string currentTileSheetId = null;
         for (int y = 0; y < layer.LayerHeight; y++)
         {
             int x = 0;
@@ -160,24 +163,20 @@ public static class TBinWriter
                 }
                 else if (tile is AnimatedTile anim)
                 {
-                    // 官方实现：如果帧数为0，当作 StaticTile 处理
+                    // 帧数为0的 AnimatedTile 没有可渲染内容，且访问 TileSheet/TileIndex/BlendMode
+                    // 会抛 DivideByZeroException（m_animationInterval=0, ElapsedTime%0 未定义）。
+                    // 安全做法：当作空 tile 处理。
                     if (anim.TileFrames.Length == 0)
                     {
-                        string tsId = anim.TileSheet?.Id ?? "";
-                        if (tsId != currentTileSheetId)
-                        {
-                            writer.Write((byte)'T');
-                            WriteString(writer, tsId);
-                            currentTileSheetId = tsId;
-                        }
-                        writer.Write((byte)'S');
-                        writer.Write(anim.TileIndex);
-                        writer.Write((byte)anim.BlendMode);
-                        WriteProperties(writer, anim.Properties);
+                        writer.Write((byte)'N');
+                        writer.Write(1);
                     }
                     else
                     {
                         // 写入 'A' + AnimatedTile
+                        // 注意：不在此处写 layer 级 'T' 标记，因为 AnimatedTile 的 TileSheet
+                        // 依赖游戏运行时（非确定性），且 body 内部有自己的 'T' 标记。
+                        // 后续 StaticTile 会根据 currentTileSheetId 自行判断是否需要 'T'。
                         writer.Write((byte)'A');
                         WriteAnimatedTile(writer, anim);
                     }
@@ -203,7 +202,9 @@ public static class TBinWriter
         writer.Write(anim.TileFrames.Length);
 
         // Frames: 'T' + tilesheetId / 'S' + StaticTile
-        string frameCurrentTileSheetId = "";
+        // 用 null 初始化（与官方 prevTileSheet = null 一致），
+        // 确保第一帧总是写入 'T' 标记，即使 tilesheet Id 为空字符串。
+        string frameCurrentTileSheetId = null;
         foreach (var frame in anim.TileFrames)
         {
             string frameTsId = frame.TileSheet?.Id ?? "";
