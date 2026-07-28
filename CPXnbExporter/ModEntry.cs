@@ -529,7 +529,7 @@ public class ModEntry : Mod
 
                     if (n > 0)
                     {
-                        pixels[i] = new Color((byte)(r / n), (byte)(g / n), (byte)(b / n), 0);
+                        pixels[i] = new Color((byte)(r / n), (byte)(g / n), (byte)(b / n), (byte)0);
                         filled[i] = true;
                         changed = true;
                     }
