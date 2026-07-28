@@ -179,14 +179,16 @@ namespace CPXnbExporter
             writer.Write((byte)platform);
             writer.Write(xnbVersion);
 
-            byte flags = isMobile ? (byte)0x41 : (byte)0x01;
+            // 对照测试：iOS 暂时不压缩，排除 LZ4 压缩问题。
+            // Android 保持 LZ4 压缩。
+            byte flags = platform == 'a' ? (byte)0x41 : (byte)0x01;
             writer.Write(flags);
 
             int fileSizePosition = (int)ms.Position;
             writer.Write((uint)0);
 
             int contentSizePosition = -1;
-            if (isMobile)
+            if (flags == 0x41)
             {
                 contentSizePosition = (int)ms.Position;
                 writer.Write((uint)0);
@@ -225,10 +227,11 @@ namespace CPXnbExporter
             writer.Flush();
 
             byte[] uncompressedData = ms.ToArray();
-            int headerSize = isMobile ? 14 : 10;
+            bool compressed = (flags & 0x40) != 0;
+            int headerSize = compressed ? 14 : 10;
             int bodySize = uncompressedData.Length - headerSize;
 
-            if (isMobile)
+            if (compressed)
             {
                 byte[] bodyBytes = new byte[bodySize];
                 Array.Copy(uncompressedData, headerSize, bodyBytes, 0, bodySize);
