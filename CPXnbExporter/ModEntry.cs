@@ -408,17 +408,18 @@ public class ModEntry : Mod
         }
 
         // 如果原始是 Straight Alpha，预乘后存入 PixelData（XNB 要求预乘格式）
-        // 如果原始已经是预乘，仍需清零 A=0 像素的 RGB 残留（SMAPI 跳过 A=0 导致）
+        // 无论原始格式如何，都做 Alpha Bleeding，防止移动端 block compression 污染边缘。
         Color[] xnbPixels;
         if (isStraightAlpha)
         {
             xnbPixels = (Color[])pixels.Clone();
-            PremultiplyAlpha(xnbPixels); // 内部会清零 A=0 的 RGB
+            PremultiplyAlpha(xnbPixels); // 先预乘
+            AlphaBleed(xnbPixels, original.Width, original.Height); // 再 bleeding
         }
         else
         {
             xnbPixels = (Color[])pixels.Clone();
-            ClearTransparentPixelRgb(xnbPixels); // 清零 A=0 的 RGB 残留，防止边缘白线
+            AlphaBleed(xnbPixels, original.Width, original.Height); // 填充 A=0 像素 RGB
         }
 
         var item = new ExportWorkItem
@@ -485,18 +486,56 @@ public class ModEntry : Mod
     }
 
     /// <summary>
-    /// 清零完全透明（A=0）像素的 RGB 残留。
-    /// 用于已预乘但 A=0 像素 RGB 未清零的情况（SMAPI 跳过 A=0 导致的残留）。
-    /// 线性过滤采样时，透明像素的非零 RGB 会被混合到边缘，形成白线/缝隙。
+    /// 对完全透明（A=0）像素做 Alpha Bleeding：用最近的不透明像素颜色填充其 RGB。
+    /// SMAPI 的 PremultiplyTransparency 跳过 A=0 像素，导致透明区域 RGB 残留（常为白色）。
+    /// 在 iOS/Android 等移动端，GPU 会把纹理压缩为 PVRTC/ETC 等 block-based 格式，
+    /// A=0 像素的 RGB 会污染相邻半透明边缘，形成白线/黑缝/透明缝隙。
+    /// Alpha Bleeding 让透明像素的 RGB 与内容边缘一致，避免 block compression 污染。
     /// </summary>
-    private static void ClearTransparentPixelRgb(Color[] pixels)
+    private static void AlphaBleed(Color[] pixels, int width, int height, int maxIterations = 32)
     {
-        for (int i = 0; i < pixels.Length; i++)
+        int count = width * height;
+        var filled = new bool[count];
+        for (int i = 0; i < count; i++)
+            filled[i] = pixels[i].A > 0;
+
+        for (int iter = 0; iter < maxIterations; iter++)
         {
-            if (pixels[i].A == 0 && (pixels[i].R != 0 || pixels[i].G != 0 || pixels[i].B != 0))
+            bool changed = false;
+            for (int y = 0; y < height; y++)
             {
-                pixels[i] = new Color(0, 0, 0, 0);
+                for (int x = 0; x < width; x++)
+                {
+                    int i = y * width + x;
+                    if (filled[i]) continue;
+
+                    int r = 0, g = 0, b = 0, n = 0;
+                    if (x > 0 && filled[i - 1])
+                    {
+                        r += pixels[i - 1].R; g += pixels[i - 1].G; b += pixels[i - 1].B; n++;
+                    }
+                    if (x < width - 1 && filled[i + 1])
+                    {
+                        r += pixels[i + 1].R; g += pixels[i + 1].G; b += pixels[i + 1].B; n++;
+                    }
+                    if (y > 0 && filled[i - width])
+                    {
+                        r += pixels[i - width].R; g += pixels[i - width].G; b += pixels[i - width].B; n++;
+                    }
+                    if (y < height - 1 && filled[i + width])
+                    {
+                        r += pixels[i + width].R; g += pixels[i + width].G; b += pixels[i + width].B; n++;
+                    }
+
+                    if (n > 0)
+                    {
+                        pixels[i] = new Color((byte)(r / n), (byte)(g / n), (byte)(b / n), 0);
+                        filled[i] = true;
+                        changed = true;
+                    }
+                }
             }
+            if (!changed) break;
         }
     }
 

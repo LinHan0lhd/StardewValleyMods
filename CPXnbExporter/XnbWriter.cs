@@ -60,7 +60,7 @@ namespace CPXnbExporter
 
             if (isStraightAlpha)
             {
-                // 原始是 Straight Alpha：XNB 需预乘（同时清零 A=0 的 RGB），PNG 直接用原始
+                // 原始是 Straight Alpha：XNB 需预乘，再做 Alpha Bleeding，PNG 直接用原始
                 xnbPixels = (Color[])pixels.Clone();
                 for (int i = 0; i < xnbPixels.Length; i++)
                 {
@@ -73,19 +73,16 @@ namespace CPXnbExporter
                             (byte)(xnbPixels[i].G * a / 255),
                             (byte)(xnbPixels[i].B * a / 255), a);
                 }
+                AlphaBleed(xnbPixels, width, height);
                 if (unpackedBasePath != null)
                     pngPixels = pixels;
             }
             else
             {
-                // 原始已是预乘 Alpha：仍需清零 A=0 像素的 RGB 残留（SMAPI 跳过 A=0 导致）
-                // 线性过滤采样时透明像素的非零 RGB 会混合到边缘，形成白线/缝隙
+                // 原始已是预乘 Alpha：做 Alpha Bleeding 填充 A=0 像素 RGB，
+                // 防止移动端 GPU block compression 污染半透明边缘形成白线/黑缝。
                 xnbPixels = (Color[])pixels.Clone();
-                for (int i = 0; i < xnbPixels.Length; i++)
-                {
-                    if (xnbPixels[i].A == 0 && (xnbPixels[i].R != 0 || xnbPixels[i].G != 0 || xnbPixels[i].B != 0))
-                        xnbPixels[i] = new Color(0, 0, 0, 0);
-                }
+                AlphaBleed(xnbPixels, width, height);
 
                 if (unpackedBasePath != null)
                 {
@@ -299,20 +296,89 @@ namespace CPXnbExporter
         }
 
         /// <summary>
-        /// 把像素数组 padding 到更大的尺寸，新区域填充透明黑色（A=0, RGB=0）。
+        /// 把像素数组 padding 到更大的尺寸。
+        /// 新区域用原始内容的边缘像素"extrude"填充，而不是透明黑色，
+        /// 避免 iOS GPU block compression 把黑色/白色污染到有效内容边缘。
         /// 用于 iOS 版 Stardew Valley 的 POT 纹理要求。
         /// </summary>
         private static Color[] PadPixelsToSize(Color[] pixels, int srcWidth, int srcHeight, int dstWidth, int dstHeight)
         {
             var result = new Color[dstWidth * dstHeight];
-            // 默认已经是 Color(0,0,0,0)（struct 默认初始化），无需再清零
+            // 1. 复制原始内容到左上角
             for (int y = 0; y < srcHeight; y++)
             {
                 int srcOffset = y * srcWidth;
                 int dstOffset = y * dstWidth;
                 Array.Copy(pixels, srcOffset, result, dstOffset, srcWidth);
             }
+            // 2. 把最右列复制到右侧 padding
+            for (int y = 0; y < srcHeight; y++)
+            {
+                int dstOffset = y * dstWidth + srcWidth - 1;
+                Color rightEdge = result[dstOffset];
+                for (int x = srcWidth; x < dstWidth; x++)
+                    result[y * dstWidth + x] = rightEdge;
+            }
+            // 3. 把最底行复制到底部 padding（包括右下角区域）
+            int lastSrcRow = (srcHeight - 1) * dstWidth;
+            for (int y = srcHeight; y < dstHeight; y++)
+            {
+                int dstRowOffset = y * dstWidth;
+                for (int x = 0; x < dstWidth; x++)
+                    result[dstRowOffset + x] = result[lastSrcRow + x];
+            }
             return result;
+        }
+
+        /// <summary>
+        /// 对完全透明（A=0）像素做 Alpha Bleeding：用最近的不透明像素颜色填充其 RGB。
+        /// 防止移动端 GPU 的 PVRTC/ETC 等 block compression 把透明像素 RGB 污染到半透明边缘。
+        /// </summary>
+        private static void AlphaBleed(Color[] pixels, int width, int height, int maxIterations = 32)
+        {
+            int count = width * height;
+            var filled = new bool[count];
+            for (int i = 0; i < count; i++)
+                filled[i] = pixels[i].A > 0;
+
+            for (int iter = 0; iter < maxIterations; iter++)
+            {
+                bool changed = false;
+                for (int y = 0; y < height; y++)
+                {
+                    for (int x = 0; x < width; x++)
+                    {
+                        int i = y * width + x;
+                        if (filled[i]) continue;
+
+                        int r = 0, g = 0, b = 0, n = 0;
+                        if (x > 0 && filled[i - 1])
+                        {
+                            r += pixels[i - 1].R; g += pixels[i - 1].G; b += pixels[i - 1].B; n++;
+                        }
+                        if (x < width - 1 && filled[i + 1])
+                        {
+                            r += pixels[i + 1].R; g += pixels[i + 1].G; b += pixels[i + 1].B; n++;
+                        }
+                        if (y > 0 && filled[i - width])
+                        {
+                            r += pixels[i - width].R; g += pixels[i - width].G; b += pixels[i - width].B; n++;
+                        }
+                        if (y < height - 1 && filled[i + width])
+                        {
+                            r += pixels[i + width].R; g += pixels[i + width].G; b += pixels[i + width].B; n++;
+                        }
+
+                        if (n > 0)
+                        {
+                            pixels[i] = new Color((byte)(r / n), (byte)(g / n), (byte)(b / n), 0);
+                            filled[i] = true;
+                            changed = true;
+                        }
+                    }
+                }
+                if (!changed) break;
+            }
         }
 
         private static void Write7BitEncodedInt(BinaryWriter writer, int value)
