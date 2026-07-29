@@ -27,8 +27,11 @@ public class ModEntry : Mod
     private List<CpAssetLoader.CpAssetInfo> _assetList;
     private int _currentAssetIndex = -1;
 
-    // 已导出资产名去重集合
+    // 已导出资产名去重集合（用于地图 tilesheet 自动补全时避免重复导出）
     private HashSet<string> _exportedAssetNames;
+
+    // CP 资产名称集合（规范化后）用于判断 tilesheet 是否被 CP 修改过
+    private HashSet<string> _cpAssetNamesSet;
 
     // 导出阶段
     private enum ExportPhase { Idle, Loading, WaitingForWorkers, Finishing }
@@ -265,6 +268,12 @@ public class ModEntry : Mod
         }
 
         _assetList = allAssets;
+
+        // 缓存所有 CP 资产的规范化名称（用于自动补全判断）
+        _cpAssetNamesSet = new HashSet<string>(
+            allAssets.Select(a => NormalizeAssetPath(a.AssetName)),
+            StringComparer.OrdinalIgnoreCase);
+
         Monitor.Log($"找到 {_assetList.Count} 个资产，开始加载（当前语言: {LocalizedContentManager.CurrentLanguageCode}）...", LogLevel.Info);
     }
 
@@ -294,20 +303,43 @@ public class ModEntry : Mod
             else if (asset.AssetType == CpAssetLoader.CpAssetType.Map)
             {
                 Map map;
+                string actualAssetName = normalizedAssetName;
                 try { map = Helper.GameContent.Load<Map>(rawAssetName); }
                 catch
                 {
                     if (!rawAssetName.StartsWith("Maps/", StringComparison.OrdinalIgnoreCase)
                         && !rawAssetName.StartsWith("maps/", StringComparison.OrdinalIgnoreCase))
                     {
-                        map = Helper.GameContent.Load<Map>("Maps/" + rawAssetName);
+                        actualAssetName = "Maps/" + rawAssetName;
+                        map = Helper.GameContent.Load<Map>(actualAssetName);
                     }
                     else
                         throw;
                 }
 
-                // 直接序列化：不做寄生 tilesheet 合并、不做路径规范化、不做 CP tilesheet 自动补全。
-                // 参考游戏自己的 xTile TBin 序列化行为，只按原始数据写出。
+                // 自动整合寄生：把 SMAPI 虚拟 tilesheet 合并到宿主 tilesheet（默认 Maps/busPeople）。
+                // 这绕过原版游戏的 ContentHashes.json 白名单限制，因为新增路径无法加载。
+                string troubleshootDir = _currentOptions.OutputUnpacked ? _currentOptions.TroubleshootDir : null;
+                if (troubleshootDir != null) System.IO.Directory.CreateDirectory(troubleshootDir);
+                var mergedHostTexture = TileSheetMerger.MergeVirtualTileSheets(map, TileSheetMerger.DefaultHostAssetName, Helper, Monitor, troubleshootDir);
+                if (mergedHostTexture != null)
+                {
+                    string hostNormalizedPath = TileSheetMerger.DefaultHostAssetName;
+                    if (!_exportedAssetNames.Contains(hostNormalizedPath))
+                    {
+                        string hostSafeName = SanitizeAssetPath(hostNormalizedPath);
+                        string hostPackedBase = Path.Combine(_currentOptions.PackedDir, hostSafeName);
+                        string hostUnpackedBase = _currentOptions.OutputUnpacked ? Path.Combine(_currentOptions.UnpackedDir, hostSafeName) : null;
+
+                        // 如果宿主贴图入队失败（队列满），回退当前地图资产，下一帧重试
+                        if (!EnqueueTexture(mergedHostTexture, hostNormalizedPath, hostPackedBase, hostUnpackedBase))
+                            return false;
+
+                        _exportedAssetNames.Add(hostNormalizedPath);
+                        Monitor.Log($"  ↳ 已合并虚拟 tilesheet 到 {hostNormalizedPath}", LogLevel.Trace);
+                    }
+                }
+
                 byte[] tbinData = TBinWriter.SerializeTbin(map);
 
                 var item = new ExportWorkItem
@@ -323,6 +355,44 @@ public class ModEntry : Mod
                 if (!_pipeline.TryAdd(item))
                     return false;
                 _exportedAssetNames.Add(normalizedAssetName);
+
+                // 自动补全：仅导出被 CP 明确修改过的 tilesheet 贴图
+                foreach (var tileSheet in map.TileSheets)
+                {
+                    string rawImageSource = tileSheet.ImageSource;
+                    if (string.IsNullOrEmpty(rawImageSource)) continue;
+
+                    // 跳过虚拟 tilesheet（已被合并）
+                    if (TileSheetMerger.IsVirtualTileSheet(tileSheet)) continue;
+
+                    string normalizedRaw = NormalizeAssetPath(rawImageSource);
+
+                    // 如果该 tilesheet 不在 CP 资产列表中，说明是原版自带且未被修改，跳过
+                    if (_cpAssetNamesSet == null || !_cpAssetNamesSet.Contains(normalizedRaw))
+                        continue;
+
+                    // 已经导出过也跳过
+                    if (_exportedAssetNames.Contains(normalizedRaw)) continue;
+
+                    string tsSafeName = SanitizeAssetPath(normalizedRaw);
+                    string tsPackedBase = Path.Combine(_currentOptions.PackedDir, tsSafeName);
+                    string tsUnpackedBase = _currentOptions.OutputUnpacked ? Path.Combine(_currentOptions.UnpackedDir, tsSafeName) : null;
+
+                    try
+                    {
+                        if (!EnqueueTexture(rawImageSource, tsPackedBase, tsUnpackedBase))
+                        {
+                            Monitor.Log($"  ↳ 自动补全 tilesheet 入队失败，本帧暂停 [{normalizedRaw}]", LogLevel.Trace);
+                            return false;
+                        }
+                        _exportedAssetNames.Add(normalizedRaw);
+                        Monitor.Log($"  ↳ 自动补全 tilesheet 贴图: {normalizedRaw} (来自地图 {rawAssetName})", LogLevel.Trace);
+                    }
+                    catch (Exception tex)
+                    {
+                        Monitor.Log($"  ↳ 自动补全 tilesheet 失败 [{normalizedRaw}]: {tex.Message}", LogLevel.Trace);
+                    }
+                }
             }
             else if (asset.AssetType == CpAssetLoader.CpAssetType.Data)
             {
@@ -506,6 +576,9 @@ public class ModEntry : Mod
             return assetName;
 
         // 规范化路径分隔符：统一为正斜杠
+        // 这对 _cpAssetNamesSet 匹配至关重要——CP 的 Target 可能用反斜杠（Maps\springobjects），
+        // 而地图 tilesheet 的 ImageSource 用正斜杠（Maps/springobjects），
+        // 不规范化会导致自动补全时匹配失败，tilesheet 贴图被跳过。
         assetName = assetName.Replace('\\', '/');
 
         if (assetName.StartsWith("SMAPI/", StringComparison.OrdinalIgnoreCase))
@@ -704,6 +777,7 @@ public class ModEntry : Mod
         _assetList = null;
         _currentAssetIndex = -1;
         _exportedAssetNames = null;
+        _cpAssetNamesSet = null;
 
         Monitor.Log("\n==== 导出完成 ====", LogLevel.Info);
         Monitor.Log($"贴图: 成功 {texS}, 失败 {texF}", LogLevel.Info);
