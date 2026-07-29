@@ -89,6 +89,26 @@ namespace CPXnbExporter
 
                 int pixelW = vTex.Width;
                 int pixelH = vTex.Height;
+
+                // 修正瓦片尺寸：TBIN 中的 TileWidth/TileHeight 有时与实际贴图
+                // 不符（例如 CP 的 PatchMode.Replace 换了贴图但没改 TBIN）。
+                // 根据贴图像素尺寸 / Sheet tile 数量反推实际 tile 尺寸。
+                if (vSheet.SheetWidth > 0 && vSheet.SheetHeight > 0)
+                {
+                    int calcW = pixelW / vSheet.SheetWidth;
+                    int calcH = pixelH / vSheet.SheetHeight;
+                    if (calcW > 0 && calcH > 0 &&
+                        (vSheet.TileWidth != calcW || vSheet.TileHeight != calcH))
+                    {
+                        monitor?.Log(
+                            $"  ↳ 修正虚拟贴图 [{vSheet.Id}] 的瓦片尺寸: " +
+                            $"{vSheet.TileWidth}x{vSheet.TileHeight} → {calcW}x{calcH}",
+                            LogLevel.Warn);
+                        vSheet.TileWidth = calcW;
+                        vSheet.TileHeight = calcH;
+                    }
+                }
+
                 int tileW = vSheet.TileWidth;
                 int tileH = vSheet.TileHeight;
                 int oldSheetW = vSheet.SheetWidth;
