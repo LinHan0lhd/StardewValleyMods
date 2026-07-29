@@ -19,11 +19,16 @@ namespace CPXnbExporter
 
         // Map data
         public byte[] TbinData { get; init; }
+
+        // Data asset (JSON)
+        public object DataObject { get; init; }
+        public string DataTypeName { get; init; }
     }
 
     public enum WorkItemType
     {
         Texture,
-        Map
+        Map,
+        Data
     }
 }
