@@ -446,13 +446,24 @@ public class ModEntry : Mod
 
     /// <summary>
     /// 把已加载的 Texture2D 入队。返回 false 表示队列满，需下一帧重试。
-    /// 参考游戏反编译行为：不做任何 Alpha 预乘、边缘 padding、alpha bleeding 等特殊处理，
+    /// 参考游戏反编译行为：不做 Alpha 预乘、边缘 padding、alpha bleeding 等特殊处理，
     /// 直接使用 SMAPI/ContentPipeline 加载得到的原始像素数据。
+    /// 仅对 A=0 像素清零 RGB 残留（防止 GPU 线性过滤产生白线/色边）。
     /// </summary>
     private bool EnqueueTexture(Texture2D original, string fileName, string packedBase, string unpackedBase)
     {
         var pixels = new Color[original.Width * original.Height];
         original.GetData(pixels);
+
+        // 清零 A=0 像素的 RGB 残留。
+        // SMAPI 的 PremultiplyTransparency 跳过 A=0 像素，导致 RGB 残留；
+        // XNB 中预乘格式的 A=0 像素若 RGB 不为 0，GPU 线性过滤会把残留颜色
+        // 混入可见像素边缘，产生白线/色边，视觉上可能让 tile 看起来"放大"。
+        for (int i = 0; i < pixels.Length; i++)
+        {
+            if (pixels[i].A == 0)
+                pixels[i] = new Color((byte)0, (byte)0, (byte)0, (byte)0);
+        }
 
         // PNG 直接用原始像素（不做 Alpha 反预乘处理）。
         byte[] pngData = null;
