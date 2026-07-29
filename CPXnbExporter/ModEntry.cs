@@ -887,7 +887,7 @@ public class ModEntry : Mod
             .GetType()
             .GetMethod(nameof(this.LoadAssetImpl), BindingFlags.NonPublic | BindingFlags.Instance)!
             .MakeGenericMethod(type)
-            .Invoke(this, [assetName]);
+            .Invoke(this, new object[] { assetName });
     }
 
     /// <summary>Load an asset from a content manager using the given type.</summary>
@@ -906,11 +906,22 @@ public class ModEntry : Mod
     /// <summary>Get whether the given content manager has already loaded and cached the given asset.</summary>
     private bool IsAssetLoaded(ContentManager contentManager, string assetName)
     {
-        IAssetName parsedName = Helper.GameContent.ParseAssetName(assetName);
+        // IContentManager 是 SMAPI 内部接口，无法直接访问。
+        // 用反射获取 IsLoaded 方法（接收 IAssetName 参数）。
+        Type cmType = contentManager.GetType();
+        MethodInfo isLoadedMethod = cmType.GetMethod("IsLoaded", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        if (isLoadedMethod == null)
+            return false;
 
-        return contentManager is IContentManager managed
-            ? managed.IsLoaded(parsedName)
-            : throw new InvalidOperationException($"Can't access internals for content manager with type {contentManager?.GetType().FullName ?? "null"}, expected implementation of {typeof(IContentManager).FullName}.");
+        IAssetName parsedName = Helper.GameContent.ParseAssetName(assetName);
+        try
+        {
+            return (bool)isLoadedMethod.Invoke(contentManager, new object[] { parsedName });
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     /// <summary>Get the types matching a name, if any.</summary>
@@ -918,25 +929,25 @@ public class ModEntry : Mod
     {
         // none specified, default to object
         if (string.IsNullOrWhiteSpace(name))
-            return [typeof(object)];
+            return new[] { typeof(object) };
 
         // short alias
         if (string.Equals(name, "image", StringComparison.OrdinalIgnoreCase))
-            return [typeof(Texture2D)];
+            return new[] { typeof(Texture2D) };
         if (string.Equals(name, "map", StringComparison.OrdinalIgnoreCase))
-            return [typeof(Map)];
+            return new[] { typeof(Map) };
 
         // by assembly-qualified name
         {
             Type type = Type.GetType(name);
             if (type != null)
-                return [type];
+                return new[] { type };
         }
 
         // by type name
         {
-            HashSet<Type> typesByName = [];
-            HashSet<Type> typesByFullName = [];
+            HashSet<Type> typesByName = new HashSet<Type>();
+            HashSet<Type> typesByFullName = new HashSet<Type>();
             foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
                 if (assembly.IsDynamic)
@@ -972,7 +983,7 @@ public class ModEntry : Mod
 
         // based on path
         if (assetName.IsDirectlyUnderPath("Maps"))
-            return [typeof(Map), typeof(Texture2D)];
+            return new[] { typeof(Map), typeof(Texture2D) };
 
         if (
             assetName.IsDirectlyUnderPath("Animals")
@@ -983,7 +994,7 @@ public class ModEntry : Mod
             || assetName.IsDirectlyUnderPath("TerrainFeatures")
             || assetName.IsDirectlyUnderPath("TileSheets")
         )
-            return [typeof(Texture2D)];
+            return new[] { typeof(Texture2D) };
 
         if (
             assetName.IsDirectlyUnderPath("Characters/Dialogue")
@@ -991,7 +1002,7 @@ public class ModEntry : Mod
             || assetName.IsDirectlyUnderPath("Data/Events")
             || assetName.IsDirectlyUnderPath("Data/Festivals")
         )
-            return [typeof(Dictionary<string, string>)];
+            return new[] { typeof(Dictionary<string, string>) };
 
         // based on DataLoader method
         if (assetName.IsDirectlyUnderPath("Data"))
@@ -1002,7 +1013,7 @@ public class ModEntry : Mod
 
             MethodInfo method = typeof(DataLoader).GetMethod(name, BindingFlags.Public | BindingFlags.Static | BindingFlags.IgnoreCase);
             if (method != null)
-                return [method.ReturnType];
+                return new[] { method.ReturnType };
         }
 
         return null;

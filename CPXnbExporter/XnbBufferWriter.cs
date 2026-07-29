@@ -93,7 +93,7 @@ namespace CPXnbExporter
         {
             if (bytes == null || bytes.Length == 0) return;
             EnsureCapacity(_position + bytes.Length);
-            Buffer.BlockCopy(bytes, 0, _buffer, _position, bytes.Length);
+            System.Buffer.BlockCopy(bytes, 0, _buffer, _position, bytes.Length);
             _position += bytes.Length;
         }
 
@@ -101,7 +101,7 @@ namespace CPXnbExporter
         {
             if (count <= 0) return;
             EnsureCapacity(_position + count);
-            Buffer.BlockCopy(bytes, offset, _buffer, _position, count);
+            System.Buffer.BlockCopy(bytes, offset, _buffer, _position, count);
             _position += count;
         }
     }

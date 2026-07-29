@@ -55,15 +55,15 @@ namespace CPXnbExporter
             if (compressed)
             {
                 byte[] bodyBytes = new byte[bodySize];
-                Buffer.BlockCopy(data, headerSize, bodyBytes, 0, bodySize);
+                System.Buffer.BlockCopy(data, headerSize, bodyBytes, 0, bodySize);
 
                 int maxCompressedSize = LZ4Codec.MaximumOutputSize(bodySize);
                 byte[] compressedBody = new byte[maxCompressedSize];
                 int compressedSize = LZ4Codec.Encode(bodyBytes, 0, bodySize, compressedBody, 0, maxCompressedSize);
 
                 byte[] finalData = new byte[headerSize + compressedSize];
-                Buffer.BlockCopy(data, 0, finalData, 0, headerSize);
-                Buffer.BlockCopy(compressedBody, 0, finalData, headerSize, compressedSize);
+                System.Buffer.BlockCopy(data, 0, finalData, 0, headerSize);
+                System.Buffer.BlockCopy(compressedBody, 0, finalData, headerSize, compressedSize);
 
                 BitConverter.GetBytes((uint)finalData.Length).CopyTo(finalData, fileSizePosition);
                 BitConverter.GetBytes((uint)bodySize).CopyTo(finalData, contentSizePosition);
