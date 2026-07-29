@@ -6,7 +6,28 @@ using Microsoft.Xna.Framework.Graphics;
 
 namespace CPXnbExporter
 {
-    /// <summary>XNB 贴图写入器。支持 PC (w) 和移动端 (a/i) 格式。</summary>
+    /// <summary>
+    /// XNB 贴图写入器。支持 PC (w) 和移动端 (a/i) 格式。
+    ///
+    /// Alpha 处理策略（参考 SMAPI 加载机制和原版内容管道）：
+    ///
+    /// SMAPI 加载机制 (ModContentManager.LoadRawImageData)：
+    ///   - PNG 纹理通过 SKPMColor.PreMultiply 预乘 Alpha
+    ///   - A=0 像素强制为 Color.Transparent (RGB=0,0,0)
+    ///   - 半透明像素 (0&lt;A&lt;255) 的 RGB 已预乘 (R*A/255)
+    ///   - 不透明像素 (A=255) 保持不变
+    ///   - 无边缘 padding / extrusion / alpha bleeding
+    ///
+    /// 原版 XNB 加载机制：
+    ///   - XNB 纹理在内容管道 (MGCB) 构建时已预乘 Alpha
+    ///   - Texture2DReader 直接读取预乘像素，不做额外处理
+    ///   - SurfaceFormat.Color (0)，1 mip level
+    ///
+    /// 导出策略：
+    ///   - XNB：直接使用 SMAPI 加载的预乘像素（与原版 XNB 一致）
+    ///   - PNG：反预乘为非预乘像素（供 XnbConverter/MGCB 重新打包时正确预乘）
+    ///   - A=0 像素统一规范化为 Color.Transparent
+    /// </summary>
     public static class XnbWriter
     {
         private const string Texture2DReaderFull =
@@ -17,17 +38,57 @@ namespace CPXnbExporter
             "Microsoft.Xna.Framework.Content.Texture2DReader";
 
         /// <summary>
+        /// 规范化 Alpha：A=0 像素强制为 Color.Transparent。
+        /// 匹配 SMAPI LoadRawImageData 行为，防止 RGB 残留导致 GPU 线性过滤渗色。
+        /// 就地修改，不分配新数组。
+        /// </summary>
+        public static void NormalizeAlpha(Color[] pixels)
+        {
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                if (pixels[i].A == 0)
+                    pixels[i] = Color.Transparent;
+            }
+        }
+
+        /// <summary>
+        /// 将预乘 Alpha 像素转换为非预乘像素（用于 PNG 输出）。
+        /// 这样 XnbConverter/MGCB 重新打包 PNG 为 XNB 时，会正确执行预乘，
+        /// 避免二次预乘导致的暗化/缝隙。
+        /// </summary>
+        public static Color[] UnpremultiplyAlpha(Color[] premultiplied)
+        {
+            var result = new Color[premultiplied.Length];
+            for (int i = 0; i < premultiplied.Length; i++)
+            {
+                byte a = premultiplied[i].A;
+                if (a == 0)
+                    result[i] = Color.Transparent;
+                else if (a == 255)
+                    result[i] = premultiplied[i];
+                else
+                {
+                    result[i] = new Color(
+                        (byte)Math.Min(255, premultiplied[i].R * 255 / a),
+                        (byte)Math.Min(255, premultiplied[i].G * 255 / a),
+                        (byte)Math.Min(255, premultiplied[i].B * 255 / a),
+                        a);
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
         /// 导出贴图资产为 XNB（packed）和可选的 PNG + .config（unpacked）。
         /// 主线程调用版本：直接接受 Texture2D（用于单资产导出命令）。
-        /// 参考游戏反编译行为：不做任何 Alpha 预乘/反预乘、边缘 padding、alpha bleeding。
+        /// XNB 使用预乘像素（与原版一致），PNG 使用非预乘像素（供重新打包）。
         /// </summary>
         public static XnbMetadata ExportTextureSet(
             string packedBasePath,
             string unpackedBasePath,
             Texture2D texture,
             char platform = 'a',
-            byte xnbVersion = 5,
-            int tileSheetEdgePadding = 0)
+            byte xnbVersion = 5)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(packedBasePath));
             if (!string.IsNullOrEmpty(unpackedBasePath))
@@ -38,10 +99,13 @@ namespace CPXnbExporter
             var pixels = new Color[width * height];
             texture.GetData(pixels);
 
-            // XNB：直接使用原始像素
+            // Alpha 规范化：A=0 → Color.Transparent（匹配 SMAPI LoadRawImageData）
+            NormalizeAlpha(pixels);
+
+            // XNB：直接使用预乘像素（与原版 XNB 一致）
             Color[] xnbPixels = pixels;
-            // PNG：直接使用原始像素（不做反预乘处理）
-            Color[] pngPixels = (unpackedBasePath != null) ? pixels : null;
+            // PNG：反预乘为非预乘像素（供 XnbConverter/MGCB 重新打包时正确预乘）
+            Color[] pngPixels = (unpackedBasePath != null) ? UnpremultiplyAlpha(pixels) : null;
 
             // XNB
             string xnbPath = packedBasePath + ".xnb";
@@ -96,8 +160,9 @@ namespace CPXnbExporter
             bool isMobile = (platform == 'a' || platform == 'i');
             string readerName = isMobile ? Texture2DReaderShort : Texture2DReaderFull;
 
-            // 注：预乘 Alpha 处理已在 EnqueueTexture 入队前完成（ModEntry.PremultiplyAlpha），
-            // 此处直接写入即可。调用方（如单资产导出命令）需自行确保像素格式正确。
+            // 像素数据应为预乘 Alpha 格式（与原版 XNB 一致）。
+            // 调用方负责在调用前完成 NormalizeAlpha 规范化。
+            // 参考：SMAPI LoadRawImageData 对 PNG 预乘，原版 MGCB 构建时预乘。
 
             // 注：曾尝试 iOS POT padding（高16位=used，低16位=actual），
             // 但导致 iOS 1.6 纹理完全解析错乱（彩虹漫色、背景图块）。

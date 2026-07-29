@@ -446,31 +446,31 @@ public class ModEntry : Mod
 
     /// <summary>
     /// 把已加载的 Texture2D 入队。返回 false 表示队列满，需下一帧重试。
-    /// 参考游戏反编译行为：不做 Alpha 预乘、边缘 padding、alpha bleeding 等特殊处理，
-    /// 直接使用 SMAPI/ContentPipeline 加载得到的原始像素数据。
-    /// 仅对 A=0 像素清零 RGB 残留（防止 GPU 线性过滤产生白线/色边）。
+    ///
+    /// Alpha 处理（参考 SMAPI 加载机制和原版内容管道）：
+    /// - SMAPI 通过 SKPMColor.PreMultiply 对 PNG 纹理预乘 Alpha
+    /// - GetData() 返回的像素已是预乘格式
+    /// - XNB 直接使用预乘像素（与原版 XNB 一致）
+    /// - PNG 反预乘为非预乘像素（供 XnbConverter/MGCB 重新打包时正确预乘）
+    /// - A=0 像素规范化为 Color.Transparent（匹配 SMAPI LoadRawImageData）
+    /// - 不做边缘 padding / extrusion / alpha bleeding（SMAPI 和原版均不做）
     /// </summary>
     private bool EnqueueTexture(Texture2D original, string fileName, string packedBase, string unpackedBase)
     {
         var pixels = new Color[original.Width * original.Height];
         original.GetData(pixels);
 
-        // 清零 A=0 像素的 RGB 残留。
-        // SMAPI 的 PremultiplyTransparency 跳过 A=0 像素，导致 RGB 残留；
-        // XNB 中预乘格式的 A=0 像素若 RGB 不为 0，GPU 线性过滤会把残留颜色
-        // 混入可见像素边缘，产生白线/色边，视觉上可能让 tile 看起来"放大"。
-        for (int i = 0; i < pixels.Length; i++)
-        {
-            if (pixels[i].A == 0)
-                pixels[i] = new Color((byte)0, (byte)0, (byte)0, (byte)0);
-        }
+        // Alpha 规范化：A=0 → Color.Transparent（匹配 SMAPI LoadRawImageData）
+        XnbWriter.NormalizeAlpha(pixels);
 
-        // PNG 直接用原始像素（不做 Alpha 反预乘处理）。
+        // XNB：直接使用预乘像素（与原版 XNB 一致）
+        // PNG：反预乘为非预乘像素（供 XnbConverter/MGCB 重新打包时正确预乘）
         byte[] pngData = null;
         if (unpackedBase != null)
         {
+            var pngPixels = XnbWriter.UnpremultiplyAlpha(pixels);
             using var pngTex = new Texture2D(original.GraphicsDevice, original.Width, original.Height);
-            pngTex.SetData(pixels);
+            pngTex.SetData(pngPixels);
             using var pngMs = new MemoryStream();
             pngTex.SaveAsPng(pngMs, original.Width, original.Height);
             pngData = pngMs.ToArray();
@@ -494,19 +494,25 @@ public class ModEntry : Mod
 
     /// <summary>
     /// 把 IRawTextureData 入队。返回 false 表示队列满，需下一帧重试。
-    /// 不做任何特殊处理，直接写入原始像素。
+    /// IRawTextureData 的像素来自 SMAPI，已是预乘格式。
+    /// XNB 直接使用预乘像素，PNG 反预乘为非预乘像素。
     /// </summary>
     private bool EnqueueTexture(IRawTextureData raw, string fileName, string packedBase, string unpackedBase)
     {
-        var pixels = raw.Data;
+        // 复制数组：避免后台线程访问 SMAPI 内部数据时产生竞态
+        var pixels = (Color[])raw.Data.Clone();
         int width = raw.Width;
         int height = raw.Height;
+
+        // Alpha 规范化：A=0 → Color.Transparent（匹配 SMAPI LoadRawImageData）
+        XnbWriter.NormalizeAlpha(pixels);
 
         byte[] pngData = null;
         if (unpackedBase != null)
         {
+            var pngPixels = XnbWriter.UnpremultiplyAlpha(pixels);
             using var pngTex = new Texture2D(Game1.graphics.GraphicsDevice, width, height);
-            pngTex.SetData(pixels);
+            pngTex.SetData(pngPixels);
             using var pngMs = new MemoryStream();
             pngTex.SaveAsPng(pngMs, width, height);
             pngData = pngMs.ToArray();
@@ -819,7 +825,7 @@ public class ModEntry : Mod
             if (unpackedBase != null) Directory.CreateDirectory(Path.GetDirectoryName(unpackedBase));
 
             tempCopy = CloneTexture(original);
-            // 不做任何特殊处理，直接导出原始像素
+            // ExportTextureSet 内部执行 Alpha 规范化和 PNG 反预乘
             XnbWriter.ExportTextureSet(packedBase, unpackedBase, tempCopy, options.Platform);
 
             Monitor.Log($"✓ [T] {assetName} ({original.Width}x{original.Height})", LogLevel.Info);
@@ -849,7 +855,7 @@ public class ModEntry : Mod
 
             using var texture = new Texture2D(Game1.graphics.GraphicsDevice, raw.Width, raw.Height);
             texture.SetData(raw.Data);
-            // 不做任何特殊处理，直接导出原始像素
+            // ExportTextureSet 内部执行 Alpha 规范化和 PNG 反预乘
             XnbWriter.ExportTextureSet(packedBase, unpackedBase, texture, options.Platform);
 
             Monitor.Log($"✓ [R] {assetName} ({raw.Width}x{raw.Height})", LogLevel.Info);
