@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Text;
-using K4os.Compression.LZ4;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 
@@ -185,102 +184,42 @@ namespace CPXnbExporter
             // 现直接按原始尺寸写入。
             int actualWidth = width;
             int actualHeight = height;
-            Color[] finalPixels = pixels;
 
-            using var ms = new MemoryStream();
-            using var writer = new BinaryWriter(ms);
-
-            // Header
-            writer.Write((byte)'X');
-            writer.Write((byte)'N');
-            writer.Write((byte)'B');
-            writer.Write((byte)platform);
-            writer.Write(xnbVersion);
-
-            // 对照测试：iOS 暂时不压缩，排除 LZ4 压缩问题。
-            // Android 保持 LZ4 压缩。
-            byte flags = platform == 'a' ? (byte)0x41 : (byte)0x01;
-            writer.Write(flags);
-
-            int fileSizePosition = (int)ms.Position;
-            writer.Write((uint)0);
-
-            int contentSizePosition = -1;
-            if (flags == 0x41)
-            {
-                contentSizePosition = (int)ms.Position;
-                writer.Write((uint)0);
-            }
+            bool compressed = platform == 'a';
+            var writer = new XnbBufferWriter(4096);
+            XnbFormat.WriteHeader(writer, platform, xnbVersion, compressed, out int fileSizePos, out int contentSizePos);
 
             // Type reader
-            Write7BitEncodedInt(writer, 1);
-            Write7BitEncodedString(writer, readerName);
-            writer.Write((uint)0);
+            writer.Write7BitEncodedInt(1);
+            writer.Write7BitEncodedString(readerName);
+            writer.WriteUInt32(0);
 
             // Shared resources
-            Write7BitEncodedInt(writer, 0);
+            writer.Write7BitEncodedInt(0);
 
             // Object Type ID
-            Write7BitEncodedInt(writer, 1);
+            writer.Write7BitEncodedInt(1);
 
             // Surface format
-            writer.Write((int)0);
-
-            writer.Write(actualWidth);
-            writer.Write(actualHeight);
-            writer.Write(1);
+            writer.WriteInt32(0);
+            writer.WriteInt32(actualWidth);
+            writer.WriteInt32(actualHeight);
+            writer.WriteInt32(1);
 
             int dataSize = actualWidth * actualHeight * 4;
-            writer.Write(dataSize);
+            writer.WriteInt32(dataSize);
 
             byte[] pixelData = new byte[dataSize];
-            for (int i = 0; i < finalPixels.Length; i++)
+            for (int i = 0; i < pixels.Length; i++)
             {
-                pixelData[i * 4 + 0] = finalPixels[i].R;
-                pixelData[i * 4 + 1] = finalPixels[i].G;
-                pixelData[i * 4 + 2] = finalPixels[i].B;
-                pixelData[i * 4 + 3] = finalPixels[i].A;
+                pixelData[i * 4 + 0] = pixels[i].R;
+                pixelData[i * 4 + 1] = pixels[i].G;
+                pixelData[i * 4 + 2] = pixels[i].B;
+                pixelData[i * 4 + 3] = pixels[i].A;
             }
-            writer.Write(pixelData);
-            writer.Flush();
+            writer.WriteBytes(pixelData);
 
-            byte[] uncompressedData = ms.ToArray();
-            bool compressed = (flags & 0x40) != 0;
-            int headerSize = compressed ? 14 : 10;
-            int bodySize = uncompressedData.Length - headerSize;
-
-            if (compressed)
-            {
-                byte[] bodyBytes = new byte[bodySize];
-                Array.Copy(uncompressedData, headerSize, bodyBytes, 0, bodySize);
-
-                int maxCompressedSize = LZ4Codec.MaximumOutputSize(bodySize);
-                byte[] compressedBody = new byte[maxCompressedSize];
-                int compressedSize = LZ4Codec.Encode(bodyBytes, 0, bodySize, compressedBody, 0, maxCompressedSize);
-
-                byte[] finalData = new byte[headerSize + compressedSize];
-                Array.Copy(uncompressedData, 0, finalData, 0, headerSize);
-                Array.Copy(compressedBody, 0, finalData, headerSize, compressedSize);
-
-                byte[] fileSizeBytes = BitConverter.GetBytes((uint)finalData.Length);
-                Array.Copy(fileSizeBytes, 0, finalData, fileSizePosition, 4);
-
-                byte[] contentSizeBytes = BitConverter.GetBytes((uint)bodySize);
-                Array.Copy(contentSizeBytes, 0, finalData, contentSizePosition, 4);
-
-                output.Write(finalData, 0, finalData.Length);
-                output.Flush();
-                return finalData.Length;
-            }
-            else
-            {
-                byte[] fileSizeBytes = BitConverter.GetBytes((uint)uncompressedData.Length);
-                Array.Copy(fileSizeBytes, 0, uncompressedData, fileSizePosition, 4);
-
-                output.Write(uncompressedData, 0, uncompressedData.Length);
-                output.Flush();
-                return uncompressedData.Length;
-            }
+            return XnbFormat.FinalizeAndWrite(writer, fileSizePos, contentSizePos, compressed, output);
         }
 
         /// <summary>
@@ -356,22 +295,5 @@ namespace CPXnbExporter
             }
         }
 
-        private static void Write7BitEncodedInt(BinaryWriter writer, int value)
-        {
-            uint v = (uint)value;
-            while (v >= 0x80)
-            {
-                writer.Write((byte)(v | 0x80));
-                v >>= 7;
-            }
-            writer.Write((byte)v);
-        }
-
-        private static void Write7BitEncodedString(BinaryWriter writer, string value)
-        {
-            byte[] bytes = Encoding.UTF8.GetBytes(value);
-            Write7BitEncodedInt(writer, bytes.Length);
-            writer.Write(bytes);
-        }
     }
 }
