@@ -983,7 +983,7 @@ public class ModEntry : Mod
 
         // based on path
         if (assetName.IsDirectlyUnderPath("Maps"))
-            return new[] { typeof(Map), typeof(Texture2D) };
+            return new List<Type> { typeof(Map), typeof(Texture2D) };
 
         if (
             assetName.IsDirectlyUnderPath("Animals")
@@ -994,7 +994,7 @@ public class ModEntry : Mod
             || assetName.IsDirectlyUnderPath("TerrainFeatures")
             || assetName.IsDirectlyUnderPath("TileSheets")
         )
-            return new[] { typeof(Texture2D) };
+            return new List<Type> { typeof(Texture2D) };
 
         if (
             assetName.IsDirectlyUnderPath("Characters/Dialogue")
@@ -1002,7 +1002,7 @@ public class ModEntry : Mod
             || assetName.IsDirectlyUnderPath("Data/Events")
             || assetName.IsDirectlyUnderPath("Data/Festivals")
         )
-            return new[] { typeof(Dictionary<string, string>) };
+            return new List<Type> { typeof(Dictionary<string, string>) };
 
         // based on DataLoader method
         if (assetName.IsDirectlyUnderPath("Data"))
@@ -1013,7 +1013,7 @@ public class ModEntry : Mod
 
             MethodInfo method = typeof(DataLoader).GetMethod(name, BindingFlags.Public | BindingFlags.Static | BindingFlags.IgnoreCase);
             if (method != null)
-                return new[] { method.ReturnType };
+                return new List<Type> { method.ReturnType };
         }
 
         return null;
