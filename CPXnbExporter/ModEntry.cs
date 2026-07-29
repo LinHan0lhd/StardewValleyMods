@@ -340,6 +340,8 @@ public class ModEntry : Mod
                     }
                 }
 
+                // 设置当前地图 assetName，供 TBinWriter 计算 tilesheet 相对路径
+                TBinWriter.MapAssetName = actualAssetName;
                 byte[] tbinData = TBinWriter.SerializeTbin(map);
 
                 var item = new ExportWorkItem
@@ -778,6 +780,7 @@ public class ModEntry : Mod
         _currentAssetIndex = -1;
         _exportedAssetNames = null;
         _cpAssetNamesSet = null;
+        TBinWriter.MapAssetName = null;
 
         Monitor.Log("\n==== 导出完成 ====", LogLevel.Info);
         Monitor.Log($"贴图: 成功 {texS}, 失败 {texF}", LogLevel.Info);
@@ -857,7 +860,8 @@ public class ModEntry : Mod
             string packedPath = Path.Combine(options.PackedDir, safeName + ".xnb");
             Directory.CreateDirectory(Path.GetDirectoryName(packedPath));
 
-            // 不做路径规范化，直接写原始 ImageSource
+            // 设置当前地图 assetName，供 TBinWriter 计算 tilesheet 相对路径
+            TBinWriter.MapAssetName = normalizedName;
             using (var fs = new FileStream(packedPath, FileMode.Create, FileAccess.Write))
                 TBinWriter.WriteMapXnb(fs, map, options.Platform);
 
