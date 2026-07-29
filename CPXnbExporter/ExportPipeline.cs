@@ -26,11 +26,15 @@ namespace CPXnbExporter
         private long _texFail;
         private long _mapSuccess;
         private long _mapFail;
+        private long _dataSuccess;
+        private long _dataFail;
 
         public long TexSuccess => Interlocked.Read(ref _texSuccess);
         public long TexFail => Interlocked.Read(ref _texFail);
         public long MapSuccess => Interlocked.Read(ref _mapSuccess);
         public long MapFail => Interlocked.Read(ref _mapFail);
+        public long DataSuccess => Interlocked.Read(ref _dataSuccess);
+        public long DataFail => Interlocked.Read(ref _dataFail);
 
         public bool IsAddingCompleted => _queue.IsAddingCompleted;
         public bool IsCompleted => _queue.IsCompleted;
@@ -111,18 +115,34 @@ namespace CPXnbExporter
         {
             try
             {
-                if (item.Type == WorkItemType.Texture)
-                    ProcessTexture(item);
-                else
-                    ProcessMap(item);
+                switch (item.Type)
+                {
+                    case WorkItemType.Texture:
+                        ProcessTexture(item);
+                        break;
+                    case WorkItemType.Map:
+                        ProcessMap(item);
+                        break;
+                    case WorkItemType.Data:
+                        ProcessData(item);
+                        break;
+                }
             }
             catch (Exception ex)
             {
                 _monitor?.Log($"写入失败 [{item.FileName}]: {ex.Message}", LogLevel.Trace);
-                if (item.Type == WorkItemType.Texture)
-                    Interlocked.Increment(ref _texFail);
-                else
-                    Interlocked.Increment(ref _mapFail);
+                switch (item.Type)
+                {
+                    case WorkItemType.Texture:
+                        Interlocked.Increment(ref _texFail);
+                        break;
+                    case WorkItemType.Map:
+                        Interlocked.Increment(ref _mapFail);
+                        break;
+                    case WorkItemType.Data:
+                        Interlocked.Increment(ref _dataFail);
+                        break;
+                }
             }
         }
 
@@ -174,6 +194,16 @@ namespace CPXnbExporter
             }
 
             Interlocked.Increment(ref _mapSuccess);
+        }
+
+        private void ProcessData(ExportWorkItem item)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(item.PackedBasePath));
+            // DataExporter.ExportData 会自动追加 .json
+            if (DataExporter.ExportData(item.PackedBasePath, item.DataObject, item.FileName))
+                Interlocked.Increment(ref _dataSuccess);
+            else
+                Interlocked.Increment(ref _dataFail);
         }
 
                 private static void WriteConfig(string path, char platform, string extension, string readerType)

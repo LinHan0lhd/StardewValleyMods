@@ -1,7 +1,5 @@
 using System;
 using System.IO;
-using System.Text;
-using K4os.Compression.LZ4;
 using xTile;
 
 namespace CPXnbExporter
@@ -26,104 +24,30 @@ namespace CPXnbExporter
             string readerName = MapReaderFull;
             // Android 保持 LZ4 压缩；iOS/PC 不压缩（与贴图逻辑一致）
             bool compressed = platform == 'a';
-            byte flags = compressed ? (byte)0x41 : (byte)0x01;
 
-            using var ms = new MemoryStream();
-            using var writer = new BinaryWriter(ms, Encoding.UTF8);
-
-            // Header
-            writer.Write((byte)'X');
-            writer.Write((byte)'N');
-            writer.Write((byte)'B');
-            writer.Write((byte)platform);
-            writer.Write((byte)5);
-
-            writer.Write(flags);
-
-            int fileSizePos = (int)ms.Position;
-            writer.Write((uint)0);
-
-            int contentSizePos = -1;
-            if (compressed)
-            {
-                contentSizePos = (int)ms.Position;
-                writer.Write((uint)0);
-            }
+            var writer = new XnbBufferWriter(4096);
+            XnbFormat.WriteHeader(writer, platform, 5, compressed, out int fileSizePos, out int contentSizePos);
 
             // Type reader count
-            Write7BitEncodedInt(writer, 1);
+            writer.Write7BitEncodedInt(1);
 
             // Reader name (7-bit encoded string)
-            Write7BitEncodedString(writer, readerName);
+            writer.Write7BitEncodedString(readerName);
 
             // Reader version (uint32)
-            writer.Write((uint)0);
+            writer.WriteUInt32(0);
 
             // Shared resources
-            Write7BitEncodedInt(writer, 0);
+            writer.Write7BitEncodedInt(0);
 
             // 主对象 Type ID
-            Write7BitEncodedInt(writer, 1);
-
-            int objectStart = (int)ms.Position;
+            writer.Write7BitEncodedInt(1);
 
             // TBIN blob
-            writer.Write(tbinData.Length);
-            writer.Write(tbinData);
-            writer.Flush();
+            writer.WriteInt32(tbinData.Length);
+            writer.WriteBytes(tbinData);
 
-            byte[] rawData = ms.ToArray();
-            int headerSize = compressed ? 14 : 10;
-            int bodySize = rawData.Length - headerSize;
-
-            if (compressed)
-            {
-                byte[] bodyBytes = new byte[bodySize];
-                Array.Copy(rawData, headerSize, bodyBytes, 0, bodySize);
-
-                int maxCompressedSize = LZ4Codec.MaximumOutputSize(bodySize);
-                byte[] compressedBody = new byte[maxCompressedSize];
-                int compressedSize = LZ4Codec.Encode(bodyBytes, 0, bodySize, compressedBody, 0, maxCompressedSize);
-
-                byte[] finalData = new byte[headerSize + compressedSize];
-                Array.Copy(rawData, 0, finalData, 0, headerSize);
-                Array.Copy(compressedBody, 0, finalData, headerSize, compressedSize);
-
-                byte[] fileSizeBytes = BitConverter.GetBytes((uint)finalData.Length);
-                Array.Copy(fileSizeBytes, 0, finalData, fileSizePos, 4);
-
-                byte[] contentSizeBytes = BitConverter.GetBytes((uint)bodySize);
-                Array.Copy(contentSizeBytes, 0, finalData, contentSizePos, 4);
-
-                output.Write(finalData, 0, finalData.Length);
-                output.Flush();
-            }
-            else
-            {
-                byte[] fileSizeBytes = BitConverter.GetBytes((uint)rawData.Length);
-                Array.Copy(fileSizeBytes, 0, rawData, fileSizePos, 4);
-
-                output.Write(rawData, 0, rawData.Length);
-                output.Flush();
-            }
-        }
-
-        private static void Write7BitEncodedInt(BinaryWriter writer, int value)
-        {
-            uint v = (uint)value;
-            while (v >= 0x80)
-            {
-                writer.Write((byte)(v | 0x80));
-                v >>= 7;
-            }
-            writer.Write((byte)v);
-        }
-
-        private static void Write7BitEncodedString(BinaryWriter writer, string value)
-        {
-            byte[] bytes = Encoding.UTF8.GetBytes(value);
-            Write7BitEncodedInt(writer, bytes.Length);
-            writer.Write(bytes);
+            XnbFormat.FinalizeAndWrite(writer, fileSizePos, contentSizePos, compressed, output);
         }
     }
 }

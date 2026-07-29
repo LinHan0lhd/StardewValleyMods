@@ -12,7 +12,7 @@ namespace CPXnbExporter
 
         public static Map ConvertFromTBin(byte[] data)
         {
-            return TBinReader.ReadTbin(data);
+            return TBinStreamReader.ReadMap(data);
         }
 
         public static byte[] ConvertXnbMapToTBin(byte[] xnbData)

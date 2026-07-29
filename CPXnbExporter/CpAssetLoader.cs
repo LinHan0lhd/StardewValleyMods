@@ -183,13 +183,11 @@ namespace CPXnbExporter
                         }
 
                         if (string.IsNullOrEmpty(targetRaw)) continue;
-                        if (action.Equals("EditData", StringComparison.OrdinalIgnoreCase)) continue;
 
                         var targets = ParseTargets(targetRaw);
                         foreach (var target in targets)
                         {
                             CpAssetType assetType = DetectAssetType(action, fromFile, target, modDir);
-                            if (assetType == CpAssetType.Data) continue;
 
                             if (seenAssets.Contains(target))
                                 continue;
