@@ -77,22 +77,11 @@ public static class TileSheetMerger
                 return null;
             }
 
-            // 修正瓦片尺寸
-            if (vSheet.SheetWidth > 0 && vSheet.SheetHeight > 0)
-            {
-                int calcW = vTex.Width / vSheet.SheetWidth;
-                int calcH = vTex.Height / vSheet.SheetHeight;
-                if (calcW > 0 && calcH > 0 &&
-                    (vSheet.TileWidth != calcW || vSheet.TileHeight != calcH))
-                {
-                    monitor?.Log(
-                        $"⚠ 修正虚拟贴图 [{vSheet.Id}] 的瓦片尺寸: " +
-                        $"{vSheet.TileWidth}x{vSheet.TileHeight} → {calcW}x{calcH}",
-                        LogLevel.Warn);
-                    vSheet.TileWidth = calcW;
-                    vSheet.TileHeight = calcH;
-                }
-            }
+            // ⚠ TileWidth/TileHeight 严格使用 TBIN 中定义的值（tile 尺寸在 TBIN，不在贴图）。
+            //   绝不能根据贴图像素反推：例如虚拟 16×16 tile、宿主 64×64 tile，
+            //   若按 vTex.Width/vSheet.SheetWidth 计算会把 16 误改成 64，导致 tile 放大。
+            int tileW = vSheet.TileWidth;
+            int tileH = vSheet.TileHeight;
 
             var pixels = new Color[vTex.Width * vTex.Height];
             vTex.GetData(pixels);
@@ -104,8 +93,8 @@ public static class TileSheetMerger
                 Pixels = pixels,
                 PixelW = vTex.Width,
                 PixelH = vTex.Height,
-                TileW = vSheet.TileWidth,
-                TileH = vSheet.TileHeight,
+                TileW = tileW,
+                TileH = tileH,
                 OldSheetW = vSheet.SheetWidth,
                 OldSheetH = vSheet.SheetHeight,
                 Id = vSheet.Id
