@@ -279,6 +279,12 @@ public static class TileSheetMerger
         }
         mergedH = tempH;
 
+        // 保证 mergedH 是所有 TileH（含宿主）的公倍数，防止 NewSheetH 截断
+        int lcmH = hostTileH;
+        foreach (var vd in activeVirtualData)
+            lcmH = Lcm(lcmH, vd.TileH);
+        mergedH = ((mergedH + lcmH - 1) / lcmH) * lcmH;
+
         monitor?.Log($"合并贴图: {mergedW}x{mergedH}px", LogLevel.Trace);
 
         // 生成 TileMap（跳过透明瓦片）
@@ -329,8 +335,28 @@ public static class TileSheetMerger
         CopyPixels(hostPixels, hostPixelW, hostPixelH, 0, 0, hostPixelW, hostPixelH,
                    mergedPixels, mergedW, mergedH, 0, 0);
 
+        // 填充宿主贴图底部到第一个虚拟贴图 OffsetY 之间的空隙
+        tempH = hostPixelH;
         foreach (var vd in activeVirtualData)
         {
+            int expectedY = tempH;
+            int rem = expectedY % vd.TileH;
+            if (rem != 0) expectedY += vd.TileH - rem;
+
+            // 用宿主/前一贴图最后一行像素填充对齐产生的透明缝
+            if (expectedY > tempH && tempH > 0)
+            {
+                for (int y = tempH; y < expectedY; y++)
+                    for (int x = 0; x < mergedW; x++)
+                    {
+                        int srcIdx = (tempH - 1) * mergedW + x;
+                        int dstIdx = y * mergedW + x;
+                        if (srcIdx >= 0 && dstIdx < mergedPixels.Length)
+                            mergedPixels[dstIdx] = mergedPixels[srcIdx];
+                    }
+            }
+
+            // 复制该虚拟贴图的所有有效 tile
             var copiedReps = new HashSet<(int x, int y)>();
             foreach (var kv in vd.TileMap)
             {
@@ -339,9 +365,7 @@ public static class TileSheetMerger
 
                 (int repX, int repY) rep = vd.DedupMap[oldCoord];
                 if (rep == (-1, -1)) continue;
-
-                if (copiedReps.Contains(rep))
-                    continue;
+                if (copiedReps.Contains(rep)) continue;
                 copiedReps.Add(rep);
 
                 int srcX = rep.repX * vd.TileW;
@@ -354,6 +378,21 @@ public static class TileSheetMerger
                            mergedPixels, mergedW, mergedH,
                            dstX, dstY);
             }
+
+            tempH = expectedY + vd.ActualBoundsH;
+        }
+
+        // 若 mergedH 底部还有剩余空白，用最后一行像素填充
+        if (tempH > 0 && tempH < mergedH)
+        {
+            for (int y = tempH; y < mergedH; y++)
+                for (int x = 0; x < mergedW; x++)
+                {
+                    int srcIdx = (tempH - 1) * mergedW + x;
+                    int dstIdx = y * mergedW + x;
+                    if (srcIdx >= 0 && dstIdx < mergedPixels.Length)
+                        mergedPixels[dstIdx] = mergedPixels[srcIdx];
+                }
         }
 
         mergedTex.SetData(mergedPixels);
@@ -800,11 +839,50 @@ public static class TileSheetMerger
                                    Color[] dst, int dstW, int dstH,
                                    int dstX, int dstY)
     {
+        // 主体复制
         for (int y = 0; y < copyH; y++)
             for (int x = 0; x < copyW; x++)
             {
                 int si = (srcY + y) * srcW + (srcX + x);
                 int di = (dstY + y) * dstW + (dstX + x);
+                if (di >= 0 && di < dst.Length && si >= 0 && si < src.Length)
+                    dst[di] = src[si];
+            }
+
+        // ---- 1px Extrude（防边缘白线）----
+        // 上
+        if (dstY > 0)
+            for (int x = 0; x < copyW; x++)
+            {
+                int si = srcY * srcW + (srcX + x);
+                int di = (dstY - 1) * dstW + (dstX + x);
+                if (di >= 0 && di < dst.Length && si >= 0 && si < src.Length)
+                    dst[di] = src[si];
+            }
+        // 下
+        if (dstY + copyH < dstH)
+            for (int x = 0; x < copyW; x++)
+            {
+                int si = (srcY + copyH - 1) * srcW + (srcX + x);
+                int di = (dstY + copyH) * dstW + (dstX + x);
+                if (di >= 0 && di < dst.Length && si >= 0 && si < src.Length)
+                    dst[di] = src[si];
+            }
+        // 左
+        if (dstX > 0)
+            for (int y = 0; y < copyH; y++)
+            {
+                int si = (srcY + y) * srcW + srcX;
+                int di = (dstY + y) * dstW + (dstX - 1);
+                if (di >= 0 && di < dst.Length && si >= 0 && si < src.Length)
+                    dst[di] = src[si];
+            }
+        // 右
+        if (dstX + copyW < dstW)
+            for (int y = 0; y < copyH; y++)
+            {
+                int si = (srcY + y) * srcW + (srcX + copyW - 1);
+                int di = (dstY + y) * dstW + (dstX + copyW);
                 if (di >= 0 && di < dst.Length && si >= 0 && si < src.Length)
                     dst[di] = src[si];
             }

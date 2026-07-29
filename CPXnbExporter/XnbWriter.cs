@@ -63,11 +63,16 @@ namespace CPXnbExporter
             {
                 // 原始是 Straight Alpha：XNB 需预乘，并清零 A=0 像素 RGB。
                 xnbPixels = (Color[])pixels.Clone();
+                // 独立贴图保留 A=0 像素的原始 RGB，防止透明边距显示为黑块
+                bool isTileSheet = tileSheetEdgePadding > 0;
                 for (int i = 0; i < xnbPixels.Length; i++)
                 {
                     int a = xnbPixels[i].A;
                     if (a == 0)
-                        xnbPixels[i] = new Color((byte)0, (byte)0, (byte)0, (byte)0);
+                    {
+                        if (isTileSheet)
+                            xnbPixels[i] = new Color((byte)0, (byte)0, (byte)0, (byte)0);
+                    }
                     else if (a < 255)
                         xnbPixels[i] = new Color(
                             (byte)(xnbPixels[i].R * a / 255),
@@ -84,7 +89,11 @@ namespace CPXnbExporter
                 // SMAPI 的 PremultiplyTransparency 只处理半透明像素，跳过 A=0 像素，
                 // 导致 A=0 像素仍保留原始 RGB。必须清零，否则 GPU 线性过滤在边缘采样时
                 // 会把残留颜色混入可见像素，产生白线。
-                ZeroTransparentPixels(xnbPixels);
+                // 但独立贴图（物品、头像等）跳过清零，保留透明边距的原始 RGB。
+                if (tileSheetEdgePadding > 0)
+                {
+                    ZeroTransparentPixels(xnbPixels);
+                }
 
                 if (unpackedBasePath != null)
                 {

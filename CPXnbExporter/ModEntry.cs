@@ -145,13 +145,30 @@ public class ModEntry : Mod
         var options = ExportOptions.Parse(args.Skip(1).ToArray(),
             Path.Combine(Helper.DirectoryPath, "exported"));
 
+        // Maps/ 下既有地图也有贴图（如 Maps/springobjects、Maps/furniture），
+        // 先尝试按贴图加载，失败再按地图加载。
         bool isMap = assetName.StartsWith("Maps/", StringComparison.OrdinalIgnoreCase)
                   || assetName.StartsWith("maps/", StringComparison.OrdinalIgnoreCase);
 
         if (isMap)
-            ExportMapSingle(assetName, options);
+        {
+            try
+            {
+                // 先尝试作为贴图加载（Maps/springobjects 等）
+                Helper.GameContent.Load<Texture2D>(assetName);
+                ExportTextureSingle(assetName, options);
+                return;
+            }
+            catch
+            {
+                // 不是贴图，按地图处理
+                ExportMapSingle(assetName, options);
+            }
+        }
         else
+        {
             ExportTextureSingle(assetName, options);
+        }
     }
 
     private void OnStatusCommand(string command, string[] args)
@@ -414,7 +431,9 @@ public class ModEntry : Mod
         if (isStraightAlpha)
         {
             xnbPixels = (Color[])pixels.Clone();
-            PremultiplyAlpha(xnbPixels); // Straight -> 预乘（含 A=0 清零）
+            // 独立贴图（物品、头像等）保留 A=0 像素的原始 RGB，防止透明边距显示为黑块
+            bool isTileSheet = IsTileSheetAsset(fileName);
+            PremultiplyAlpha(xnbPixels, zeroTransparent: isTileSheet); // Straight -> 预乘
         }
         else
         {
@@ -422,7 +441,12 @@ public class ModEntry : Mod
             // SMAPI 的 PremultiplyTransparency 只处理半透明像素，跳过 A=0 像素，
             // 导致 A=0 像素仍保留原始 RGB（通常为白色）。若不清零，GPU 线性过滤
             // 在边缘采样时会把白色 RGB 混入可见像素，产生白线。
-            ZeroTransparentPixels(xnbPixels);
+            // 但独立贴图（物品、头像等）的透明边距需要保留原始 RGB，
+            // 否则在 XnbConverter/GPU 中透明黑会被显示为可见黑块，导致物品"放大"。
+            if (IsTileSheetAsset(fileName))
+            {
+                ZeroTransparentPixels(xnbPixels);
+            }
         }
 
         if (_config.EnableAlphaBleeding)
@@ -480,15 +504,18 @@ public class ModEntry : Mod
     /// 同时清零所有完全透明（A=0）像素的 RGB，防止线性过滤采样时边缘出现白线。
     /// （SMAPI 的 PremultiplyTransparency 跳过了 A=0 像素，导致 RGB 残留）
     /// </summary>
-    private static void PremultiplyAlpha(Color[] pixels)
+    private static void PremultiplyAlpha(Color[] pixels, bool zeroTransparent = true)
     {
         for (int i = 0; i < pixels.Length; i++)
         {
             int a = pixels[i].A;
             if (a == 0)
             {
-                // 清零 RGB 残留：防止线性过滤采样透明边缘像素的 RGB
-                pixels[i] = new Color((byte)0, (byte)0, (byte)0, (byte)0);
+                if (zeroTransparent)
+                {
+                    // 清零 RGB 残留：防止线性过滤采样透明边缘像素的 RGB
+                    pixels[i] = new Color((byte)0, (byte)0, (byte)0, (byte)0);
+                }
             }
             else if (a < 255)
             {
@@ -576,6 +603,23 @@ public class ModEntry : Mod
     private static bool IsTileSheetAsset(string assetName)
     {
         if (string.IsNullOrEmpty(assetName)) return false;
+
+        // 排除物品/家具/服装等大图集，这些虽然是 Maps/ 下的贴图，
+        // 但属于独立 sprite 而非地形 tile，透明边距需要保留
+        string lower = assetName.ToLowerInvariant();
+        if (lower.Contains("springobjects")
+            || lower.Contains("summerobjects")
+            || lower.Contains("fallobjects")
+            || lower.Contains("winterobjects")
+            || lower.Contains("furniture")
+            || lower.Contains("clothing")
+            || lower.Contains("weapons")
+            || lower.Contains("hats")
+            || lower.Contains("boots")
+            || lower.Contains("rings")
+            || lower.Contains("craftables"))
+            return false;
+
         return assetName.StartsWith("Maps/", StringComparison.OrdinalIgnoreCase)
             || assetName.StartsWith("maps/", StringComparison.OrdinalIgnoreCase)
             || assetName.IndexOf("TileSheet", StringComparison.OrdinalIgnoreCase) >= 0
