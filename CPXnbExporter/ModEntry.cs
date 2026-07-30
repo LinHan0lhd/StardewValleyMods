@@ -112,7 +112,7 @@ public class ModEntry : Mod
             }
             return true;
         }
-        catch { return false; }
+        catch (Exception ex) { Monitor.Log($"✗ 加载地图失败 {raw}: {ex.Message}", LogLevel.Debug); return true; }
     }
 
     // 常见内容目录前缀，用于路径不完整时回退尝试
@@ -134,7 +134,6 @@ public class ModEntry : Mod
     bool EnqTex(string a,string pb,string ub)
     {
         string actual = a.Contains('/') ? a : ResolveAssetPath(a);
-        // 优先用临时 ContentManager 加载，避免 GameContent 缓存导致内存泄漏
         try
         {
             if(IsLoaded(Game1.content,actual))
@@ -153,10 +152,10 @@ public class ModEntry : Mod
                     using var cm2=Game1.content.CreateTemporary();
                     return EnqTex(cm2.Load<IRawTextureData>(actual),actual,pb,ub);
                 }
-                catch (Exception ex) { Monitor.Log($"✗ 加载纹理失败 {a}: {ex.Message}", LogLevel.Warn); return false; }
+                catch (Exception ex) { Monitor.Log($"✗ 加载纹理失败 {a}: {ex.Message}", LogLevel.Warn); return true; }
             }
             Monitor.Log($"⚠ 跳过内置资源 {a}", LogLevel.Debug);
-            return false;
+            return true; // 跳过 = 已处理，不需要重试
         }
     }
     bool EnqTex(Texture2D t,string fn,string pb,string ub)
