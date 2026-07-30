@@ -93,11 +93,11 @@ public class ModEntry : Mod
         {
             Map m; string act=raw;
             try{m=Helper.GameContent.Load<Map>(raw);}catch{if(!raw.StartsWith("Maps/")){act="Maps/"+raw;m=Helper.GameContent.Load<Map>(act);}else throw;}
-            var host=TileSheetMerger.Merge(m,TileSheetMerger.DefaultHost,Helper,Monitor);
-            if(host!=null && !_done.Contains(TileSheetMerger.DefaultHost))
+            var host=TileSheetMerger.MergeVirtualTileSheets(m,TileSheetMerger.DefaultHostAssetName,Helper,Monitor);
+            if(host!=null && !_done.Contains(TileSheetMerger.DefaultHostAssetName))
             {
-                string h=Sanitize(TileSheetMerger.DefaultHost), hp=Path.Combine(_opt.PackedDir,h), hu=_opt.Unpacked?Path.Combine(_opt.UnpackedDir,h):null;
-                if(!EnqTex(host,TileSheetMerger.DefaultHost,hp,hu))return false; _done.Add(TileSheetMerger.DefaultHost);
+                string h=Sanitize(TileSheetMerger.DefaultHostAssetName), hp=Path.Combine(_opt.PackedDir,h), hu=_opt.Unpacked?Path.Combine(_opt.UnpackedDir,h):null;
+                if(!EnqTex(host,TileSheetMerger.DefaultHostAssetName,hp,hu))return false; _done.Add(TileSheetMerger.DefaultHostAssetName);
             }
             TBinWriter.MapAssetName=act;
             var item=new ExportWorkItem{Type=WorkItemType.Map,FileName=raw,PackedBasePath=pb,UnpackedBasePath=ub,Platform=_opt.Platform,TbinData=TBinWriter.SerializeTbin(m)};
@@ -105,7 +105,7 @@ public class ModEntry : Mod
             foreach(var ts in m.TileSheets)
             {
                 string src=ts.ImageSource; if(string.IsNullOrEmpty(src))continue;
-                if(TileSheetMerger.IsVirtual(ts))continue;
+                if(TileSheetMerger.IsVirtualTileSheet(ts))continue;
                 string n=Norm(src); if(!_cpSet.Contains(n)||_done.Contains(n))continue;
                 string s=Sanitize(n), pp=Path.Combine(_opt.PackedDir,s), up=_opt.Unpacked?Path.Combine(_opt.UnpackedDir,s):null;
                 try{if(EnqTex(src,pp,up))_done.Add(n);}catch{}
