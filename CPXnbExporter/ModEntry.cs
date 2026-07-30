@@ -218,7 +218,19 @@ public class ModEntry : Mod
         return a;
     }
     static string Sanitize(string a){if(string.IsNullOrEmpty(a))return a;var s=a.Replace('\\','/').Split('/');for(int i=0;i<s.Length;i++)s[i]=string.Join("_",s[i].Split(Path.GetInvalidFileNameChars()));return string.Join(Path.DirectorySeparatorChar.ToString(),s);}
-    string GetName(string a){string l=LocalizedContentManager.CurrentLanguageString;if(string.IsNullOrEmpty(l))return a;string x=a+"."+l;bool m=a.StartsWith("Maps/",StringComparison.OrdinalIgnoreCase);try{return Helper.GameContent.DoesAssetExist<Map>(Helper.GameContent.ParseAssetName(x))||(!m&&Helper.GameContent.DoesAssetExist<Texture2D>(Helper.GameContent.ParseAssetName(x)))?x:a;}catch{return a;}}
+    string GetName(string a)
+    {
+        string l=LocalizedContentManager.CurrentLanguageString;
+        if(string.IsNullOrEmpty(l))return a;
+        string x=a+"."+l;
+        bool m=a.StartsWith("Maps/",StringComparison.OrdinalIgnoreCase);
+        try
+        {
+            if(m) return Helper.GameContent.DoesAssetExist<Map>(Helper.GameContent.ParseAssetName(x))?x:a;
+            return Helper.GameContent.DoesAssetExist<Texture2D>(Helper.GameContent.ParseAssetName(x))?x:a;
+        }
+        catch{return a;}
+    }
 
     object Load(string a,Type t)=>GetType().GetMethod(nameof(LoadImpl),BindingFlags.NonPublic|BindingFlags.Instance)!.MakeGenericMethod(t).Invoke(this,new object[]{a});
     T LoadImpl<T>(string a){if(IsLoaded(Game1.content,a))return Game1.content.Load<T>(a);using var cm=Game1.content.CreateTemporary();return cm.Load<T>(a);}
