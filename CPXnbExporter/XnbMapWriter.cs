@@ -6,7 +6,7 @@ namespace CPXnbExporter;
 public static class XnbMapWriter
 {
     const string Reader = "xTile.Pipeline.TideReader, xTile";
-    public static void WriteMapXnb(Stream s, Map m, char p) => WriteFromTbin(s, TBinWriter.SerializeTbin(m), p);
+    public static void WriteMapXnb(Stream s, Map m, char p) => WriteMapXnbFromTbin(s, TBinWriter.SerializeTbin(m), p);
     public static void WriteMapXnbFromTbin(Stream s, byte[] d, char p)
     {
         bool c = p == 'a';

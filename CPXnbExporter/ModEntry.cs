@@ -67,8 +67,8 @@ public class ModEntry : Mod
         string pb=Path.Combine(_opt.PackedDir,safe), ub=_opt.Unpacked?Path.Combine(_opt.UnpackedDir,safe):null;
         try
         {
-            if(a.Type==CpAssetLoader.CpAssetType.Texture) { if(!EnqTex(raw,pb,ub))return false; _done.Add(norm); }
-            else if(a.Type==CpAssetLoader.CpAssetType.Map)
+            if(a.AssetType==CpAssetLoader.CpAssetType.Texture) { if(!EnqTex(raw,pb,ub))return false; _done.Add(norm); }
+            else if(a.AssetType==CpAssetLoader.CpAssetType.Map)
             {
                 Map m; string act=raw;
                 try{m=Helper.GameContent.Load<Map>(raw);}catch{if(!raw.StartsWith("Maps/")){act="Maps/"+raw;m=Helper.GameContent.Load<Map>(act);}else throw;}
@@ -95,7 +95,7 @@ public class ModEntry : Mod
         }
         catch
         {
-            if(a.Type!=CpAssetLoader.CpAssetType.Texture && a.Type!=CpAssetLoader.CpAssetType.Data)
+            if(a.AssetType!=CpAssetLoader.CpAssetType.Texture && a.AssetType!=CpAssetLoader.CpAssetType.Data)
                 try{if(EnqTex(raw,pb,ub)){_done.Add(norm);return true;}return false;}catch{return true;}
             return true;
         }
@@ -148,7 +148,7 @@ public class ModEntry : Mod
     void Finish()
     {
         _phase=Phase.Idle;
-        var ts=_pipe?.TexSuccess??0,tf=_pipe?.TexFail??0,ms=_pipe?.MapSuccess??0,mf=_pipe?.MapFail??0,ds=_pipe?.DataSuccess??0,df=_pipe?.DataFail??0;
+        int ts=_pipe?.TexSuccess??0,tf=_pipe?.TexFail??0,ms=_pipe?.MapSuccess??0,mf=_pipe?.MapFail??0,ds=_pipe?.DataSuccess??0,df=_pipe?.DataFail??0;
         _pipe?.Dispose(); _pipe=null;_list=null;_idx=-1;_done=null;_cpSet=null;TBinWriter.MapAssetName=null;
         Monitor.Log($"完成 T:{ts}/{tf} M:{ms}/{mf} D:{ds}/{df}",LogLevel.Info);
     }
@@ -187,7 +187,7 @@ public class ModEntry : Mod
         return a;
     }
     static string Sanitize(string a){if(string.IsNullOrEmpty(a))return a;var s=a.Replace('\\','/').Split('/');for(int i=0;i<s.Length;i++)s[i]=string.Join("_",s[i].Split(Path.GetInvalidFileNameChars()));return string.Join(Path.DirectorySeparatorChar.ToString(),s);}
-    static string GetName(string a){string l=LocalizedContentManager.CurrentLanguageString;if(string.IsNullOrEmpty(l))return a;string x=a+"."+l;bool m=a.StartsWith("Maps/",StringComparison.OrdinalIgnoreCase);try{return Helper.GameContent.DoesAssetExist<Map>(Helper.GameContent.ParseAssetName(x))||(!m&&Helper.GameContent.DoesAssetExist<Texture2D>(Helper.GameContent.ParseAssetName(x)))?x:a;}catch{return a;}}
+    string GetName(string a){string l=LocalizedContentManager.CurrentLanguageString;if(string.IsNullOrEmpty(l))return a;string x=a+"."+l;bool m=a.StartsWith("Maps/",StringComparison.OrdinalIgnoreCase);try{return Helper.GameContent.DoesAssetExist<Map>(Helper.GameContent.ParseAssetName(x))||(!m&&Helper.GameContent.DoesAssetExist<Texture2D>(Helper.GameContent.ParseAssetName(x)))?x:a;}catch{return a;}}
 
     object Load(string a,Type t)=>GetType().GetMethod(nameof(LoadImpl),BindingFlags.NonPublic|BindingFlags.Instance)!.MakeGenericMethod(t).Invoke(this,new object[]{a});
     T LoadImpl<T>(string a){if(IsLoaded(Game1.content,a))return Game1.content.Load<T>(a);using var cm=Game1.content.CreateTemporary();return cm.Load<T>(a);}
@@ -199,7 +199,7 @@ public class ModEntry : Mod
         if(n.Equals("image",StringComparison.OrdinalIgnoreCase))return new[]{typeof(Texture2D)};
         if(n.Equals("map",StringComparison.OrdinalIgnoreCase))return new[]{typeof(Map)};
         var t=Type.GetType(n);if(t!=null)return new[]{t};
-        var bn=new HashSet<Type>(),bf=new HashSet<Type>();
+        HashSet<Type> bn=new HashSet<Type>(),bf=new HashSet<Type>();
         foreach(var asm in AppDomain.CurrentDomain.GetAssemblies()){if(asm.IsDynamic)continue;foreach(var ty in asm.GetExportedTypes()){try{if(string.Equals(ty.FullName,n,StringComparison.OrdinalIgnoreCase))bf.Add(ty);if(string.Equals(ty.Name,n,StringComparison.OrdinalIgnoreCase))bn.Add(ty);}catch{}}}
         var m=bf.Any()?bf:bn;return m.OrderBy(p=>p.FullName,StringComparer.OrdinalIgnoreCase).ToArray();
     }

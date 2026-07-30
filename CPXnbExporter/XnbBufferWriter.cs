@@ -15,6 +15,6 @@ internal class XnbBufferWriter
     public void Write7BitEncodedInt(int v) { uint x = (uint)v; while (x >= 0x80) { WriteByte((byte)(x | 0x80)); x >>= 7; } WriteByte((byte)x); }
     public void Write7BitEncodedString(string v) { byte[] b = Encoding.UTF8.GetBytes(v ?? ""); Write7BitEncodedInt(b.Length); WriteBytes(b); }
     public void WriteAsciiString(string v) { if (string.IsNullOrEmpty(v)) return; WriteBytes(Encoding.ASCII.GetBytes(v)); }
-    public void WriteBytes(byte[] b) { if (b == null || b.Length == 0) return; Grow(_p + b.Length); Buffer.BlockCopy(b, 0, _b, _p, b.Length); _p += b.Length; }
-    public void WriteBytes(byte[] b, int o, int c) { if (c <= 0) return; Grow(_p + c); Buffer.BlockCopy(b, o, _b, _p, c); _p += c; }
+    public void WriteBytes(byte[] b) { if (b == null || b.Length == 0) return; Grow(_p + b.Length); System.Buffer.BlockCopy(b, 0, _b, _p, b.Length); _p += b.Length; }
+    public void WriteBytes(byte[] b, int o, int c) { if (c <= 0) return; Grow(_p + c); System.Buffer.BlockCopy(b, o, _b, _p, c); _p += c; }
 }

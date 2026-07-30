@@ -49,7 +49,7 @@ namespace CPXnbExporter
             }
             if(all.Count==0)return null;
             var uniq=new List<(VData vd,int ox,int oy,Color[] px)>();var hs=new HashSet<int>();
-            foreach(var(vd,ox,oy,px)in all){int h=17;for(int i=0;i<px.Length;i++){var c=px[i];h=h*31+c.R;h=h*31+c.G;h=h*31+c.B;h=h*31+c.A;}if(!hs.Contains(h)){hs.Add(h);uniq.Add((vd,ox,oy,px));}}
+            foreach(var(vd,ox,oy,px)in all){int hash=17;for(int i=0;i<px.Length;i++){var c=px[i];hash=hash*31+c.R;hash=hash*31+c.G;hash=hash*31+c.B;hash=hash*31+c.A;}if(!hs.Contains(hash)){hs.Add(hash);uniq.Add((vd,ox,oy,px));}}
             all=uniq;
             int lcmW=hTw;foreach(var vd in vData)lcmW=Lcm(lcmW,vd.Tw);
             int mw=((hPw+lcmW-1)/lcmW)*lcmW;if(mw<hPw)mw+=lcmW;int mh=hPh;
