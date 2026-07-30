@@ -115,19 +115,34 @@ public class ModEntry : Mod
         catch { return false; }
     }
 
+    // 常见内容目录前缀，用于路径不完整时回退尝试
+    static readonly string[] _contentPrefixes = { "Maps/", "LooseSprites/", "TileSheets/", "Characters/", "Buildings/", "Portraits/", "Data/" };
+
+    string ResolveAssetPath(string a)
+    {
+        // 已经有目录前缀的直接返回
+        if(a.Contains('/')) return a;
+        // 尝试补常见前缀
+        foreach(var p in _contentPrefixes)
+        {
+            try { if(Helper.GameContent.DoesAssetExist<Texture2D>(Helper.GameContent.ParseAssetName(p+a))) return p+a; } catch{}
+            try { if(Helper.GameContent.DoesAssetExist<Map>(Helper.GameContent.ParseAssetName(p+a))) return p+a; } catch{}
+        }
+        return a;
+    }
+
     bool EnqTex(string a,string pb,string ub)
     {
-        try { return EnqTex(Helper.GameContent.Load<Texture2D>(a),a,pb,ub); }
+        // 路径不完整时尝试补前缀
+        string actual = a.Contains('/') ? a : ResolveAssetPath(a);
+        try { return EnqTex(Helper.GameContent.Load<Texture2D>(actual),actual,pb,ub); }
         catch
         {
-            // IRawTextureData only works for mod-local files (Mods/...), not game content pipeline assets
-            if(a.StartsWith("Mods/",StringComparison.OrdinalIgnoreCase))
+            if(actual.StartsWith("Mods/",StringComparison.OrdinalIgnoreCase))
             {
-                try { return EnqTex(Helper.GameContent.Load<IRawTextureData>(a),a,pb,ub); }
+                try { return EnqTex(Helper.GameContent.Load<IRawTextureData>(actual),actual,pb,ub); }
                 catch (Exception ex) { Monitor.Log($"✗ 加载纹理失败 {a}: {ex.Message}", LogLevel.Warn); return false; }
             }
-            // Game built-in tilesheet resources (e.g. Maps/island_tilesheet_1) are edited via CP EditImage
-            // but the base texture can't be loaded as a standalone asset — skip silently
             Monitor.Log($"⚠ 跳过内置资源 {a}", LogLevel.Trace);
             return false;
         }
@@ -147,8 +162,9 @@ public class ModEntry : Mod
     }
     bool EnqData(string a,string pb)
     {
-        var types=GetLikely(a)??new(); types.Add(typeof(object));
-        object d=null; foreach(var t in types){try{d=Load(a,t);if(d!=null)break;}catch{}}
+        string actual = a.Contains('/') ? a : ResolveAssetPath(a);
+        var types=GetLikely(actual)??new(); types.Add(typeof(object));
+        object d=null; foreach(var t in types){try{d=Load(actual,t);if(d!=null)break;}catch{}}
         if(d==null){Monitor.Log($"✗ 无法加载数据 {a}",LogLevel.Warn);return true;}
         string ub=_opt.Unpacked?Path.Combine(_opt.UnpackedDir,Sanitize(GetName(Norm(a)))):null;
         return _pipe.TryAdd(new ExportWorkItem{Type=WorkItemType.Data,FileName=a,PackedBasePath=pb,UnpackedBasePath=ub,Platform=_opt.Platform,DataObject=d,DataTypeName=d.GetType().FullName});
