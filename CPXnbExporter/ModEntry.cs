@@ -133,14 +133,26 @@ public class ModEntry : Mod
 
     bool EnqTex(string a,string pb,string ub)
     {
-        // 路径不完整时尝试补前缀
         string actual = a.Contains('/') ? a : ResolveAssetPath(a);
-        try { return EnqTex(Helper.GameContent.Load<Texture2D>(actual),actual,pb,ub); }
+        // 优先用临时 ContentManager 加载，避免 GameContent 缓存导致内存泄漏
+        try
+        {
+            if(IsLoaded(Game1.content,actual))
+                return EnqTex(Helper.GameContent.Load<Texture2D>(actual),actual,pb,ub);
+            using var cm=Game1.content.CreateTemporary();
+            return EnqTex(cm.Load<Texture2D>(actual),actual,pb,ub);
+        }
         catch
         {
             if(actual.StartsWith("Mods/",StringComparison.OrdinalIgnoreCase))
             {
-                try { return EnqTex(Helper.GameContent.Load<IRawTextureData>(actual),actual,pb,ub); }
+                try
+                {
+                    if(IsLoaded(Game1.content,actual))
+                        return EnqTex(Helper.GameContent.Load<IRawTextureData>(actual),actual,pb,ub);
+                    using var cm2=Game1.content.CreateTemporary();
+                    return EnqTex(cm2.Load<IRawTextureData>(actual),actual,pb,ub);
+                }
                 catch (Exception ex) { Monitor.Log($"✗ 加载纹理失败 {a}: {ex.Message}", LogLevel.Warn); return false; }
             }
             Monitor.Log($"⚠ 跳过内置资源 {a}", LogLevel.Trace);
@@ -152,6 +164,8 @@ public class ModEntry : Mod
         var px=new Color[t.Width*t.Height]; t.GetData(px); XnbWriter.NormalizeAlpha(px);
         byte[] png=null;
         if(ub!=null){using var tmp=new Texture2D(t.GraphicsDevice,t.Width,t.Height);tmp.SetData(px);using var ms=new MemoryStream();tmp.SaveAsPng(ms,t.Width,t.Height);png=ms.ToArray();}
+        // 临时加载的纹理立即释放
+        if(!IsLoaded(Game1.content,fn)) t.Dispose();
         return _pipe.TryAdd(new ExportWorkItem{Type=WorkItemType.Texture,FileName=fn,PackedBasePath=pb,UnpackedBasePath=ub,Platform=_opt.Platform,PixelData=px,PngData=png,Width=t.Width,Height=t.Height});
     }
     bool EnqTex(IRawTextureData r,string fn,string pb,string ub)
