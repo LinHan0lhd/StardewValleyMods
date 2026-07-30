@@ -68,8 +68,10 @@ namespace CPXnbExporter
 
             int hostPixelW = hostTexture.Width;
             int hostPixelH = hostTexture.Height;
-            int hostTileW = hostSheet?.TileWidth ?? 64;
-            int hostTileH = hostSheet?.TileHeight ?? 64;
+            // 强制 16×16，与 TBinWriter 写入的 layer tile size 一致
+            // （若用 hostSheet?.TileWidth ?? 64，当地图无 busPeople tilesheet 时会得到 64，与 layer 16×16 冲突导致错位）
+            int hostTileW = 16;
+            int hostTileH = 16;
 
             monitor?.Log($"  ↳ 宿主: {hostPixelW}x{hostPixelH}px, Tile={hostTileW}x{hostTileH}", LogLevel.Trace);
 
@@ -353,6 +355,8 @@ namespace CPXnbExporter
                 hostSheet.ImageSource = hostAssetName;
                 hostSheet.SheetWidth = newHostSheetW;
                 hostSheet.SheetHeight = newHostSheetH;
+                hostSheet.TileWidth = hostTileW;
+                hostSheet.TileHeight = hostTileH;
             }
 
             monitor?.Log($"  ↳ 宿主 TileSheet: {newHostSheetW}x{newHostSheetH} tiles, Tile={hostTileW}x{hostTileH}", LogLevel.Trace);
