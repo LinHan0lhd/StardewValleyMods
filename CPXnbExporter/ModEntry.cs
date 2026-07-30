@@ -148,7 +148,7 @@ public class ModEntry : Mod
     void Finish()
     {
         _phase=Phase.Idle;
-        int ts=_pipe?.TexSuccess??0,tf=_pipe?.TexFail??0,ms=_pipe?.MapSuccess??0,mf=_pipe?.MapFail??0,ds=_pipe?.DataSuccess??0,df=_pipe?.DataFail??0;
+        long ts=_pipe?.TexSuccess??0,tf=_pipe?.TexFail??0,ms=_pipe?.MapSuccess??0,mf=_pipe?.MapFail??0,ds=_pipe?.DataSuccess??0,df=_pipe?.DataFail??0;
         _pipe?.Dispose(); _pipe=null;_list=null;_idx=-1;_done=null;_cpSet=null;TBinWriter.MapAssetName=null;
         Monitor.Log($"完成 T:{ts}/{tf} M:{ms}/{mf} D:{ds}/{df}",LogLevel.Info);
     }
