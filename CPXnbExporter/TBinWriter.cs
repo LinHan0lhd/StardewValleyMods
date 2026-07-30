@@ -9,404 +9,134 @@ using xTile.ObjectModel;
 using xTile.Tiles;
 
 namespace CPXnbExporter;
-
 public static class TBinWriter
 {
-    /// <summary>
-    /// 当前正在导出的地图 assetName（如 "Maps/ArchaeologyHouse"）。
-    /// 用于把 tilesheet 的 ImageSource 从"相对于 Content 的完整路径"
-    /// 转换为"相对于地图所在目录的相对路径"。
-    ///
-    /// 由 ModEntry 在每次调用 SerializeTbin 前设置（每张地图不同）。
-    /// </summary>
     public static string MapAssetName { get; set; }
-
-    /// <summary>
-    /// PropertyValue 内部实例字段（反射缓存）。
-    /// 用于在不依赖 TryGetValue&lt;T&gt; API 的情况下读取属性原始值
-    /// （xTile 是闭源库，不同版本该方法签名/可用性不一致）。
-    /// </summary>
-    private static readonly FieldInfo[] _propertyValueFields =
-        typeof(PropertyValue).GetFields(
-            BindingFlags.NonPublic | BindingFlags.Instance);
+    static readonly FieldInfo[] _pf = typeof(PropertyValue).GetFields(BindingFlags.NonPublic | BindingFlags.Instance);
 
     public static byte[] SerializeTbin(Map map)
     {
         using var ms = new MemoryStream();
-        using var writer = new BinaryWriter(ms, Encoding.UTF8);
-
-        // Header: "tBIN10" (6 bytes, 无 version byte)
-        writer.Write(Encoding.UTF8.GetBytes("tBIN10"));
-
-        // Map: Id, Description, Properties, TileSheets, Layers
-        WriteString(writer, map.Id ?? "");
-        WriteString(writer, map.Description ?? "");
-        WriteProperties(writer, map.Properties);
-
-        // TileSheets
-        writer.Write(map.TileSheets.Count);
-        foreach (var tileSheet in map.TileSheets)
-        {
-            WriteTileSheet(writer, tileSheet);
-        }
-
-        // Layers
-        writer.Write(map.Layers.Count);
-        foreach (var layer in map.Layers)
-        {
-            WriteLayer(writer, layer);
-        }
-
+        using var w = new BinaryWriter(ms, Encoding.UTF8);
+        w.Write(Encoding.UTF8.GetBytes("tBIN10"));
+        WriteStr(w, map.Id ?? ""); WriteStr(w, map.Description ?? ""); WriteProps(w, map.Properties);
+        w.Write(map.TileSheets.Count);
+        foreach (var ts in map.TileSheets) WriteTS(w, ts);
+        w.Write(map.Layers.Count);
+        foreach (var layer in map.Layers) WriteLayer(w, layer, map);
         return ms.ToArray();
     }
 
-    private static void WriteTileSheet(BinaryWriter writer, TileSheet tileSheet)
+    public static void WriteMapXnb(Stream s, Map m, char p) => XnbMapWriter.WriteMapXnbFromTbin(s, SerializeTbin(m), p);
+    public static void WriteMapTbin(Stream s, Map m) => s.Write(SerializeTbin(m), 0, SerializeTbin(m).Length);
+
+    static void WriteTS(BinaryWriter w, TileSheet ts)
     {
-        // Id, Description, Image
-        WriteString(writer, tileSheet.Id ?? "");
-        WriteString(writer, tileSheet.Description ?? "");
-        WriteString(writer, GetImageSourceWithoutExtension(tileSheet));
-
-        // SheetSize (IntVector2: x=SheetWidth, y=SheetHeight)
-        writer.Write(tileSheet.SheetWidth);
-        writer.Write(tileSheet.SheetHeight);
-
-        // TileSize (IntVector2: x=TileWidth, y=TileHeight)
-        writer.Write(tileSheet.TileWidth);
-        writer.Write(tileSheet.TileHeight);
-
-        // Margin (IntVector2: x=Margin.Width, y=Margin.Height)
-        writer.Write(tileSheet.Margin.Width);
-        writer.Write(tileSheet.Margin.Height);
-
-        // Spacing (IntVector2: x=Spacing.Width, y=Spacing.Height)
-        writer.Write(tileSheet.Spacing.Width);
-        writer.Write(tileSheet.Spacing.Height);
-
-        // Properties
-        WriteProperties(writer, tileSheet.Properties);
+        WriteStr(w, ts.Id ?? ""); WriteStr(w, ts.Description ?? ""); WriteStr(w, GetImg(ts));
+        w.Write(ts.SheetWidth); w.Write(ts.SheetHeight);
+        w.Write(ts.TileWidth); w.Write(ts.TileHeight);
+        w.Write(ts.Margin.Width); w.Write(ts.Margin.Height);
+        w.Write(ts.Spacing.Width); w.Write(ts.Spacing.Height);
+        WriteProps(w, ts.Properties);
     }
 
-    /// <summary>
-    /// 判断 tile 是否为空（null tile）。
-    /// xTile 中，空 tile 可能是 null 引用，也可能是 TileIndex == -1 的 StaticTile。
-    /// 官方 tBIN 写入器会把 TileIndex == -1 的 tile 当作空 tile 压缩为 'N' 标记。
-    /// </summary>
-    private static bool IsNullTile(Tile tile)
+    static bool IsNull(Tile t) => t == null || (t is StaticTile st && st.TileIndex == -1);
+
+    static void WriteLayer(BinaryWriter w, Layer layer, Map map)
     {
-        if (tile == null) return true;
-        if (tile is StaticTile st && st.TileIndex == -1) return true;
-        return false;
-    }
-
-    private static void WriteLayer(BinaryWriter writer, Layer layer)
-    {
-        // Id
-        WriteString(writer, layer.Id ?? "");
-
-        // Visible (byte: 0 or 1)
-        writer.Write((byte)(layer.Visible ? 1 : 0));
-
-        // Description
-        WriteString(writer, layer.Description ?? "");
-
-        // LayerSize (IntVector2: x=LayerWidth, y=LayerHeight)
-        writer.Write(layer.LayerWidth);
-        writer.Write(layer.LayerHeight);
-
-        // TileSize (IntVector2: x=TileWidth, y=TileHeight)
-        writer.Write(layer.TileWidth);
-        writer.Write(layer.TileHeight);
-
-        // Properties
-        WriteProperties(writer, layer.Properties);
-
-        // Tiles (逐行写入，支持压缩)
-        // 使用 null 作为初始值，与官方 TbinFormat 的 previousTileSheet = null 语义一致。
-        // 不能用 "" 初始化：如果 tilesheet 的 Id 恰好为 ""，字符串比较会误判为"未变化"，
-        // 导致第一个 tile 的 'T' 标记被跳过，reader 用 null tilesheet 创建 StaticTile 而崩溃。
-        string currentTileSheetId = null;
+        WriteStr(w, layer.Id ?? ""); w.Write((byte)(layer.Visible ? 1 : 0)); WriteStr(w, layer.Description ?? "");
+        w.Write(layer.LayerWidth); w.Write(layer.LayerHeight);
+        int tw = map.TileWidth, th = map.TileHeight;
+        if (tw == 0) tw = layer.TileWidth; if (th == 0) th = layer.TileHeight;
+        w.Write(tw); w.Write(th);
+        WriteProps(w, layer.Properties);
+        string cur = null;
         for (int y = 0; y < layer.LayerHeight; y++)
         {
             int x = 0;
             while (x < layer.LayerWidth)
             {
-                var tile = layer.Tiles[x, y];
-                if (IsNullTile(tile))
+                var t = layer.Tiles[x, y];
+                if (IsNull(t))
                 {
-                    // 计算连续空tile数量，用 'N' + count 压缩
-                    int nullCount = 0;
-                    while (x < layer.LayerWidth && IsNullTile(layer.Tiles[x, y]))
-                    {
-                        nullCount++;
-                        x++;
-                    }
-                    writer.Write((byte)'N');
-                    writer.Write(nullCount);
+                    int n = 0; while (x < layer.LayerWidth && IsNull(layer.Tiles[x, y])) { n++; x++; }
+                    w.Write((byte)'N'); w.Write(n);
                 }
-                else if (tile is StaticTile st)
+                else if (t is StaticTile st)
                 {
-                    // 检查tilesheet是否改变，改变则写入 'T'
-                    string tsId = st.TileSheet?.Id ?? "";
-                    if (tsId != currentTileSheetId)
-                    {
-                        writer.Write((byte)'T');
-                        WriteString(writer, tsId);
-                        currentTileSheetId = tsId;
-                    }
-                    // 写入 'S' + StaticTile (TileIndex + BlendMode + Properties)
-                    writer.Write((byte)'S');
-                    writer.Write(st.TileIndex);
-                    writer.Write((byte)st.BlendMode);
-                    WriteProperties(writer, st.Properties);
+                    string id = st.TileSheet?.Id ?? "";
+                    if (id != cur) { w.Write((byte)'T'); WriteStr(w, id); cur = id; }
+                    w.Write((byte)'S'); w.Write(st.TileIndex); w.Write((byte)st.BlendMode); WriteProps(w, st.Properties); x++;
+                }
+                else if (t is AnimatedTile a)
+                {
+                    if (a.TileFrames.Length == 0) { w.Write((byte)'N'); w.Write(1); }
+                    else { w.Write((byte)'A'); WriteAnim(w, a); }
                     x++;
                 }
-                else if (tile is AnimatedTile anim)
-                {
-                    // 帧数为0的 AnimatedTile 没有可渲染内容，且访问 TileSheet/TileIndex/BlendMode
-                    // 会抛 DivideByZeroException（m_animationInterval=0, ElapsedTime%0 未定义）。
-                    // 安全做法：当作空 tile 处理。
-                    if (anim.TileFrames.Length == 0)
-                    {
-                        writer.Write((byte)'N');
-                        writer.Write(1);
-                    }
-                    else
-                    {
-                        // 写入 'A' + AnimatedTile
-                        // 注意：不在此处写 layer 级 'T' 标记，因为 AnimatedTile 的 TileSheet
-                        // 依赖游戏运行时（非确定性），且 body 内部有自己的 'T' 标记。
-                        // 后续 StaticTile 会根据 currentTileSheetId 自行判断是否需要 'T'。
-                        writer.Write((byte)'A');
-                        WriteAnimatedTile(writer, anim);
-                    }
-                    x++;
-                }
-                else
-                {
-                    // 未知tile类型，当作空tile处理
-                    writer.Write((byte)'N');
-                    writer.Write(1);
-                    x++;
-                }
+                else { w.Write((byte)'N'); w.Write(1); x++; }
             }
         }
     }
 
-    private static void WriteAnimatedTile(BinaryWriter writer, AnimatedTile anim)
+    static void WriteAnim(BinaryWriter w, AnimatedTile a)
     {
-        // FrameInterval (int32) — xTile 内部是 long，但 tBIN 格式只存 int32
-        writer.Write((int)anim.FrameInterval);
-
-        // FrameCount (int32)
-        writer.Write(anim.TileFrames.Length);
-
-        // Frames: 'T' + tilesheetId / 'S' + StaticTile
-        // 用 null 初始化（与官方 prevTileSheet = null 一致），
-        // 确保第一帧总是写入 'T' 标记，即使 tilesheet Id 为空字符串。
-        string frameCurrentTileSheetId = null;
-        foreach (var frame in anim.TileFrames)
+        w.Write((int)a.FrameInterval); w.Write(a.TileFrames.Length);
+        string cur = null;
+        foreach (var f in a.TileFrames)
         {
-            string frameTsId = frame.TileSheet?.Id ?? "";
-            if (frameTsId != frameCurrentTileSheetId)
-            {
-                writer.Write((byte)'T');
-                WriteString(writer, frameTsId);
-                frameCurrentTileSheetId = frameTsId;
-            }
-            // 写入 'S' + StaticTile (TileIndex + BlendMode + Properties)
-            writer.Write((byte)'S');
-            writer.Write(frame.TileIndex);
-            // 使用 frame 自己的 BlendMode，而不是 anim.BlendMode
-            writer.Write((byte)frame.BlendMode);
-            WriteProperties(writer, frame.Properties);
+            string id = f.TileSheet?.Id ?? "";
+            if (id != cur) { w.Write((byte)'T'); WriteStr(w, id); cur = id; }
+            w.Write((byte)'S'); w.Write(f.TileIndex); w.Write((byte)f.BlendMode); WriteProps(w, f.Properties);
         }
-
-        // AnimatedTile Properties
-        WriteProperties(writer, anim.Properties);
+        WriteProps(w, a.Properties);
     }
 
-    private static void WriteProperties(BinaryWriter writer, IDictionary<string, PropertyValue> properties)
+    static void WriteProps(BinaryWriter w, IDictionary<string, PropertyValue> p)
     {
-        writer.Write(properties.Count);
-        foreach (var prop in properties)
-        {
-            WriteString(writer, prop.Key ?? "");
-            WritePropertyValue(writer, prop.Value);
-        }
+        w.Write(p.Count);
+        foreach (var kv in p) { WriteStr(w, kv.Key ?? ""); WritePV(w, kv.Value); }
     }
 
-    private static void WritePropertyValue(BinaryWriter writer, PropertyValue value)
+    static void WritePV(BinaryWriter w, PropertyValue v)
     {
-        if (value == null)
-        {
-            writer.Write((byte)3); // string
-            WriteString(writer, "");
-            return;
-        }
-
-        // 用反射获取 PropertyValue 内部存储的原始值。
-        // 不依赖 TryGetValue<T>（xTile 闭源，不同版本该泛型方法可能不存在或签名不同）。
-        //
-        // 重要：PropertyValue 内部有一个类型标记字段（tag/type/kind 等，枚举或 int 类型），
-        // 用于区分 bool/int/float/string。如果直接遍历字段取第一个匹配 bool/int/float/string 的，
-        // 会错误地把"类型标记字段"当作"值字段"读取（例如 tag=3 被当成 int 值 3 写入）。
-        // 因此必须跳过名字含 tag/type/kind 的字段，只取真正的值字段。
+        if (v == null) { w.Write((byte)3); WriteStr(w, ""); return; }
         object inner = null;
-        foreach (var f in _propertyValueFields)
+        foreach (var f in _pf)
         {
-            string fname = f.Name ?? "";
-            string fnameLower = fname.ToLowerInvariant();
-            // 跳过类型标记字段（tag/type/kind/discriminator/case）
-            if (fnameLower.Contains("tag") ||
-                fnameLower.Contains("type") ||
-                fnameLower.Contains("kind") ||
-                fnameLower.Contains("discriminator") ||
-                fnameLower.Contains("case"))
-                continue;
-
-            try
-            {
-                var v = f.GetValue(value);
-                if (v is bool || v is int || v is float || v is string)
-                {
-                    inner = v;
-                    break;
-                }
-            }
-            catch { /* 忽略反射访问异常 */ }
+            string n = f.Name?.ToLowerInvariant() ?? "";
+            if (n.Contains("tag") || n.Contains("type") || n.Contains("kind") || n.Contains("discriminator") || n.Contains("case")) continue;
+            try { var x = f.GetValue(v); if (x is bool || x is int || x is float || x is string) { inner = x; break; } } catch { }
         }
-
         switch (inner)
         {
-            case bool b:
-                writer.Write((byte)0); // bool
-                writer.Write((byte)(b ? 1 : 0));
-                break;
-            case int i:
-                writer.Write((byte)1); // int
-                writer.Write(i);
-                break;
-            case float f:
-                writer.Write((byte)2); // float
-                writer.Write(f);
-                break;
-            case string s:
-                writer.Write((byte)3); // string
-                WriteString(writer, s ?? "");
-                break;
-            default:
-                // fallback: 反射取不到值字段时当作字符串处理。
-                // PropertyValue 重载了到 string 的隐式转换（op_Implicit），ToString/隐式转换会返回实际值字符串。
-                // 游戏读取属性大多用 string 形式（见 FrameworkExtensions.TryGetValue），仍可正常工作。
-                writer.Write((byte)3);
-                WriteString(writer, value.ToString() ?? "");
-                break;
+            case bool b: w.Write((byte)0); w.Write(b ? (byte)1 : (byte)0); break;
+            case int i: w.Write((byte)1); w.Write(i); break;
+            case float f: w.Write((byte)2); w.Write(f); break;
+            case string s: w.Write((byte)3); WriteStr(w, s); break;
+            default: w.Write((byte)3); WriteStr(w, ""); break;
         }
     }
 
-    /// <summary>
-    /// 写入字符串：int32 length + UTF8 bytes
-    /// 这是 xTile tBIN 格式使用的字符串编码方式（不是 7-bit encoded）
-    /// </summary>
-    private static void WriteString(BinaryWriter writer, string str)
+    static void WriteStr(BinaryWriter w, string s)
     {
-        if (str == null) str = "";
-        byte[] bytes = Encoding.UTF8.GetBytes(str);
-        writer.Write(bytes.Length);  // int32 length
-        writer.Write(bytes);          // bytes
+        if (string.IsNullOrEmpty(s)) { w.Write(0); return; }
+        var b = Encoding.UTF8.GetBytes(s); w.Write(b.Length); w.Write(b);
     }
 
-    private static string GetImageSourceWithoutExtension(TileSheet tileSheet)
+    static string GetImg(TileSheet ts)
     {
-        string imageSource = tileSheet.ImageSource;
-        if (string.IsNullOrEmpty(imageSource))
-            return imageSource;
-
-        string ext = Path.GetExtension(imageSource);
-        if (!string.IsNullOrEmpty(ext) &&
-            (ext.Equals(".png", StringComparison.OrdinalIgnoreCase) ||
-             ext.Equals(".jpg", StringComparison.OrdinalIgnoreCase) ||
-             ext.Equals(".jpeg", StringComparison.OrdinalIgnoreCase) ||
-             ext.Equals(".bmp", StringComparison.OrdinalIgnoreCase) ||
-             ext.Equals(".gif", StringComparison.OrdinalIgnoreCase)))
+        string src = ts.ImageSource?.Replace('\\', '/');
+        if (string.IsNullOrEmpty(src)) return "";
+        int dot = src.LastIndexOf('.');
+        if (dot >= 0) src = src[..dot];
+        if (!string.IsNullOrEmpty(MapAssetName) && !src.StartsWith("SMAPI/", StringComparison.OrdinalIgnoreCase) && !src.Contains("/Mods/", StringComparison.OrdinalIgnoreCase))
         {
-            imageSource = imageSource.Substring(0, imageSource.Length - ext.Length);
+            string mapDir = MapAssetName.Replace('\\', '/');
+            int ls = mapDir.LastIndexOf('/');
+            if (ls >= 0) mapDir = mapDir[..ls];
+            if (src.StartsWith(mapDir + "/", StringComparison.OrdinalIgnoreCase)) src = src[(mapDir.Length + 1)..];
         }
-
-        // 转换为相对于地图所在目录的路径。
-        // 例如地图 Maps/ArchaeologyHouse：
-        //   "Maps/paths" -> "paths"
-        //   "Maps/Mods/xxx" -> "Mods/xxx"
-        //   "Mods/xxx" -> "Mods/xxx"
-        imageSource = MakeRelativeToMapDir(imageSource, MapAssetName);
-
-        return imageSource;
-    }
-
-    /// <summary>
-    /// 把 tilesheet ImageSource 转换为相对于地图所在目录的路径。
-    ///
-    /// 原因：xTile 的 XnaDisplayDevice.LoadTileSheet 会以地图所在目录为基准拼接 tilesheet 路径。
-    /// 地图在 Maps/ 下时，ImageSource 写 "paths" 会被拼成 "Maps/paths.xnb"；
-    /// 如果写 "Maps/paths" 会被拼成 "Maps/Maps/paths.xnb"（错误）。
-    /// 所以必须把 ImageSource 转换为"相对于地图所在目录"的路径。
-    ///
-    /// 处理流程：
-    ///   1. 去掉 ../ 前缀（SMAPI FixTilesheetPaths 可能产生）
-    ///   2. 计算地图所在目录（mapAssetName 去掉最后一级）
-    ///   3. 如果 imagePath 以地图目录开头，去掉该前缀
-    ///   4. 否则如果 imagePath 以 Maps/ 开头，也去掉 Maps/ 前缀（兼容处理）
-    ///
-    /// 例如地图 assetName = "Maps/ArchaeologyHouse"，mapDir = "Maps/"：
-    ///   "Maps/paths"            -> "paths"           （去掉 Maps/，xTile 加回 Maps/ -> Maps/paths 对）
-    ///   "Maps/Mods/xxx"         -> "Mods/xxx"        （去掉 Maps/，xTile 加回 Maps/ -> Maps/Mods/xxx 对）
-    ///   "Mods/xxx"              -> "Mods/xxx"        （xTile 加回 Maps/ -> Maps/Mods/xxx 对）
-    /// </summary>
-    private static string MakeRelativeToMapDir(string imagePath, string mapAssetName)
-    {
-        if (string.IsNullOrEmpty(imagePath))
-            return imagePath;
-
-        string img = imagePath.Replace('\\', '/');
-
-        // 去掉开头的 ../（可能有多层，SMAPI FixTilesheetPaths 产生）
-        while (img.StartsWith("../"))
-            img = img.Substring(3);
-
-        // 计算地图所在目录（去掉最后一级文件名，保留末尾斜杠）
-        // 例如 mapAssetName = "Maps/ArchaeologyHouse" -> mapDir = "Maps/"
-        string mapDir = "";
-        if (!string.IsNullOrEmpty(mapAssetName))
-        {
-            mapDir = mapAssetName.Replace('\\', '/');
-            int lastSlash = mapDir.LastIndexOf('/');
-            if (lastSlash >= 0)
-                mapDir = mapDir.Substring(0, lastSlash + 1);
-        }
-
-        // 如果 imagePath 以地图目录开头，去掉它得到真正的相对路径
-        if (!string.IsNullOrEmpty(mapDir) && img.StartsWith(mapDir, StringComparison.OrdinalIgnoreCase))
-        {
-            img = img.Substring(mapDir.Length);
-        }
-        // 回退：直接去掉 Maps/ 前缀
-        else if (img.StartsWith("Maps/", StringComparison.OrdinalIgnoreCase))
-        {
-            img = img.Substring("Maps/".Length);
-        }
-
-        return img;
-    }
-
-    public static void WriteMapXnb(Stream fs, Map map, char platform)
-    {
-        XnbMapWriter.WriteMapXnb(fs, map, platform);
-    }
-
-    public static void WriteMapTbin(Stream fs, Map map)
-    {
-        byte[] data = SerializeTbin(map);
-        fs.Write(data, 0, data.Length);
+        return src;
     }
 }

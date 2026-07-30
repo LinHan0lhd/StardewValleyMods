@@ -1,68 +1,18 @@
 using StardewModdingAPI;
 
-namespace CPXnbExporter
+namespace CPXnbExporter;
+public class ModConfig
 {
-    /// <summary>模组配置</summary>
-    public class ModConfig
+    public int Workers { get; set; } = 2;
+    public int Queue { get; set; } = 100;
+    public int PerFrame { get; set; } = 3;
+    public bool AutoExport { get; set; } = false;
+    public string AutoPlatform { get; set; } = "a";
+    public bool AutoUnpacked { get; set; } = false;
+    public void Validate(IMonitor m)
     {
-        /// <summary>是否在返回标题画面时自动导出</summary>
-        public bool AutoExportOnTitleScreen { get; set; } = false;
-
-        /// <summary>自动导出平台: "mobile" (a) 或 "pc" (w)</summary>
-        public string AutoExportPlatform { get; set; } = "mobile";
-
-        /// <summary>自动导出时是否同时输出 unpacked</summary>
-        public bool AutoExportUnpacked { get; set; } = false;
-
-        /// <summary>后台写入线程数（建议等于CPU逻辑核心数）</summary>
-        public int WorkerThreadCount { get; set; } = 4;
-
-        /// <summary>任务队列最大长度（防止内存溢出）</summary>
-        public int MaxQueueSize { get; set; } = 32;
-
-        /// <summary>每帧加载的最大资产数（建议保持1避免卡顿）</summary>
-        public int AssetsPerFrame { get; set; } = 1;
-
-        /// <summary>
-        /// 是否启用 Alpha Bleeding（默认 false）。
-        /// 对非 tile 的独立贴图（如头像、物品）可减少压缩边缘白边；
-        /// 对 TileSheet 会跨 tile 污染颜色，使缝隙更明显，因此默认关闭。
-        /// </summary>
-        public bool EnableAlphaBleeding { get; set; } = false;
-
-        /// <summary>
-        /// 是否对 TileSheet 做边缘像素复制来减少 tile 缝隙（默认 false）。
-        /// 原理：把每个 tile 最外一圈像素向内复制一份，
-        /// 让 GPU 线性过滤在 tile 边界采样时采到的颜色和 tile 内部一致。
-        /// 仅对 Maps/ 下的贴图生效（TileSheet 判断），非 Maps/ 的独立贴图不受影响。
-        /// </summary>
-        public bool EnableTileSheetEdgePadding { get; set; } = false;
-
-        /// <summary>TileSheet 的 tile 尺寸（默认 16）</summary>
-        public int TileSheetTileSize { get; set; } = 16;
-
-        /// <summary>验证配置有效性</summary>
-        public void Validate(IMonitor monitor)
-        {
-            if (WorkerThreadCount < 1)
-            {
-                monitor.Log("配置 WorkerThreadCount 过小，已重置为 1", LogLevel.Warn);
-                WorkerThreadCount = 1;
-            }
-            if (WorkerThreadCount > 16)
-            {
-                monitor.Log("配置 WorkerThreadCount 过大，已限制为 16", LogLevel.Warn);
-                WorkerThreadCount = 16;
-            }
-            if (MaxQueueSize < 4)
-            {
-                monitor.Log("配置 MaxQueueSize 过小，已重置为 4", LogLevel.Warn);
-                MaxQueueSize = 4;
-            }
-            if (AssetsPerFrame < 1)
-            {
-                AssetsPerFrame = 1;
-            }
-        }
+        if (Workers < 1) { Workers = 1; m?.Log("Workers=1", LogLevel.Warn); }
+        if (Queue < 10) { Queue = 10; m?.Log("Queue=10", LogLevel.Warn); }
+        if (PerFrame < 1) { PerFrame = 1; m?.Log("PerFrame=1", LogLevel.Warn); }
     }
 }

@@ -2,254 +2,70 @@ using System;
 using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using StardewModdingAPI;
 
-namespace CPXnbExporter
+namespace CPXnbExporter;
+public class ExportPipeline : IDisposable
 {
-    /// <summary>
-    /// 导出管道：管理有界任务队列和后台写入线程池。
-    /// 主线程作为生产者加载资产并入队，后台线程作为消费者写入文件。
-    /// </summary>
-    public class ExportPipeline : IDisposable
+    readonly BlockingCollection<ExportWorkItem> _q;
+    readonly Task[] _w;
+    readonly CancellationTokenSource _cts;
+    readonly IMonitor _m;
+    long _ts, _tf, _ms, _mf, _ds, _df;
+    public long TexSuccess => Interlocked.Read(ref _ts); public long TexFail => Interlocked.Read(ref _tf);
+    public long MapSuccess => Interlocked.Read(ref _ms); public long MapFail => Interlocked.Read(ref _mf);
+    public long DataSuccess => Interlocked.Read(ref _ds); public long DataFail => Interlocked.Read(ref _df);
+    public bool IsAddingCompleted => _q.IsAddingCompleted; public bool IsCompleted => _q.IsCompleted;
+
+    public ExportPipeline(int n, int cap, IMonitor m)
     {
-        private readonly BlockingCollection<ExportWorkItem> _queue;
-        private readonly Task[] _workers;
-        private readonly CancellationTokenSource _cts;
-        private readonly IMonitor _monitor;
-        private readonly int _workerCount;
+        _m = m; _q = new BlockingCollection<ExportWorkItem>(cap); _cts = new CancellationTokenSource(); _w = new Task[n];
+        for (int i = 0; i < n; i++) { int id = i; _w[i] = Task.Run(() => Loop(id), _cts.Token); }
+    }
+    public bool TryAdd(ExportWorkItem item) => !_q.IsAddingCompleted && _q.TryAdd(item, TimeSpan.FromMilliseconds(1));
+    public void CompleteAdding() { if (!_q.IsAddingCompleted) { _q.CompleteAdding(); _m?.Log("队列关闭", LogLevel.Info); } }
+    public bool CheckAllWorkersCompleted() => _q.IsCompleted && _w.All(x => x.IsCompleted);
+    public void Dispose() { if (!_cts.IsCancellationRequested) _cts.Cancel(); try { Task.WaitAll(_w, TimeSpan.FromSeconds(30)); } catch { } _cts.Dispose(); _q.Dispose(); }
 
-        // 线程安全统计
-        private long _texSuccess;
-        private long _texFail;
-        private long _mapSuccess;
-        private long _mapFail;
-        private long _dataSuccess;
-        private long _dataFail;
-
-        public long TexSuccess => Interlocked.Read(ref _texSuccess);
-        public long TexFail => Interlocked.Read(ref _texFail);
-        public long MapSuccess => Interlocked.Read(ref _mapSuccess);
-        public long MapFail => Interlocked.Read(ref _mapFail);
-        public long DataSuccess => Interlocked.Read(ref _dataSuccess);
-        public long DataFail => Interlocked.Read(ref _dataFail);
-
-        public bool IsAddingCompleted => _queue.IsAddingCompleted;
-        public bool IsCompleted => _queue.IsCompleted;
-
-        public ExportPipeline(int workerCount, int maxQueueSize, IMonitor monitor)
+    void Loop(int id)
+    {
+        foreach (var item in _q.GetConsumingEnumerable(_cts.Token))
         {
-            _workerCount = workerCount;
-            _monitor = monitor;
-            _queue = new BlockingCollection<ExportWorkItem>(maxQueueSize);
-            _cts = new CancellationTokenSource();
-            _workers = new Task[workerCount];
-
-            for (int i = 0; i < workerCount; i++)
-            {
-                int id = i;
-                _workers[i] = Task.Run(() => WorkerLoop(id), _cts.Token);
-            }
-
-            monitor?.Log($"导出管道已启动: {workerCount} 个后台写入线程，队列上限 {maxQueueSize}", LogLevel.Info);
+            try { switch (item.Type) { case WorkItemType.Texture: DoTex(item); break; case WorkItemType.Map: DoMap(item); break; case WorkItemType.Data: DoData(item); break; } }
+            catch (Exception ex) { _m?.Log($"W{id} err: {ex.Message}", LogLevel.Error); }
         }
+    }
 
-        /// <summary>尝试将工作项加入队列（非阻塞）</summary>
-        public bool TryAdd(ExportWorkItem item)
+    void DoTex(ExportWorkItem i)
+    {
+        try
         {
-            if (_queue.IsAddingCompleted)
-                return false;
-
-            // 使用 TryAdd 避免阻塞主线程；队列满时返回 false，由调用方下一帧重试
-            return _queue.TryAdd(item, TimeSpan.FromMilliseconds(1));
+            Directory.CreateDirectory(Path.GetDirectoryName(i.PackedBasePath));
+            if (i.UnpackedBasePath != null) Directory.CreateDirectory(Path.GetDirectoryName(i.UnpackedBasePath));
+            XnbWriter.WriteTextureXnb(i.PackedBasePath + ".xnb", i.PixelData, i.Width, i.Height, i.Platform);
+            if (i.PngData != null) File.WriteAllBytes(i.UnpackedBasePath + ".png", i.PngData);
+            Interlocked.Increment(ref _ts);
         }
+        catch { Interlocked.Increment(ref _tf); }
+    }
 
-        /// <summary>标记不再添加新任务</summary>
-        public void CompleteAdding()
+    void DoMap(ExportWorkItem i)
+    {
+        try
         {
-            if (!_queue.IsAddingCompleted)
-            {
-                _queue.CompleteAdding();
-                _monitor?.Log("任务队列已关闭，等待后台线程完成写入...", LogLevel.Info);
-            }
+            Directory.CreateDirectory(Path.GetDirectoryName(i.PackedBasePath));
+            using (var fs = new FileStream(i.PackedBasePath + ".xnb", FileMode.Create, FileAccess.Write)) XnbMapWriter.WriteMapXnbFromTbin(fs, i.TbinData, i.Platform);
+            if (i.UnpackedBasePath != null) { Directory.CreateDirectory(Path.GetDirectoryName(i.UnpackedBasePath)); File.WriteAllBytes(i.UnpackedBasePath + ".tbin", i.TbinData); }
+            Interlocked.Increment(ref _ms);
         }
+        catch { Interlocked.Increment(ref _mf); }
+    }
 
-        /// <summary>检查所有后台线程是否已完成</summary>
-        public bool CheckAllWorkersCompleted()
-        {
-            return _queue.IsCompleted && _workers.All(w => w.IsCompleted);
-        }
-
-        /// <summary>等待所有后台线程完成（阻塞，仅用于清理）</summary>
-        public void WaitForCompletion(TimeSpan timeout)
-        {
-            try { Task.WaitAll(_workers, timeout); }
-            catch { /* ignore */ }
-        }
-
-        private void WorkerLoop(int workerId)
-        {
-            _monitor?.Log($"后台写入线程 #{workerId} 已启动", LogLevel.Trace);
-            try
-            {
-                // GetConsumingEnumerable 会在 CompleteAdding 且队列空后自动退出
-                foreach (var item in _queue.GetConsumingEnumerable(_cts.Token))
-                {
-                    ProcessItem(item);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                _monitor?.Log($"后台写入线程 #{workerId} 已取消", LogLevel.Trace);
-            }
-            catch (Exception ex)
-            {
-                _monitor?.Log($"后台写入线程 #{workerId} 异常: {ex.Message}", LogLevel.Error);
-            }
-            _monitor?.Log($"后台写入线程 #{workerId} 已结束", LogLevel.Trace);
-        }
-
-        private void ProcessItem(ExportWorkItem item)
-        {
-            try
-            {
-                switch (item.Type)
-                {
-                    case WorkItemType.Texture:
-                        ProcessTexture(item);
-                        break;
-                    case WorkItemType.Map:
-                        ProcessMap(item);
-                        break;
-                    case WorkItemType.Data:
-                        ProcessData(item);
-                        break;
-                }
-            }
-            catch (Exception ex)
-            {
-                _monitor?.Log($"写入失败 [{item.FileName}]: {ex.Message}", LogLevel.Trace);
-                switch (item.Type)
-                {
-                    case WorkItemType.Texture:
-                        Interlocked.Increment(ref _texFail);
-                        break;
-                    case WorkItemType.Map:
-                        Interlocked.Increment(ref _mapFail);
-                        break;
-                    case WorkItemType.Data:
-                        Interlocked.Increment(ref _dataFail);
-                        break;
-                }
-            }
-        }
-
-        private void ProcessTexture(ExportWorkItem item)
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(item.PackedBasePath));
-
-            // 1. XNB 写入（纯 CPU，无需 GPU）
-            using (var fs = new FileStream(item.PackedBasePath + ".xnb", FileMode.Create, FileAccess.Write))
-            {
-                XnbWriter.WriteXnbBinaryFromPixels(
-                    fs, item.PixelData, item.Width, item.Height, item.Platform);
-            }
-
-            // 2. Unpacked 输出
-            if (item.UnpackedBasePath != null)
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(item.UnpackedBasePath));
-
-                // PNG（主线程已预生成字节数组）
-                if (item.PngData != null)
-                    File.WriteAllBytes(item.UnpackedBasePath + ".png", item.PngData);
-
-                // .config (JSON format compatible with XnbConverter)
-                WriteConfig(item.UnpackedBasePath + ".config", item.Platform, ".png", "Microsoft.Xna.Framework.Content.Texture2DReader");
-            }
-
-            Interlocked.Increment(ref _texSuccess);
-        }
-
-        private void ProcessMap(ExportWorkItem item)
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(item.PackedBasePath));
-
-            // 1. XNB 写入
-            using (var fs = new FileStream(item.PackedBasePath + ".xnb", FileMode.Create, FileAccess.Write))
-            {
-                XnbMapWriter.WriteMapXnbFromTbin(fs, item.TbinData, item.Platform);
-            }
-
-            // 2. TBIN + Config 写入
-            if (item.UnpackedBasePath != null)
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(item.UnpackedBasePath));
-                File.WriteAllBytes(item.UnpackedBasePath + ".tbin", item.TbinData);
-
-                // .config (JSON format compatible with XnbConverter)
-                WriteConfig(item.UnpackedBasePath + ".config", item.Platform, ".tbin", "xTile.Pipeline.TideReader, xTile");
-            }
-
-            Interlocked.Increment(ref _mapSuccess);
-        }
-
-        private void ProcessData(ExportWorkItem item)
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(item.PackedBasePath));
-            // DataExporter.ExportData 会自动追加 .json
-            if (DataExporter.ExportData(item.PackedBasePath, item.DataObject, item.FileName))
-                Interlocked.Increment(ref _dataSuccess);
-            else
-                Interlocked.Increment(ref _dataFail);
-        }
-
-                private static void WriteConfig(string path, char platform, string extension, string readerType)
-        {
-            var sb = new StringBuilder();
-            sb.AppendLine("{");
-            sb.AppendLine("  \"Content\": {");
-            sb.AppendLine("    \"Extension\": \"" + extension + "\",");
-            sb.AppendLine("    \"Format\": 0");
-            sb.AppendLine("  },");
-            sb.AppendLine("  \"Header\": {");
-            sb.AppendLine("    \"Target\": \"" + GetPlatformName(platform) + "\",");
-            sb.AppendLine("    \"FormatVersion\": 5,");
-            sb.AppendLine("    \"CompressedFlag\": \"" + (platform == 'a' ? "Lz4" : "None") + "\"");
-            sb.AppendLine("  },");
-            sb.AppendLine("  \"Readers\": [");
-            sb.AppendLine("    {");
-            sb.AppendLine("      \"Type\": \"" + readerType + "\",");
-            sb.AppendLine("      \"Version\": 0");
-            sb.AppendLine("    }");
-            sb.AppendLine("  ]");
-            sb.AppendLine("}");
-            File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
-        }
-
-private static string GetPlatformName(char platform)
-        {
-            return platform switch
-            {
-                'a' => "Android",
-                'i' => "iOS",
-                'w' => "Windows",
-                'm' => "WindowsPhone7",
-                'x' => "Xbox360",
-                'l' => "Linux",
-                'X' => "MacOSX",
-                _ => "Windows"
-            };
-        }
-
-        public void Dispose()
-        {
-            _cts.Cancel();
-            WaitForCompletion(TimeSpan.FromSeconds(5));
-            _queue.Dispose();
-            _cts.Dispose();
-        }
+    void DoData(ExportWorkItem i)
+    {
+        try { Directory.CreateDirectory(Path.GetDirectoryName(i.PackedBasePath)); DataExporter.ExportData(i.PackedBasePath, i.DataObject, i.FileName); Interlocked.Increment(ref _ds); }
+        catch { Interlocked.Increment(ref _df); }
     }
 }

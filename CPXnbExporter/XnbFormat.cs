@@ -2,138 +2,42 @@ using System;
 using System.IO;
 using K4os.Compression.LZ4;
 
-namespace CPXnbExporter
+namespace CPXnbExporter;
+internal static class XnbFormat
 {
-    /// <summary>
-    /// XNB 格式公共工具，借鉴 XnbConverter 的 XNB.cs 中的头部与压缩逻辑。
-    /// 统一处理 XNB 头部写入、LZ4 压缩/解压、以及头部解析。
-    /// </summary>
-    internal static class XnbFormat
+    public const int HeaderSize = 10, CompHeaderSize = 14;
+
+    public static void WriteHeader(XnbBufferWriter w, char p, byte v, bool c, out int fsp, out int csp)
     {
-        public const int UncompressedHeaderSize = 10;
-        public const int CompressedHeaderSize = 14;
+        w.WriteAsciiString("XNB"); w.WriteByte((byte)p); w.WriteByte(v); w.WriteByte(c ? (byte)0x41 : (byte)0x01);
+        fsp = w.Position; w.WriteUInt32(0); csp = c ? w.Position : -1; if (c) w.WriteUInt32(0);
+    }
 
-        /// <summary>
-        /// 写入 XNB 头部（XNB + platform + version + flags + fileSize占位 + [contentSize占位]）。
-        /// </summary>
-        public static void WriteHeader(
-            XnbBufferWriter writer,
-            char platform,
-            byte version,
-            bool compressed,
-            out int fileSizePosition,
-            out int contentSizePosition)
+    public static long FinalizeAndWrite(XnbBufferWriter w, int fsp, int csp, bool c, Stream s)
+    {
+        byte[] d = w.Buffer; int len = w.Position, hs = c ? CompHeaderSize : HeaderSize, bs = len - hs;
+        if (c)
         {
-            writer.WriteAsciiString("XNB");
-            writer.WriteByte((byte)platform);
-            writer.WriteByte(version);
-            writer.WriteByte(compressed ? (byte)0x41 : (byte)0x01);
-
-            fileSizePosition = writer.Position;
-            writer.WriteUInt32(0);
-
-            contentSizePosition = compressed ? writer.Position : -1;
-            if (compressed)
-                writer.WriteUInt32(0);
+            byte[] body = new byte[bs]; Buffer.BlockCopy(d, hs, body, 0, bs);
+            int max = LZ4Codec.MaximumOutputSize(bs); byte[] comp = new byte[max]; int n = LZ4Codec.Encode(body, 0, bs, comp, 0, max);
+            byte[] final = new byte[hs + n]; Buffer.BlockCopy(d, 0, final, 0, hs); Buffer.BlockCopy(comp, 0, final, hs, n);
+            BitConverter.GetBytes((uint)final.Length).CopyTo(final, fsp); BitConverter.GetBytes((uint)bs).CopyTo(final, csp);
+            s.Write(final, 0, final.Length); s.Flush(); return final.Length;
         }
+        else { w.WriteUInt32At(fsp, (uint)len); s.Write(d, 0, len); s.Flush(); return len; }
+    }
 
-        /// <summary>
-        /// 完成 XNB 写入：回填 size 字段、执行 LZ4 压缩（如需），并写入输出流。
-        /// </summary>
-        public static long FinalizeAndWrite(
-            XnbBufferWriter writer,
-            int fileSizePosition,
-            int contentSizePosition,
-            bool compressed,
-            Stream output)
-        {
-            byte[] data = writer.Buffer;
-            int dataLength = writer.Position;
-            int headerSize = compressed ? CompressedHeaderSize : UncompressedHeaderSize;
-            int bodySize = dataLength - headerSize;
+    public static bool TryReadHeader(byte[] d, out char p, out byte v, out bool c, out int hs, out int fs, out int? ocs)
+    {
+        p = default; v = default; c = false; hs = 0; fs = 0; ocs = null;
+        if (d.Length < HeaderSize || d[0] != (byte)'X' || d[1] != (byte)'N' || d[2] != (byte)'B') return false;
+        p = (char)d[3]; v = d[4]; c = (d[5] & 0x40) != 0; fs = BitConverter.ToInt32(d, 6); hs = c ? CompHeaderSize : HeaderSize;
+        if (c) { if (d.Length < CompHeaderSize) return false; ocs = BitConverter.ToInt32(d, 10); }
+        return true;
+    }
 
-            if (compressed)
-            {
-                byte[] bodyBytes = new byte[bodySize];
-                System.Buffer.BlockCopy(data, headerSize, bodyBytes, 0, bodySize);
-
-                int maxCompressedSize = LZ4Codec.MaximumOutputSize(bodySize);
-                byte[] compressedBody = new byte[maxCompressedSize];
-                int compressedSize = LZ4Codec.Encode(bodyBytes, 0, bodySize, compressedBody, 0, maxCompressedSize);
-
-                byte[] finalData = new byte[headerSize + compressedSize];
-                System.Buffer.BlockCopy(data, 0, finalData, 0, headerSize);
-                System.Buffer.BlockCopy(compressedBody, 0, finalData, headerSize, compressedSize);
-
-                BitConverter.GetBytes((uint)finalData.Length).CopyTo(finalData, fileSizePosition);
-                BitConverter.GetBytes((uint)bodySize).CopyTo(finalData, contentSizePosition);
-
-                output.Write(finalData, 0, finalData.Length);
-                output.Flush();
-                return finalData.Length;
-            }
-            else
-            {
-                writer.WriteUInt32At(fileSizePosition, (uint)dataLength);
-                output.Write(data, 0, dataLength);
-                output.Flush();
-                return dataLength;
-            }
-        }
-
-        /// <summary>
-        /// 解析 XNB 头部。返回是否成功，并输出平台、版本、压缩标志、头部长度、文件大小、原始内容大小。
-        /// </summary>
-        public static bool TryReadHeader(
-            byte[] data,
-            out char platform,
-            out byte version,
-            out bool compressed,
-            out int headerSize,
-            out int fileSize,
-            out int? originalContentSize)
-        {
-            platform = default;
-            version = default;
-            compressed = false;
-            headerSize = 0;
-            fileSize = 0;
-            originalContentSize = null;
-
-            if (data.Length < UncompressedHeaderSize)
-                return false;
-
-            if (data[0] != (byte)'X' || data[1] != (byte)'N' || data[2] != (byte)'B')
-                return false;
-
-            platform = (char)data[3];
-            version = data[4];
-            byte flags = data[5];
-            compressed = (flags & 0x40) != 0;
-
-            fileSize = BitConverter.ToInt32(data, 6);
-            headerSize = compressed ? CompressedHeaderSize : UncompressedHeaderSize;
-
-            if (compressed)
-            {
-                if (data.Length < CompressedHeaderSize)
-                    return false;
-                originalContentSize = BitConverter.ToInt32(data, 10);
-            }
-
-            return true;
-        }
-
-        /// <summary>
-        /// 对指定范围执行 LZ4 解压。
-        /// </summary>
-        public static byte[] DecompressLz4(byte[] data, int offset, int compressedSize, int decompressedSize)
-        {
-            byte[] result = new byte[decompressedSize];
-            int decoded = LZ4Codec.Decode(data, offset, compressedSize, result, 0, decompressedSize);
-            if (decoded != decompressedSize)
-                throw new InvalidOperationException($"LZ4 decode size mismatch: expected {decompressedSize}, got {decoded}");
-            return result;
-        }
+    public static byte[] DecompressLz4(byte[] d, int off, int cs, int ds)
+    {
+        byte[] r = new byte[ds]; int n = LZ4Codec.Decode(d, off, cs, r, 0, ds); if (n != ds) throw new InvalidOperationException("LZ4 size mismatch"); return r;
     }
 }

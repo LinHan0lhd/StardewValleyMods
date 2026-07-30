@@ -1,64 +1,28 @@
-namespace CPXnbExporter
+using System;
+using System.IO;
+
+namespace CPXnbExporter;
+public readonly struct ExportOptions
 {
-    /// <summary>导出选项</summary>
-    public readonly struct ExportOptions
+    public char Platform { get; init; }
+    public bool Unpacked { get; init; }
+    public string BaseDir { get; init; }
+    public string PackedDir => Path.Combine(BaseDir, "packed");
+    public string UnpackedDir => Path.Combine(BaseDir, "unpacked");
+    public string TroubleshootDir => Path.Combine(BaseDir, "troubleshoot");
+    public static ExportOptions Parse(string[] a, string b)
     {
-        /// <summary>平台标识: 'w'=PC, 'a'=移动端</summary>
-        public char Platform { get; init; }
-
-        /// <summary>是否同时输出 unpacked (PNG/TBIN + .config)</summary>
-        public bool OutputUnpacked { get; init; }
-
-        /// <summary>导出基础目录</summary>
-        public string BaseDir { get; init; }
-
-        /// <summary>Packed 输出目录</summary>
-        public string PackedDir => System.IO.Path.Combine(BaseDir, "packed");
-
-        /// <summary>Unpacked 输出目录</summary>
-        public string UnpackedDir => System.IO.Path.Combine(BaseDir, "unpacked");
-
-        /// <summary>Troubleshoot 排查输出目录</summary>
-        public string TroubleshootDir => System.IO.Path.Combine(BaseDir, "troubleshootDir");
-
-        /// <summary>从命令参数解析</summary>
-        public static ExportOptions Parse(string[] args, string baseDir)
+        char p = 'a'; bool u = false;
+        foreach (var x in a)
         {
-            char platform = 'a';
-            bool unpacked = false;
-
-            foreach (var arg in args)
+            switch (x.ToLowerInvariant())
             {
-                string lower = arg.ToLowerInvariant();
-                switch (lower)
-                {
-                    case "pc":
-                    case "w":
-                    case "windows":
-                        platform = 'w';
-                        break;
-                    case "mobile":
-                    case "a":
-                    case "android":
-                        platform = 'a';
-                        break;
-                    case "i":
-                    case "ios":
-                        platform = 'i';
-                        break;
-                    case "unpacked":
-                    case "u":
-                        unpacked = true;
-                        break;
-                }
+                case "pc": case "w": case "windows": p = 'w'; break;
+                case "mobile": case "a": case "android": p = 'a'; break;
+                case "ios": case "i": p = 'i'; break;
+                case "unpacked": case "u": u = true; break;
             }
-
-            return new ExportOptions
-            {
-                Platform = platform,
-                OutputUnpacked = unpacked,
-                BaseDir = baseDir
-            };
         }
+        return new ExportOptions { Platform = p, Unpacked = u, BaseDir = b };
     }
 }
