@@ -19,7 +19,7 @@ public class ModEntry : Mod
     private ExportOptions _opt;
     private ExportPipeline _pipe;
     private List<CpAssetLoader.CpAssetInfo> _list;
-    private int _idx = -1;
+    private int _idx = -1, _skipCount = 0;
     private HashSet<string> _done, _cpSet;
     private enum Phase { Idle, Loading, Wait, Finish }
     private Phase _phase = Phase.Idle;
@@ -54,7 +54,7 @@ public class ModEntry : Mod
     {
         if(_phase!=Phase.Idle) { Monitor.Log("进行中", LogLevel.Warn); return; }
         _phase=Phase.Loading; _opt=ExportOptions.Parse(a, Path.Combine(Helper.DirectoryPath,"exported"));
-        _idx=-1; _done=new(); _pipe=new(_cfg.Workers, _cfg.Queue, Monitor);
+        _idx=-1; _skipCount=0; _done=new(); _pipe=new(_cfg.Workers, _cfg.Queue, Monitor);
         _list=CpAssetLoader.LoadAllCpAssets();
         if(_list.Count==0) { _pipe.CompleteAdding(); _phase=Phase.Wait; return; }
         _cpSet=new(_list.Select(x=>Norm(x.AssetName)), StringComparer.OrdinalIgnoreCase);
@@ -112,7 +112,7 @@ public class ModEntry : Mod
             }
             return true;
         }
-        catch (Exception ex) { Monitor.Log($"✗ 加载地图失败 {raw}: {ex.Message}", LogLevel.Debug); return true; }
+        catch (Exception ex) { Monitor.Log($"✗ 加载地图失败 {raw}: {ex.Message}", LogLevel.Debug); _skipCount++; return true; }
     }
 
     // 常见内容目录前缀，用于路径不完整时回退尝试
@@ -134,27 +134,15 @@ public class ModEntry : Mod
     bool EnqTex(string a,string pb,string ub)
     {
         string actual = a.Contains('/') ? a : ResolveAssetPath(a);
-        try
-        {
-            if(IsLoaded(Game1.content,actual))
-                return EnqTex(Helper.GameContent.Load<Texture2D>(actual),actual,pb,ub);
-            using var cm=Game1.content.CreateTemporary();
-            return EnqTex(cm.Load<Texture2D>(actual),actual,pb,ub);
-        }
+        try { return EnqTex(Helper.GameContent.Load<Texture2D>(actual),actual,pb,ub); }
         catch
         {
             if(actual.StartsWith("Mods/",StringComparison.OrdinalIgnoreCase))
             {
-                try
-                {
-                    if(IsLoaded(Game1.content,actual))
-                        return EnqTex(Helper.GameContent.Load<IRawTextureData>(actual),actual,pb,ub);
-                    using var cm2=Game1.content.CreateTemporary();
-                    return EnqTex(cm2.Load<IRawTextureData>(actual),actual,pb,ub);
-                }
-                catch (Exception ex) { Monitor.Log($"✗ 加载纹理失败 {a}: {ex.Message}", LogLevel.Warn); return true; }
+                try { return EnqTex(Helper.GameContent.Load<IRawTextureData>(actual),actual,pb,ub); }
+                catch (Exception ex) { Monitor.Log($"✗ 加载纹理失败 {a}: {ex.Message}", LogLevel.Warn); _skipCount++; return true; }
             }
-            Monitor.Log($"⚠ 跳过内置资源 {a}", LogLevel.Debug);
+            Monitor.Log($"⚠ 跳过资源 {a}", LogLevel.Debug); _skipCount++;
             return true; // 跳过 = 已处理，不需要重试
         }
     }
@@ -163,8 +151,6 @@ public class ModEntry : Mod
         var px=new Color[t.Width*t.Height]; t.GetData(px); XnbWriter.NormalizeAlpha(px);
         byte[] png=null;
         if(ub!=null){using var tmp=new Texture2D(t.GraphicsDevice,t.Width,t.Height);tmp.SetData(px);using var ms=new MemoryStream();tmp.SaveAsPng(ms,t.Width,t.Height);png=ms.ToArray();}
-        // 临时加载的纹理立即释放
-        if(!IsLoaded(Game1.content,fn)) t.Dispose();
         return _pipe.TryAdd(new ExportWorkItem{Type=WorkItemType.Texture,FileName=fn,PackedBasePath=pb,UnpackedBasePath=ub,Platform=_opt.Platform,PixelData=px,PngData=png,Width=t.Width,Height=t.Height});
     }
     bool EnqTex(IRawTextureData r,string fn,string pb,string ub)
@@ -178,7 +164,7 @@ public class ModEntry : Mod
         string actual = a.Contains('/') ? a : ResolveAssetPath(a);
         var types=GetLikely(actual)??new(); types.Add(typeof(object));
         object d=null; foreach(var t in types){try{d=Load(actual,t);if(d!=null)break;}catch{}}
-        if(d==null){Monitor.Log($"✗ 无法加载数据 {a}",LogLevel.Warn);return true;}
+        if(d==null){Monitor.Log($"✗ 无法加载数据 {a}",LogLevel.Warn);_skipCount++;return true;}
         string ub=_opt.Unpacked?Path.Combine(_opt.UnpackedDir,Sanitize(GetName(Norm(a)))):null;
         return _pipe.TryAdd(new ExportWorkItem{Type=WorkItemType.Data,FileName=a,PackedBasePath=pb,UnpackedBasePath=ub,Platform=_opt.Platform,DataObject=d,DataTypeName=d.GetType().FullName});
     }
@@ -209,8 +195,8 @@ public class ModEntry : Mod
     {
         _phase=Phase.Idle;
         long ts=_pipe?.TexSuccess??0,tf=_pipe?.TexFail??0,ms=_pipe?.MapSuccess??0,mf=_pipe?.MapFail??0,ds=_pipe?.DataSuccess??0,df=_pipe?.DataFail??0;
-        long total=ts+ms+ds, fail=tf+mf+df, skip=_list==null?0:_list.Count-_idx-1;
-        _pipe?.Dispose(); _pipe=null;_list=null;_idx=-1;_done=null;_cpSet=null;TBinWriter.MapAssetName=null;
+        long total=ts+ms+ds, fail=tf+mf+df, skip=_skipCount;
+        _pipe?.Dispose(); _pipe=null;_list=null;_idx=-1;_skipCount=0;_done=null;_cpSet=null;TBinWriter.MapAssetName=null;
         Monitor.Log($"完成 总计:{total} 成功 贴图:{ts} 地图:{ms} 数据:{ds} 失败:{fail} 跳过:{skip}",LogLevel.Info);
     }
 
