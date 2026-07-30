@@ -84,26 +84,28 @@ namespace CPXnbExporter
 
         static CpAssetType DetectType(string action, string target, string fromFile, string dir)
         {
-            if (action.Equals("Load", StringComparison.OrdinalIgnoreCase))
+            // Priority 1: FromFile extension
+            if (!string.IsNullOrEmpty(fromFile))
             {
-                if (!string.IsNullOrEmpty(fromFile))
-                {
-                    var ty = TypeFromExtension(Path.GetExtension(fromFile));
-                    if (ty != CpAssetType.Unknown) return ty;
-                    // No recognizable extension — try finding the file on disk with common extensions
-                    string fullPath = Path.Combine(dir, fromFile.Replace('/', Path.DirectorySeparatorChar));
-                    foreach (var e in new[] { ".png", ".tmx", ".tbin", ".json" })
-                        if (File.Exists(fullPath + e)) return TypeFromExtension(e);
-                }
+                var ty = TypeFromExtension(Path.GetExtension(fromFile));
+                if (ty != CpAssetType.Unknown) return ty;
+                // Priority 2: FromFile has no recognizable extension — check disk
+                string fullPath = Path.Combine(dir, fromFile.Replace('/', Path.DirectorySeparatorChar));
+                foreach (var e in new[] { ".png", ".tbin", ".tmx", ".json" })
+                    if (File.Exists(fullPath + e)) return TypeFromExtension(e);
             }
-            else
+            // Priority 3: Action-based (EditImage/EditMap/EditData)
+            if (!action.Equals("Load", StringComparison.OrdinalIgnoreCase))
             {
-                // EditImage → Texture, EditMap → Map, EditData → Data
                 var ty = TypeFromAction(action);
                 if (ty != CpAssetType.Unknown) return ty;
             }
-            // Fallback: path-based detection
-            return TypeFromPath(target);
+            // Priority 4: Path prefix — only Data/ is deterministic
+            if (target.StartsWith("Data/", StringComparison.OrdinalIgnoreCase)) return CpAssetType.Data;
+            // Priority 5: Load action fallback → Texture
+            if (action.Equals("Load", StringComparison.OrdinalIgnoreCase)) return CpAssetType.Texture;
+            // Edit actions with no match → Texture
+            return CpAssetType.Texture;
         }
 
         static CpAssetType TypeFromExtension(string ext) => ext.ToLowerInvariant() switch
@@ -121,12 +123,5 @@ namespace CPXnbExporter
             "editdata" => CpAssetType.Data,
             _ => CpAssetType.Unknown
         };
-
-        static CpAssetType TypeFromPath(string target)
-        {
-            if (target.StartsWith("Maps/", StringComparison.OrdinalIgnoreCase)) return CpAssetType.Map;
-            if (target.StartsWith("Data/", StringComparison.OrdinalIgnoreCase)) return CpAssetType.Data;
-            return CpAssetType.Texture;
-        }
     }
 }
