@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using StardewModdingAPI;
@@ -45,7 +46,14 @@ public class ExportPipeline : IDisposable
             Directory.CreateDirectory(Path.GetDirectoryName(i.PackedBasePath));
             if (i.UnpackedBasePath != null) Directory.CreateDirectory(Path.GetDirectoryName(i.UnpackedBasePath));
             XnbWriter.WriteTextureXnb(i.PackedBasePath + ".xnb", i.PixelData, i.Width, i.Height, i.Platform);
-            if (i.PngData != null) File.WriteAllBytes(i.UnpackedBasePath + ".png", i.PngData);
+            if (i.PngData != null)
+            {
+                string pngPath = i.UnpackedBasePath + ".png";
+                File.WriteAllBytes(pngPath, i.PngData);
+                long fsz = new FileInfo(pngPath).Length;
+                var meta = new XnbMetadata { Width = i.Width, Height = i.Height, Format = 0, FormatName = "Color", MipCount = 1, Platform = i.Platform.ToString(), Version = 5, Compressed = i.Platform == 'a', FileSize = fsz };
+                File.WriteAllText(i.UnpackedBasePath + ".config", meta.ToConfig(), Encoding.UTF8);
+            }
             Interlocked.Increment(ref _ts);
         }
         catch { Interlocked.Increment(ref _tf); }
@@ -57,7 +65,14 @@ public class ExportPipeline : IDisposable
         {
             Directory.CreateDirectory(Path.GetDirectoryName(i.PackedBasePath));
             using (var fs = new FileStream(i.PackedBasePath + ".xnb", FileMode.Create, FileAccess.Write)) XnbMapWriter.WriteMapXnbFromTbin(fs, i.TbinData, i.Platform);
-            if (i.UnpackedBasePath != null) { Directory.CreateDirectory(Path.GetDirectoryName(i.UnpackedBasePath)); File.WriteAllBytes(i.UnpackedBasePath + ".tbin", i.TbinData); }
+            if (i.UnpackedBasePath != null)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(i.UnpackedBasePath));
+                string tbinPath = i.UnpackedBasePath + ".tbin";
+                File.WriteAllBytes(tbinPath, i.TbinData);
+                long fsz = new FileInfo(tbinPath).Length;
+                File.WriteAllText(i.UnpackedBasePath + ".config", XnbMetadata.MapConfig(i.Platform, fsz), Encoding.UTF8);
+            }
             Interlocked.Increment(ref _ms);
         }
         catch { Interlocked.Increment(ref _mf); }
@@ -65,7 +80,21 @@ public class ExportPipeline : IDisposable
 
     void DoData(ExportWorkItem i)
     {
-        try { Directory.CreateDirectory(Path.GetDirectoryName(i.PackedBasePath)); DataExporter.ExportData(i.PackedBasePath, i.DataObject, i.FileName); Interlocked.Increment(ref _ds); }
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(i.PackedBasePath));
+            DataExporter.ExportData(i.PackedBasePath, i.DataObject, i.FileName);
+            if (i.UnpackedBasePath != null)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(i.UnpackedBasePath));
+                string src = i.PackedBasePath + ".json";
+                string dst = i.UnpackedBasePath + ".json";
+                File.Copy(src, dst, true);
+                long fsz = new FileInfo(dst).Length;
+                File.WriteAllText(i.UnpackedBasePath + ".config", XnbMetadata.DataConfig(i.DataTypeName, i.FileName, fsz), Encoding.UTF8);
+            }
+            Interlocked.Increment(ref _ds);
+        }
         catch { Interlocked.Increment(ref _df); }
     }
 }

@@ -29,15 +29,16 @@ public static class XnbWriter
         Directory.CreateDirectory(Path.GetDirectoryName(pb));
         if (ub != null) Directory.CreateDirectory(Path.GetDirectoryName(ub));
         int w = t.Width, h = t.Height; var px = new Color[w * h]; t.GetData(px); NormalizeAlpha(px);
-        Color[] xnbPx = px, pngPx = ub != null ? UnpremultiplyAlpha(px) : null;
         long fs;
-        using (var s = new FileStream(pb + ".xnb", FileMode.Create, FileAccess.Write)) fs = WriteXnb(s, xnbPx, w, h, p, v);
+        using (var s = new FileStream(pb + ".xnb", FileMode.Create, FileAccess.Write)) fs = WriteXnb(s, px, w, h, p, v);
         var meta = new XnbMetadata { Width = w, Height = h, Format = 0, FormatName = "Color", MipCount = 1, Platform = p.ToString(), Version = v, Compressed = p == 'a', FileSize = fs };
         if (ub != null)
         {
-            using var pt = new Texture2D(t.GraphicsDevice, w, h); pt.SetData(pngPx);
+            using var pt = new Texture2D(t.GraphicsDevice, w, h); pt.SetData(px);
             using var ms = new MemoryStream(); pt.SaveAsPng(ms, w, h);
-            File.WriteAllBytes(ub + ".png", ms.ToArray());
+            byte[] pngData = ms.ToArray();
+            File.WriteAllBytes(ub + ".png", pngData);
+            meta.FileSize = pngData.Length;
             File.WriteAllText(ub + ".config", meta.ToConfig(), Encoding.UTF8);
         }
         return meta;

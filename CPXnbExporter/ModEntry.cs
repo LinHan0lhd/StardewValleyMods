@@ -106,13 +106,13 @@ public class ModEntry : Mod
     {
         var px=new Color[t.Width*t.Height]; t.GetData(px); XnbWriter.NormalizeAlpha(px);
         byte[] png=null;
-        if(ub!=null){var up=XnbWriter.UnpremultiplyAlpha(px);using var tmp=new Texture2D(t.GraphicsDevice,t.Width,t.Height);tmp.SetData(up);using var ms=new MemoryStream();tmp.SaveAsPng(ms,t.Width,t.Height);png=ms.ToArray();}
+        if(ub!=null){using var tmp=new Texture2D(t.GraphicsDevice,t.Width,t.Height);tmp.SetData(px);using var ms=new MemoryStream();tmp.SaveAsPng(ms,t.Width,t.Height);png=ms.ToArray();}
         return _pipe.TryAdd(new ExportWorkItem{Type=WorkItemType.Texture,FileName=fn,PackedBasePath=pb,UnpackedBasePath=ub,Platform=_opt.Platform,PixelData=px,PngData=png,Width=t.Width,Height=t.Height});
     }
     bool EnqTex(IRawTextureData r,string fn,string pb,string ub)
     {
         var px=(Color[])r.Data.Clone(); XnbWriter.NormalizeAlpha(px); byte[] png=null;
-        if(ub!=null){var up=XnbWriter.UnpremultiplyAlpha(px);using var tmp=new Texture2D(Game1.graphics.GraphicsDevice,r.Width,r.Height);tmp.SetData(up);using var ms=new MemoryStream();tmp.SaveAsPng(ms,r.Width,r.Height);png=ms.ToArray();}
+        if(ub!=null){using var tmp=new Texture2D(Game1.graphics.GraphicsDevice,r.Width,r.Height);tmp.SetData(px);using var ms=new MemoryStream();tmp.SaveAsPng(ms,r.Width,r.Height);png=ms.ToArray();}
         return _pipe.TryAdd(new ExportWorkItem{Type=WorkItemType.Texture,FileName=fn,PackedBasePath=pb,UnpackedBasePath=ub,Platform=_opt.Platform,PixelData=px,PngData=png,Width=r.Width,Height=r.Height});
     }
     bool EnqData(string a,string pb)
@@ -120,7 +120,8 @@ public class ModEntry : Mod
         var types=GetLikely(a)??new(); types.Add(typeof(object));
         object d=null; foreach(var t in types){try{d=Load(a,t);if(d!=null)break;}catch{}}
         if(d==null)return true;
-        return _pipe.TryAdd(new ExportWorkItem{Type=WorkItemType.Data,FileName=a,PackedBasePath=pb,Platform=_opt.Platform,DataObject=d,DataTypeName=d.GetType().FullName});
+        string ub=_opt.Unpacked?Path.Combine(_opt.UnpackedDir,Sanitize(GetName(Norm(a)))):null;
+        return _pipe.TryAdd(new ExportWorkItem{Type=WorkItemType.Data,FileName=a,PackedBasePath=pb,UnpackedBasePath=ub,Platform=_opt.Platform,DataObject=d,DataTypeName=d.GetType().FullName});
     }
 
     void ExportOne(string[] a)
@@ -165,12 +166,12 @@ public class ModEntry : Mod
     }
     bool ExpMap(string a,Map m,ExportOptions opt)
     {
-        try{string n=Norm(a),s=Sanitize(GetName(n)),p=Path.Combine(opt.PackedDir,s+".xnb");Directory.CreateDirectory(Path.GetDirectoryName(p));TBinWriter.MapAssetName=n;using(var fs=new FileStream(p,FileMode.Create,FileAccess.Write))TBinWriter.WriteMapXnb(fs,m,opt.Platform);if(opt.Unpacked){string u=Path.Combine(opt.UnpackedDir,s+".tbin");Directory.CreateDirectory(Path.GetDirectoryName(u));using(var fs=new FileStream(u,FileMode.Create,FileAccess.Write))TBinWriter.WriteMapTbin(fs,m);}Monitor.Log($"✓ {a}",LogLevel.Info);return true;}
+        try{string n=Norm(a),s=Sanitize(GetName(n)),p=Path.Combine(opt.PackedDir,s+".xnb");Directory.CreateDirectory(Path.GetDirectoryName(p));TBinWriter.MapAssetName=n;using(var fs=new FileStream(p,FileMode.Create,FileAccess.Write))TBinWriter.WriteMapXnb(fs,m,opt.Platform);if(opt.Unpacked){string u=Path.Combine(opt.UnpackedDir,s+".tbin");Directory.CreateDirectory(Path.GetDirectoryName(u));using(var fs=new FileStream(u,FileMode.Create,FileAccess.Write))TBinWriter.WriteMapTbin(fs,m);long fsz=new FileInfo(u).Length;File.WriteAllText(Path.Combine(opt.UnpackedDir,s+".config"),XnbMetadata.MapConfig(opt.Platform,fsz),System.Text.Encoding.UTF8);}Monitor.Log($"✓ {a}",LogLevel.Info);return true;}
         catch(Exception ex){Monitor.Log($"✗ {a}: {ex.Message}",LogLevel.Warn);return false;}
     }
     bool ExpData(string a,object d,ExportOptions opt)
     {
-        try{string p=Path.Combine(opt.PackedDir,Sanitize(GetName(Norm(a))));Directory.CreateDirectory(Path.GetDirectoryName(p));if(DataExporter.ExportData(p,d,a)){Monitor.Log($"✓ {a}",LogLevel.Info);return true;}return false;}
+        try{string p=Path.Combine(opt.PackedDir,Sanitize(GetName(Norm(a))));Directory.CreateDirectory(Path.GetDirectoryName(p));if(DataExporter.ExportData(p,d,a)){if(opt.Unpacked){string u=Path.Combine(opt.UnpackedDir,Sanitize(GetName(Norm(a))));Directory.CreateDirectory(Path.GetDirectoryName(u));string src=p+".json";string dst=u+".json";File.Copy(src,dst,true);long fsz=new FileInfo(dst).Length;File.WriteAllText(u+".config",XnbMetadata.DataConfig(d.GetType().FullName,a,fsz),System.Text.Encoding.UTF8);}Monitor.Log($"✓ {a}",LogLevel.Info);return true;}return false;}
         catch(Exception ex){Monitor.Log($"✗ {a}: {ex.Message}",LogLevel.Warn);return false;}
     }
 
