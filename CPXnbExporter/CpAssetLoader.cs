@@ -60,7 +60,7 @@ namespace CPXnbExporter
                     if (!string.IsNullOrEmpty(f)) ScanFile(dir, Path.Combine(dir, f.Replace('/', Path.DirectorySeparatorChar)), r, seen, vis);
                     continue;
                 }
-                if (!a.Equals("Load", StringComparison.OrdinalIgnoreCase) && !a.Equals("EditData", StringComparison.OrdinalIgnoreCase)) continue;
+                if (!a.Equals("Load", StringComparison.OrdinalIgnoreCase) && !a.Equals("EditData", StringComparison.OrdinalIgnoreCase) && !a.Equals("EditImage", StringComparison.OrdinalIgnoreCase) && !a.Equals("EditMap", StringComparison.OrdinalIgnoreCase)) continue;
                 if (!seen.Add(t)) continue;
                 CpAssetType ty = CpAssetType.Unknown;
                 if (t.StartsWith("Maps/", StringComparison.OrdinalIgnoreCase)) ty = CpAssetType.Map;
