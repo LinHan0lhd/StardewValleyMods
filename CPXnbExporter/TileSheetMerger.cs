@@ -44,12 +44,14 @@ namespace CPXnbExporter
             {
                 Texture2D vt;try{vt=h.GameContent.Load<Texture2D>(vs.ImageSource);}catch{return null;}
                 int pw=vt.Width,ph=vt.Height;
-                // 虚拟瓦片表也统一为 16×16
+                // 强制 16×16 瓦片
                 int tw=hTw,th=hTh;
-                int osw=vs.SheetWidth>0?vs.SheetWidth:pw/tw,osh=vs.SheetHeight>0?vs.SheetHeight:ph/th;
-                if(osw<=0)osw=1;if(osh<=0)osh=1;
+                // 像素提取用纹理尺寸算列数
+                int osw=Math.Max(1,pw/tw),osh=Math.Max(1,ph/th);
+                // tile index 反推用 map 上的原始 SheetWidth（SDV 1.6 可能已缩放，取原始值）
+                int origSw=vs.SheetWidth>0?vs.SheetWidth:osw;
                 var vp=new Color[pw*ph];vt.GetData(vp);
-                var vd=new VData{Sheet=vs,Pw=pw,Ph=ph,Tw=tw,Th=th,Osw=osw,Osh=osh,Id=vs.Id,Map=new()};
+                var vd=new VData{Sheet=vs,Pw=pw,Ph=ph,Tw=tw,Th=th,Osw=osw,Osh=osh,OrigSw=origSw,Id=vs.Id,Map=new()};
                 for(int ty=0;ty<osh;ty++)for(int tx=0;tx<osw;tx++)
                 {
                     bool has=false;int sy=ty*th,ey=Math.Min(sy+th,ph),sx=tx*tw,ex=Math.Min(sx+tw,pw);
@@ -86,7 +88,7 @@ namespace CPXnbExporter
                 var tile=layer.Tiles[x,y];
                 if(tile is StaticTile st&&vData.Any(v=>v.Sheet==st.TileSheet))
                 {
-                    var vd=vData.First(v=>v.Sheet==st.TileSheet);int otx=st.TileIndex%vd.Osw,oty=st.TileIndex/vd.Osw;
+                    var vd=vData.First(v=>v.Sheet==st.TileSheet);int otx=st.TileIndex%vd.OrigSw,oty=st.TileIndex/vd.OrigSw;
                     if(vd.Map.TryGetValue((otx,oty),out var np)){int ni=np.Item2*tilesPerRow+np.Item1;layer.Tiles[x,y]=new StaticTile(layer,hostTs,st.BlendMode,ni);foreach(var p in st.Properties)layer.Tiles[x,y].Properties[p.Key]=p.Value;}
                     else layer.Tiles[x,y]=null;
                 }
@@ -96,7 +98,7 @@ namespace CPXnbExporter
                     foreach(var frame in anim.TileFrames)
                     {
                         var vd=vData.FirstOrDefault(v=>v.Sheet==frame.TileSheet);if(vd==null){nf.Add(frame);continue;}
-                        int otx=frame.TileIndex%vd.Osw,oty=frame.TileIndex/vd.Osw;
+                        int otx=frame.TileIndex%vd.OrigSw,oty=frame.TileIndex/vd.OrigSw;
                         if(vd.Map.TryGetValue((otx,oty),out var np)){int ni=np.Item2*tilesPerRow+np.Item1;var n=new StaticTile(layer,hostTs,frame.BlendMode,ni);foreach(var p in frame.Properties)n.Properties[p.Key]=p.Value;nf.Add(n);}
                     }
                     if(nf.Count>0)layer.Tiles[x,y]=new AnimatedTile(layer,nf.ToArray(),anim.FrameInterval);
@@ -119,6 +121,6 @@ namespace CPXnbExporter
             return mt;
         }
 
-        class VData{public TileSheet Sheet;public int Pw,Ph,Tw,Th,Osw,Osh,Oy,Uh,N;public string Id;public Dictionary<(int,int),(int,int)>Map;}
+        class VData{public TileSheet Sheet;public int Pw,Ph,Tw,Th,Osw,Osh,OrigSw,Oy,Uh,N;public string Id;public Dictionary<(int,int),(int,int)>Map;}
     }
 }
