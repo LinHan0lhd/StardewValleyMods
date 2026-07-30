@@ -155,7 +155,7 @@ public class ModEntry : Mod
                 }
                 catch (Exception ex) { Monitor.Log($"✗ 加载纹理失败 {a}: {ex.Message}", LogLevel.Warn); return false; }
             }
-            Monitor.Log($"⚠ 跳过内置资源 {a}", LogLevel.Trace);
+            Monitor.Log($"⚠ 跳过内置资源 {a}", LogLevel.Debug);
             return false;
         }
     }

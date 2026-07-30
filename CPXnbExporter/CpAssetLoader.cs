@@ -32,7 +32,7 @@ namespace CPXnbExporter
             try
             {
                 string md = Path.GetDirectoryName(_h.DirectoryPath);
-                _m?.Log($"扫描 Mods 目录: {md}", LogLevel.Trace);
+                _m?.Log($"扫描 Mods 目录: {md}", LogLevel.Debug);
                 foreach (var d in FindContentPacks(md))
                     ScanContentPack(d, r, seen);
                 _m?.Log($"扫描完成，找到 {r.Count} 个 CP 资产（当前语言）", LogLevel.Info);
@@ -129,10 +129,10 @@ namespace CPXnbExporter
                             ModName = modName,
                             SourceFilePath = !string.IsNullOrEmpty(fromFile) ? Path.Combine(dir, fromFile) : null
                         });
-                        _m?.Log($"    [CP] {modName} - {logName ?? t}: {t} ({action})", LogLevel.Trace);
+                        _m?.Log($"    [CP] {modName} - {logName ?? t}: {t} ({action})", LogLevel.Debug);
                     }
                 }
-                catch (Exception ex) { _m?.Log($"    解析 patch 时出错: {ex.Message}", LogLevel.Trace); }
+                catch (Exception ex) { _m?.Log($"    解析 patch 时出错: {ex.Message}", LogLevel.Debug); }
             }
         }
 
