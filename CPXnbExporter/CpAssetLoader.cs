@@ -22,7 +22,10 @@ namespace CPXnbExporter
             try
             {
                 string md = Path.GetDirectoryName(_h.DirectoryPath);
-                foreach (var d in FindPacks(md)) Scan(d, r, seen);
+                _m?.Log($"扫描根目录: {md}", LogLevel.Info);
+                int count = 0;
+                foreach (var d in FindPacks(md)) { Scan(d, r, seen); count++; }
+                _m?.Log($"找到 {count} 个 CP 包, {r.Count} 个资源", LogLevel.Info);
             }
             catch (Exception ex) { _m?.Log($"扫描出错: {ex}", LogLevel.Error); }
             _cache = r; return r;
@@ -35,7 +38,9 @@ namespace CPXnbExporter
             while (s.Count > 0)
             {
                 string d = s.Pop();
-                if (File.Exists(Path.Combine(d, "content.json"))) { yield return d; continue; }
+                if (File.Exists(Path.Combine(d, "content.json"))) { yield return d; }
+                // Keep scanning subdirectories even after finding a content.json,
+                // since some mods nest CP packs deeper
                 foreach (var sub in Directory.GetDirectories(d)) s.Push(sub);
             }
         }

@@ -120,8 +120,15 @@ public class ModEntry : Mod
         try { return EnqTex(Helper.GameContent.Load<Texture2D>(a),a,pb,ub); }
         catch
         {
-            try { return EnqTex(Helper.GameContent.Load<IRawTextureData>(a),a,pb,ub); }
-            catch (Exception ex) { Monitor.Log($"✗ 加载纹理失败 {a}: {ex.Message}", LogLevel.Warn); return false; }
+            // IRawTextureData only works for mod-local files, not game content pipeline assets
+            if(a.StartsWith("Mods/",StringComparison.OrdinalIgnoreCase)||_cpSet.Contains(Norm(a)))
+            {
+                try { return EnqTex(Helper.GameContent.Load<IRawTextureData>(a),a,pb,ub); }
+                catch (Exception ex) { Monitor.Log($"✗ 加载纹理失败 {a}: {ex.Message}", LogLevel.Warn); return false; }
+            }
+            // Game built-in tilesheet resources (e.g. Maps/island_tilesheet_1) can't be loaded as standalone textures
+            Monitor.Log($"⚠ 跳过内置资源 {a}", LogLevel.Trace);
+            return false;
         }
     }
     bool EnqTex(Texture2D t,string fn,string pb,string ub)
