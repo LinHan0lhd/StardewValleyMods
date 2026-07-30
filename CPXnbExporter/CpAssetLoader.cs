@@ -17,7 +17,8 @@ namespace CPXnbExporter
         public static List<CpAssetInfo> LoadAllCpAssets()
         {
             if (_cache != null) return _cache;
-            var r = new List<CpAssetInfo>(); var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var r = new List<CpAssetInfo>();
+            var seen = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             try
             {
                 string md = Path.GetDirectoryName(_h.DirectoryPath);
@@ -39,12 +40,12 @@ namespace CPXnbExporter
             }
         }
 
-        static void Scan(string dir, List<CpAssetInfo> r, HashSet<string> seen)
+        static void Scan(string dir, List<CpAssetInfo> r, Dictionary<string, int> seen)
         {
             ScanFile(dir, Path.Combine(dir, "content.json"), r, seen, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
         }
 
-        static void ScanFile(string dir, string path, List<CpAssetInfo> r, HashSet<string> seen, HashSet<string> vis)
+        static void ScanFile(string dir, string path, List<CpAssetInfo> r, Dictionary<string, int> seen, HashSet<string> vis)
         {
             if (!File.Exists(path) || !vis.Add(path)) return;
             JObject j; try { j = JObject.Parse(File.ReadAllText(path)); } catch { return; }
@@ -60,14 +61,72 @@ namespace CPXnbExporter
                     if (!string.IsNullOrEmpty(f)) ScanFile(dir, Path.Combine(dir, f.Replace('/', Path.DirectorySeparatorChar)), r, seen, vis);
                     continue;
                 }
-                if (!a.Equals("Load", StringComparison.OrdinalIgnoreCase) && !a.Equals("EditData", StringComparison.OrdinalIgnoreCase) && !a.Equals("EditImage", StringComparison.OrdinalIgnoreCase) && !a.Equals("EditMap", StringComparison.OrdinalIgnoreCase)) continue;
-                if (!seen.Add(t)) continue;
-                CpAssetType ty = CpAssetType.Unknown;
-                if (t.StartsWith("Maps/", StringComparison.OrdinalIgnoreCase)) ty = CpAssetType.Map;
-                else if (t.StartsWith("Data/", StringComparison.OrdinalIgnoreCase)) ty = CpAssetType.Data;
-                else ty = CpAssetType.Texture;
+                if (!IsSupportedAction(a)) continue;
+                string fromFile = c["FromFile"]?.Value<string>();
+                CpAssetType ty = DetectType(a, t, fromFile, dir);
+                if (seen.TryGetValue(t, out int idx))
+                {
+                    // Load action with a detectable file type takes precedence over Edit* actions
+                    if (a.Equals("Load", StringComparison.OrdinalIgnoreCase) && ty != CpAssetType.Unknown)
+                        r[idx].AssetType = ty;
+                    continue;
+                }
+                seen[t] = r.Count;
                 r.Add(new CpAssetInfo { AssetName = t, AssetType = ty, ModName = mod, SourceFilePath = path });
             }
+        }
+
+        static bool IsSupportedAction(string a) =>
+            a.Equals("Load", StringComparison.OrdinalIgnoreCase) ||
+            a.Equals("EditData", StringComparison.OrdinalIgnoreCase) ||
+            a.Equals("EditImage", StringComparison.OrdinalIgnoreCase) ||
+            a.Equals("EditMap", StringComparison.OrdinalIgnoreCase);
+
+        static CpAssetType DetectType(string action, string target, string fromFile, string dir)
+        {
+            if (action.Equals("Load", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!string.IsNullOrEmpty(fromFile))
+                {
+                    var ty = TypeFromExtension(Path.GetExtension(fromFile));
+                    if (ty != CpAssetType.Unknown) return ty;
+                    // No recognizable extension — try finding the file on disk with common extensions
+                    string fullPath = Path.Combine(dir, fromFile.Replace('/', Path.DirectorySeparatorChar));
+                    foreach (var e in new[] { ".png", ".tmx", ".tbin", ".json" })
+                        if (File.Exists(fullPath + e)) return TypeFromExtension(e);
+                }
+            }
+            else
+            {
+                // EditImage → Texture, EditMap → Map, EditData → Data
+                var ty = TypeFromAction(action);
+                if (ty != CpAssetType.Unknown) return ty;
+            }
+            // Fallback: path-based detection
+            return TypeFromPath(target);
+        }
+
+        static CpAssetType TypeFromExtension(string ext) => ext.ToLowerInvariant() switch
+        {
+            ".png" or ".jpg" or ".jpeg" or ".bmp" => CpAssetType.Texture,
+            ".tmx" or ".tbin" => CpAssetType.Map,
+            ".json" => CpAssetType.Data,
+            _ => CpAssetType.Unknown
+        };
+
+        static CpAssetType TypeFromAction(string action) => action.ToLowerInvariant() switch
+        {
+            "editimage" => CpAssetType.Texture,
+            "editmap" => CpAssetType.Map,
+            "editdata" => CpAssetType.Data,
+            _ => CpAssetType.Unknown
+        };
+
+        static CpAssetType TypeFromPath(string target)
+        {
+            if (target.StartsWith("Maps/", StringComparison.OrdinalIgnoreCase)) return CpAssetType.Map;
+            if (target.StartsWith("Data/", StringComparison.OrdinalIgnoreCase)) return CpAssetType.Data;
+            return CpAssetType.Texture;
         }
     }
 }

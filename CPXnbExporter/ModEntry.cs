@@ -68,37 +68,51 @@ public class ModEntry : Mod
         try
         {
             if(a.AssetType==CpAssetLoader.CpAssetType.Texture) { if(!EnqTex(raw,pb,ub))return false; _done.Add(norm); }
-            else if(a.AssetType==CpAssetLoader.CpAssetType.Map)
+            else if(a.AssetType==CpAssetLoader.CpAssetType.Map) { if(!TryEnqMap(raw,norm,pb,ub))return false; }
+            else if(a.AssetType==CpAssetLoader.CpAssetType.Data) { if(!EnqData(raw,pb))return false; _done.Add(norm); }
+            else // Unknown — try Texture, then Map, then Data
             {
-                Map m; string act=raw;
-                try{m=Helper.GameContent.Load<Map>(raw);}catch{if(!raw.StartsWith("Maps/")){act="Maps/"+raw;m=Helper.GameContent.Load<Map>(act);}else throw;}
-                var host=TileSheetMerger.Merge(m,TileSheetMerger.DefaultHost,Helper,Monitor);
-                if(host!=null && !_done.Contains(TileSheetMerger.DefaultHost))
-                {
-                    string h=Sanitize(TileSheetMerger.DefaultHost), hp=Path.Combine(_opt.PackedDir,h), hu=_opt.Unpacked?Path.Combine(_opt.UnpackedDir,h):null;
-                    if(!EnqTex(host,TileSheetMerger.DefaultHost,hp,hu))return false; _done.Add(TileSheetMerger.DefaultHost);
-                }
-                TBinWriter.MapAssetName=act;
-                var item=new ExportWorkItem{Type=WorkItemType.Map,FileName=raw,PackedBasePath=pb,UnpackedBasePath=ub,Platform=_opt.Platform,TbinData=TBinWriter.SerializeTbin(m)};
-                if(!_pipe.TryAdd(item))return false; _done.Add(norm);
-                foreach(var ts in m.TileSheets)
-                {
-                    string src=ts.ImageSource; if(string.IsNullOrEmpty(src))continue;
-                    if(TileSheetMerger.IsVirtual(ts))continue;
-                    string n=Norm(src); if(!_cpSet.Contains(n)||_done.Contains(n))continue;
-                    string s=Sanitize(n), pp=Path.Combine(_opt.PackedDir,s), up=_opt.Unpacked?Path.Combine(_opt.UnpackedDir,s):null;
-                    try{if(EnqTex(src,pp,up))_done.Add(n);}catch{}
-                }
+                if(EnqTex(raw,pb,ub)) _done.Add(norm);
+                else if(TryEnqMap(raw,norm,pb,ub)) { }
+                else if(EnqData(raw,pb)) _done.Add(norm);
+                else Monitor.Log($"✗ 无法加载 {raw}", LogLevel.Warn);
             }
-            else { if(!EnqData(raw,pb))return false; _done.Add(norm); }
             return true;
         }
-        catch
+        catch(Exception ex)
         {
-            if(a.AssetType!=CpAssetLoader.CpAssetType.Texture && a.AssetType!=CpAssetLoader.CpAssetType.Data)
-                try{if(EnqTex(raw,pb,ub)){_done.Add(norm);return true;}return false;}catch{return true;}
+            Monitor.Log($"✗ 加载失败 {raw}: {ex.Message}", LogLevel.Warn);
+            try{if(EnqTex(raw,pb,ub)){_done.Add(norm);return true;}}catch{}
             return true;
         }
+    }
+
+    bool TryEnqMap(string raw, string norm, string pb, string ub)
+    {
+        try
+        {
+            Map m; string act=raw;
+            try{m=Helper.GameContent.Load<Map>(raw);}catch{if(!raw.StartsWith("Maps/")){act="Maps/"+raw;m=Helper.GameContent.Load<Map>(act);}else throw;}
+            var host=TileSheetMerger.Merge(m,TileSheetMerger.DefaultHost,Helper,Monitor);
+            if(host!=null && !_done.Contains(TileSheetMerger.DefaultHost))
+            {
+                string h=Sanitize(TileSheetMerger.DefaultHost), hp=Path.Combine(_opt.PackedDir,h), hu=_opt.Unpacked?Path.Combine(_opt.UnpackedDir,h):null;
+                if(!EnqTex(host,TileSheetMerger.DefaultHost,hp,hu))return false; _done.Add(TileSheetMerger.DefaultHost);
+            }
+            TBinWriter.MapAssetName=act;
+            var item=new ExportWorkItem{Type=WorkItemType.Map,FileName=raw,PackedBasePath=pb,UnpackedBasePath=ub,Platform=_opt.Platform,TbinData=TBinWriter.SerializeTbin(m)};
+            if(!_pipe.TryAdd(item))return false; _done.Add(norm);
+            foreach(var ts in m.TileSheets)
+            {
+                string src=ts.ImageSource; if(string.IsNullOrEmpty(src))continue;
+                if(TileSheetMerger.IsVirtual(ts))continue;
+                string n=Norm(src); if(!_cpSet.Contains(n)||_done.Contains(n))continue;
+                string s=Sanitize(n), pp=Path.Combine(_opt.PackedDir,s), up=_opt.Unpacked?Path.Combine(_opt.UnpackedDir,s):null;
+                try{if(EnqTex(src,pp,up))_done.Add(n);}catch{}
+            }
+            return true;
+        }
+        catch { return false; }
     }
 
     bool EnqTex(string a,string pb,string ub)
