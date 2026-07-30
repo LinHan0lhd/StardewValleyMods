@@ -56,7 +56,7 @@ public class ExportPipeline : IDisposable
             }
             Interlocked.Increment(ref _ts);
         }
-        catch { Interlocked.Increment(ref _tf); }
+        catch (Exception ex) { _m?.Log($"✗ 写入纹理失败 {i.FileName}: {ex.Message}", LogLevel.Error); Interlocked.Increment(ref _tf); }
     }
 
     void DoMap(ExportWorkItem i)
@@ -75,7 +75,7 @@ public class ExportPipeline : IDisposable
             }
             Interlocked.Increment(ref _ms);
         }
-        catch { Interlocked.Increment(ref _mf); }
+        catch (Exception ex) { _m?.Log($"✗ 写入地图失败 {i.FileName}: {ex.Message}", LogLevel.Error); Interlocked.Increment(ref _mf); }
     }
 
     void DoData(ExportWorkItem i)
@@ -95,6 +95,6 @@ public class ExportPipeline : IDisposable
             }
             Interlocked.Increment(ref _ds);
         }
-        catch { Interlocked.Increment(ref _df); }
+        catch (Exception ex) { _m?.Log($"✗ 写入数据失败 {i.FileName}: {ex.Message}", LogLevel.Error); Interlocked.Increment(ref _df); }
     }
 }

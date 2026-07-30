@@ -101,7 +101,15 @@ public class ModEntry : Mod
         }
     }
 
-    bool EnqTex(string a,string pb,string ub) => EnqTex(Helper.GameContent.Load<Texture2D>(a),a,pb,ub);
+    bool EnqTex(string a,string pb,string ub)
+    {
+        try { return EnqTex(Helper.GameContent.Load<Texture2D>(a),a,pb,ub); }
+        catch
+        {
+            try { return EnqTex(Helper.GameContent.Load<IRawTextureData>(a),a,pb,ub); }
+            catch (Exception ex) { Monitor.Log($"✗ 加载纹理失败 {a}: {ex.Message}", LogLevel.Warn); return false; }
+        }
+    }
     bool EnqTex(Texture2D t,string fn,string pb,string ub)
     {
         var px=new Color[t.Width*t.Height]; t.GetData(px); XnbWriter.NormalizeAlpha(px);
@@ -119,7 +127,7 @@ public class ModEntry : Mod
     {
         var types=GetLikely(a)??new(); types.Add(typeof(object));
         object d=null; foreach(var t in types){try{d=Load(a,t);if(d!=null)break;}catch{}}
-        if(d==null)return true;
+        if(d==null){Monitor.Log($"✗ 无法加载数据 {a}",LogLevel.Warn);return true;}
         string ub=_opt.Unpacked?Path.Combine(_opt.UnpackedDir,Sanitize(GetName(Norm(a)))):null;
         return _pipe.TryAdd(new ExportWorkItem{Type=WorkItemType.Data,FileName=a,PackedBasePath=pb,UnpackedBasePath=ub,Platform=_opt.Platform,DataObject=d,DataTypeName=d.GetType().FullName});
     }
