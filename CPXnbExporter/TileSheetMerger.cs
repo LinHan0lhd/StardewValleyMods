@@ -39,22 +39,35 @@ namespace CPXnbExporter
                 hostTs.TileWidth=hTw;hostTs.TileHeight=hTh;
                 hostTs.SheetWidth=hPw/hTw;hostTs.SheetHeight=hPh/hTh;
             }
+            // 合并纹理无 margin/spacing，强制清零避免游戏按错误偏移采样
+            hostTs.Margin=new Size(0,0);hostTs.Spacing=new Size(0,0);
             var vData=new List<VData>();var all=new List<(VData vd,int ox,int oy,Color[] px)>();
             foreach(var vs in vList)
             {
                 Texture2D vt;try{vt=h.GameContent.Load<Texture2D>(vs.ImageSource);}catch{return null;}
                 int pw=vt.Width,ph=vt.Height;
-                // 强制 16×16 瓦片
+                // 提取到合并纹理的瓦片尺寸（强制 16×16）
                 int tw=hTw,th=hTh;
-                // 像素提取用纹理尺寸算列数
-                int osw=Math.Max(1,pw/tw),osh=Math.Max(1,ph/th);
-                // tile index 反推用 map 上的原始 SheetWidth（SDV 1.6 可能已缩放，取原始值）
+                // 源瓦片表布局：用原始 TileWidth/Height/Margin/Spacing 计算源像素位置，
+                // 避免 spacing>0 时按 16 像素步进读到透明间距像素（导致每行隔一像素空线）
+                int srcTw=vs.TileWidth>0?vs.TileWidth:tw;
+                int srcTh=vs.TileHeight>0?vs.TileHeight:th;
+                int srcMw=vs.Margin.Width,srcMh=vs.Margin.Height;
+                int srcSpw=vs.Spacing.Width,srcSph=vs.Spacing.Height;
+                int strideX=srcTw+srcSpw,strideY=srcTh+srcSph;
+                // 瓦片数量：优先用 map 上的 SheetWidth/Height
+                int osw,osh;
+                if(vs.SheetWidth>0&&vs.SheetHeight>0){osw=vs.SheetWidth;osh=vs.SheetHeight;}
+                else{osw=Math.Max(1,(pw-srcMw+srcSpw)/strideX);osh=Math.Max(1,(ph-srcMh+srcSph)/strideY);}
+                // tile index 反推用 map 上的原始 SheetWidth
                 int origSw=vs.SheetWidth>0?vs.SheetWidth:osw;
                 var vp=new Color[pw*ph];vt.GetData(vp);
                 var vd=new VData{Sheet=vs,Pw=pw,Ph=ph,Tw=tw,Th=th,Osw=osw,Osh=osh,OrigSw=origSw,Id=vs.Id,Map=new()};
                 for(int ty=0;ty<osh;ty++)for(int tx=0;tx<osw;tx++)
                 {
-                    bool has=false;int sy=ty*th,ey=Math.Min(sy+th,ph),sx=tx*tw,ex=Math.Min(sx+tw,pw);
+                    int sx=srcMw+tx*strideX,sy=srcMh+ty*strideY;
+                    if(sx>=pw||sy>=ph)continue;
+                    bool has=false;int ey=Math.Min(sy+srcTh,ph),ex=Math.Min(sx+srcTw,pw);
                     for(int py=sy;py<ey&&!has;py++)for(int px=sx;px<ex&&!has;px++)if(vp[py*pw+px].A>0)has=true;
                     if(!has)continue;
                     var tp=new Color[tw*th];

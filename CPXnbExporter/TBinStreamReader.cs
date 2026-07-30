@@ -28,7 +28,7 @@ public static class TBinStreamReader
     {
         string id = ReadStr(r), desc = ReadStr(r), img = ReadStr(r);
         int sw = r.ReadInt32(), sh = r.ReadInt32(), tw = r.ReadInt32(), th = r.ReadInt32(), mw = r.ReadInt32(), mh = r.ReadInt32(), spw = r.ReadInt32(), sph = r.ReadInt32();
-        var ts = new TileSheet(id, m, img, new xTile.Dimensions.Size { Width = sw, Height = sh }, new xTile.Dimensions.Size { Width = tw, Height = th });
+        var ts = new TileSheet(id, m, img, new xTile.Dimensions.Size { Width = tw, Height = th }, new xTile.Dimensions.Size { Width = sw, Height = sh });
         ts.Margin = new xTile.Dimensions.Size { Width = mw, Height = mh };
         ts.Spacing = new xTile.Dimensions.Size { Width = spw, Height = sph };
         ts.Description = desc; ReadProps(r, ts.Properties); m.AddTileSheet(ts);
