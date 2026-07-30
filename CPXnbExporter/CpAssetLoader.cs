@@ -114,15 +114,12 @@ namespace CPXnbExporter
                     }
 
                     if (string.IsNullOrEmpty(target)) continue;
-                    // 跳过 EditData — 数据资产不导出
-                    if (action.Equals("EditData", StringComparison.OrdinalIgnoreCase)) continue;
 
                     var targets = ParseTargets(target);
                     foreach (var t in targets)
                     {
                         if (seen.Contains(t)) continue;
                         var ty = DetectType(action, fromFile, t, dir);
-                        if (ty == CpAssetType.Data) continue; // 跳过数据类型
 
                         seen.Add(t);
                         r.Add(new CpAssetInfo
