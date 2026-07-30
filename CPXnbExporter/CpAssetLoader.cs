@@ -235,7 +235,16 @@ namespace CPXnbExporter
                 "maps/festival", "maps/festivals",
                 "maps/extras", "maps/walls",
                 "maps/equippable", "maps/objectinfo",
-                "maps/fruit_tree", "maps/wild_tree"
+                "maps/fruit_tree", "maps/wild_tree",
+                "maps/towninterior", "maps/towninterior_2",
+                "maps/sewertiles", "maps/night_market_tilesheet_objects",
+                "maps/spring_outdoorstilesheet", "maps/summer_outdoorstilesheet",
+                "maps/fall_outdoorstilesheet", "maps/winter_outdoorstilesheet",
+                "maps/island_tilesheet", "maps/island_tilesheet_1", "maps/island_tilesheet_2",
+                "maps/spring_island_tilesheet", "maps/summer_island_tilesheet",
+                "maps/fall_island_tilesheet", "maps/winter_island_tilesheet",
+                "maps/menutiles", "maps/buspeople",
+                "maps/spouserooms", "maps/spousepatios"
             };
             foreach (var t in mapsTextures)
                 if (targetLower == t || targetLower.StartsWith(t + ".")) return CpAssetType.Texture;
