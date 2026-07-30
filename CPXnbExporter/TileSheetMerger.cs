@@ -26,20 +26,28 @@ namespace CPXnbExporter
             string hid=hostName.Replace('\\','/');int ls=hid.LastIndexOf('/');if(ls>=0)hid=hid[(ls+1)..];
             var hostTs=map.TileSheets.FirstOrDefault(ts=>ts.ImageSource?.Replace('\\','/').Equals(hostName,StringComparison.OrdinalIgnoreCase)==true||ts.Id.Equals(hid,StringComparison.OrdinalIgnoreCase));
             Texture2D hTex;try{hTex=h.GameContent.Load<Texture2D>(hostName);}catch{return null;}
-            int hTw=hostTs?.TileWidth??64,hTh=hostTs?.TileHeight??64;
+            // 强制 16×16 瓦片尺寸
+            const int hTw=16,hTh=16;
             int hPw=hTex.Width,hPh=hTex.Height;
             if(hostTs==null)
             {
                 hostTs=new TileSheet(hid,map,hostName,new Size(hTw,hTh),new Size(hPw/hTw,hPh/hTh));
                 map.AddTileSheet(hostTs);
             }
+            else
+            {
+                hostTs.TileWidth=hTw;hostTs.TileHeight=hTh;
+                hostTs.SheetWidth=hPw/hTw;hostTs.SheetHeight=hPh/hTh;
+            }
             var vData=new List<VData>();var all=new List<(VData vd,int ox,int oy,Color[] px)>();
             foreach(var vs in vList)
             {
                 Texture2D vt;try{vt=h.GameContent.Load<Texture2D>(vs.ImageSource);}catch{return null;}
                 int pw=vt.Width,ph=vt.Height;
-                if(vs.SheetWidth>0&&vs.SheetHeight>0){int cw=pw/vs.SheetWidth,ch=ph/vs.SheetHeight;if(cw>0&&ch>0&&(vs.TileWidth!=cw||vs.TileHeight!=ch)){vs.TileWidth=cw;vs.TileHeight=ch;}}
-                int tw=vs.TileWidth,th=vs.TileHeight,osw=vs.SheetWidth,osh=vs.SheetHeight;
+                // 虚拟瓦片表也统一为 16×16
+                int tw=hTw,th=hTh;
+                int osw=vs.SheetWidth>0?vs.SheetWidth:pw/tw,osh=vs.SheetHeight>0?vs.SheetHeight:ph/th;
+                if(osw<=0)osw=1;if(osh<=0)osh=1;
                 var vp=new Color[pw*ph];vt.GetData(vp);
                 var vd=new VData{Sheet=vs,Pw=pw,Ph=ph,Tw=tw,Th=th,Osw=osw,Osh=osh,Id=vs.Id,Map=new()};
                 for(int ty=0;ty<osh;ty++)for(int tx=0;tx<osw;tx++)
@@ -57,8 +65,7 @@ namespace CPXnbExporter
             var uniq=new List<(VData vd,int ox,int oy,Color[] px)>();var hs=new HashSet<int>();
             foreach(var(vd,ox,oy,px)in all){int hash=17;for(int i=0;i<px.Length;i++){var c=px[i];hash=hash*31+c.R;hash=hash*31+c.G;hash=hash*31+c.B;hash=hash*31+c.A;}if(!hs.Contains(hash)){hs.Add(hash);uniq.Add((vd,ox,oy,px));}}
             all=uniq;
-            int lcmW=hTw;foreach(var vd in vData)lcmW=Lcm(lcmW,vd.Tw);
-            int mw=((hPw+lcmW-1)/lcmW)*lcmW;if(mw<hPw)mw+=lcmW;int mh=hPh;
+            int mw=hPw;int mh=hPh;
             foreach(var vd in vData)
             {
                 var tiles=all.Where(t=>t.vd==vd).ToList();int tpr=mw/vd.Tw,rows=(tiles.Count+tpr-1)/tpr,uh=rows*vd.Th;
@@ -70,15 +77,17 @@ namespace CPXnbExporter
             for(int y=0;y<hPh;y++)for(int x=0;x<hPw;x++)res[y*mw+x]=hp[y*hPw+x];
             foreach(var vd in vData)foreach(var(_,ox,oy,px)in all.Where(t=>t.vd==vd)){var(nx,ny)=vd.Map[(ox,oy)];int dx=nx*vd.Tw,dy=vd.Oy+ny*vd.Th;for(int py=0;py<vd.Th;py++)for(int px2=0;px2<vd.Tw;px2++)res[(dy+py)*mw+(dx+px2)]=px[py*vd.Tw+px2];}
             var mt=new Texture2D(hTex.GraphicsDevice,mw,mh);mt.SetData(res);
-            if(hostTs!=null){hostTs.SheetWidth=mw/hTw;hostTs.SheetHeight=mh/hTh;}
-            foreach(var vd in vData){vd.Sheet.ImageSource=hostName;vd.Sheet.SheetWidth=mw/vd.Tw;vd.Sheet.SheetHeight=mh/vd.Th;vd.Sheet.TileWidth=hTw;vd.Sheet.TileHeight=hTh;}
+            // 更新 host TileSheet 尺寸
+            hostTs.SheetWidth=mw/hTw;hostTs.SheetHeight=mh/hTh;
+            // 先重定向所有 tile 引用到 hostTs
+            int tilesPerRow=mw/hTw;
             foreach(var layer in map.Layers)for(int y=0;y<layer.LayerHeight;y++)for(int x=0;x<layer.LayerWidth;x++)
             {
                 var tile=layer.Tiles[x,y];
                 if(tile is StaticTile st&&vData.Any(v=>v.Sheet==st.TileSheet))
                 {
                     var vd=vData.First(v=>v.Sheet==st.TileSheet);int otx=st.TileIndex%vd.Osw,oty=st.TileIndex/vd.Osw;
-                    if(vd.Map.TryGetValue((otx,oty),out var np)){int ni=np.Item2*(mw/hTw)+np.Item1;layer.Tiles[x,y]=new StaticTile(layer,hostTs,st.BlendMode,ni);foreach(var p in st.Properties)layer.Tiles[x,y].Properties[p.Key]=p.Value;}
+                    if(vd.Map.TryGetValue((otx,oty),out var np)){int ni=np.Item2*tilesPerRow+np.Item1;layer.Tiles[x,y]=new StaticTile(layer,hostTs,st.BlendMode,ni);foreach(var p in st.Properties)layer.Tiles[x,y].Properties[p.Key]=p.Value;}
                     else layer.Tiles[x,y]=null;
                 }
                 else if(tile is AnimatedTile anim)
@@ -88,12 +97,25 @@ namespace CPXnbExporter
                     {
                         var vd=vData.FirstOrDefault(v=>v.Sheet==frame.TileSheet);if(vd==null){nf.Add(frame);continue;}
                         int otx=frame.TileIndex%vd.Osw,oty=frame.TileIndex/vd.Osw;
-                        if(vd.Map.TryGetValue((otx,oty),out var np)){int ni=np.Item2*(mw/hTw)+np.Item1;var n=new StaticTile(layer,hostTs,frame.BlendMode,ni);foreach(var p in frame.Properties)n.Properties[p.Key]=p.Value;nf.Add(n);}
+                        if(vd.Map.TryGetValue((otx,oty),out var np)){int ni=np.Item2*tilesPerRow+np.Item1;var n=new StaticTile(layer,hostTs,frame.BlendMode,ni);foreach(var p in frame.Properties)n.Properties[p.Key]=p.Value;nf.Add(n);}
                     }
                     if(nf.Count>0)layer.Tiles[x,y]=new AnimatedTile(layer,nf.ToArray(),anim.FrameInterval);
+                    else layer.Tiles[x,y]=null;
                 }
             }
-            for(int i=map.TileSheets.Count-1;i>=0;i--)if(IsVirtual(map.TileSheets[i]))map.RemoveTileSheet(map.TileSheets[i]);
+            // 确认没有 tile 引用虚拟瓦片表后再删除
+            for(int i=map.TileSheets.Count-1;i>=0;i--)
+            {
+                if(!IsVirtual(map.TileSheets[i]))continue;
+                bool stillUsed=false;
+                foreach(var layer in map.Layers)for(int y=0;y<layer.LayerHeight;y++)for(int x=0;x<layer.LayerWidth;x++)
+                {
+                    var t=layer.Tiles[x,y];
+                    if(t is StaticTile s&&s.TileSheet==map.TileSheets[i]){stillUsed=true;break;}
+                    if(t is AnimatedTile a&&a.TileFrames.Any(f=>f.TileSheet==map.TileSheets[i])){stillUsed=true;break;}
+                }
+                if(!stillUsed)map.RemoveTileSheet(map.TileSheets[i]);
+            }
             return mt;
         }
 

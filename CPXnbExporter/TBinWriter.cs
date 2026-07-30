@@ -46,9 +46,7 @@ public static class TBinWriter
     {
         WriteStr(w, layer.Id ?? ""); w.Write((byte)(layer.Visible ? 1 : 0)); WriteStr(w, layer.Description ?? "");
         w.Write(layer.LayerWidth); w.Write(layer.LayerHeight);
-        int tw = map.TileSheets.Count > 0 ? map.TileSheets[0].TileWidth : 16;
-        int th = map.TileSheets.Count > 0 ? map.TileSheets[0].TileHeight : 16;
-        w.Write(tw); w.Write(th);
+        w.Write(16); w.Write(16);
         WriteProps(w, layer.Properties);
         string cur = null;
         for (int y = 0; y < layer.LayerHeight; y++)
