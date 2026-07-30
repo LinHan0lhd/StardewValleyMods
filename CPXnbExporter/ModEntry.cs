@@ -54,7 +54,7 @@ public class ModEntry : Mod
     {
         if(_phase!=Phase.Idle) { Monitor.Log("进行中", LogLevel.Warn); return; }
         _phase=Phase.Loading; _opt=ExportOptions.Parse(a, Path.Combine(Helper.DirectoryPath,"exported"));
-        _idx=-1; _skipCount=0; _done=new(); _pipe=new(_cfg.Workers, _cfg.Queue, Monitor);
+        _idx=-1; _skipCount=0; _done=new(); _pipe=new(_cfg.Concurrency, _cfg.Queue, Monitor);
         _list=CpAssetLoader.LoadAllCpAssets();
         if(_list.Count==0) { _pipe.CompleteAdding(); _phase=Phase.Wait; return; }
         _cpSet=new(_list.Select(x=>Norm(x.AssetName)), StringComparer.OrdinalIgnoreCase);

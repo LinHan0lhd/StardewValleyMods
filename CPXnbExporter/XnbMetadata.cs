@@ -1,33 +1,111 @@
-using System.Text;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 
 namespace CPXnbExporter;
+
 public class XnbMetadata
 {
-    public int Width, Height, Format, MipCount; public string FormatName, Platform; public byte Version; public bool Compressed; public long FileSize;
+    public int Width, Height, Format, MipCount;
+    public string FormatName, Platform;
+    public byte Version;
+    public bool Compressed;
+    public long FileSize;
+
+    private static readonly JsonSerializerSettings JsonSettings = new()
+    {
+        Formatting = Formatting.Indented,
+        NullValueHandling = NullValueHandling.Ignore,
+        Converters = { new StringEnumConverter() }
+    };
+
+    /// <summary>Texture2D .config (XnbConverter pack compatible)</summary>
     public string ToConfig()
     {
-        var sb = new StringBuilder();
-        sb.AppendLine("# XNB Metadata"); sb.AppendLine($"width: {Width}"); sb.AppendLine($"height: {Height}"); sb.AppendLine($"format: {FormatName} ({Format})");
-        sb.AppendLine($"mipCount: {MipCount}"); sb.AppendLine($"platform: {Platform}"); sb.AppendLine($"version: {Version}"); sb.AppendLine($"compressed: {Compressed}"); sb.AppendLine($"fileSize: {FileSize}");
-        return sb.ToString();
+        bool isMobile = Platform?.ToLowerInvariant() == "a" || Platform?.ToLowerInvariant() == "i";
+        string target = Platform?.ToLowerInvariant() switch
+        {
+            "a" => "Android",
+            "i" => "Ios",
+            _ => "Windows"
+        };
+
+        var obj = new
+        {
+            Header = new
+            {
+                Target = target,
+                FormatVersion = (int)Version,
+                CompressedFlag = isMobile ? (object)"Lz4" : (object)0
+            },
+            Readers = new[]
+            {
+                new
+                {
+                    Type = isMobile
+                        ? "Microsoft.Xna.Framework.Content.Texture2DReader"
+                        : "Microsoft.Xna.Framework.Content.Texture2DReader, Microsoft.Xna.Framework.Graphics, Version=4.0.0.0, Culture=neutral, PublicKeyToken=842cf8be1de50553",
+                    Version = 0
+                }
+            },
+            Content = new
+            {
+                Extension = ".png",
+                Format = Format
+            }
+        };
+
+        return JsonConvert.SerializeObject(obj, JsonSettings);
     }
+
+    /// <summary>Map .config (XnbConverter pack compatible)</summary>
     public static string MapConfig(char platform, long fileSize)
     {
-        var sb = new StringBuilder();
-        sb.AppendLine("# XNB Metadata");
-        sb.AppendLine("type: Map");
-        sb.AppendLine($"platform: {platform}");
-        sb.AppendLine($"fileSize: {fileSize}");
-        return sb.ToString();
+        bool isMobile = platform == 'a' || platform == 'i';
+        string target = platform switch
+        {
+            'a' => "Android",
+            'i' => "Ios",
+            _ => "Windows"
+        };
+
+        var obj = new
+        {
+            Header = new
+            {
+                Target = target,
+                FormatVersion = 5,
+                CompressedFlag = (object)0
+            },
+            Readers = new[]
+            {
+                new
+                {
+                    // XnbConverter TypeReadHelper has a hardcoded entry for this exact key
+                    Type = "xTile.Pipeline.TideReader, xTile",
+                    Version = 0
+                }
+            },
+            Content = new
+            {
+                Extension = ".tbin",
+                Format = 0
+            }
+        };
+
+        return JsonConvert.SerializeObject(obj, JsonSettings);
     }
+
+    /// <summary>Data .config (reference only, XnbConverter Data pack not fully supported)</summary>
     public static string DataConfig(string dataTypeName, string fileName, long fileSize)
     {
-        var sb = new StringBuilder();
-        sb.AppendLine("# XNB Metadata");
-        sb.AppendLine("type: Data");
-        sb.AppendLine($"dataTypeName: {dataTypeName}");
-        sb.AppendLine($"fileName: {fileName}");
-        sb.AppendLine($"fileSize: {fileSize}");
-        return sb.ToString();
+        var obj = new
+        {
+            type = "Data",
+            dataTypeName = dataTypeName,
+            fileName = fileName,
+            fileSize = fileSize
+        };
+
+        return JsonConvert.SerializeObject(obj, JsonSettings);
     }
 }

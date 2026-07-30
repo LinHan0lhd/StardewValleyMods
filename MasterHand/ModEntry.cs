@@ -86,9 +86,7 @@ public class ModEntry : Mod
             original: AccessTools.Method(typeof(Multiplayer), "saveFarmhand", new[] { typeof(NetFarmerRoot) }),
             prefix: new HarmonyMethod(typeof(ModEntry), nameof(Prefix_SaveFarmhand))
         );
-        // 关键：必须在 playerDisconnected 原方法执行前重置物品。
-        // 原方法内部会调用 saveFarmhand → CloneInto，把当前 Items 深拷贝进 farmhandData。
-        // SMAPI 的 PeerDisconnected 事件在原方法返回后才触发，那时快照已拍完，改了也白改。
+        // 关键：必须在 playerDisconnected 原方法执行前重置物品
         harmony.Patch(
             original: AccessTools.Method(typeof(Multiplayer), nameof(Multiplayer.playerDisconnected)),
             prefix: new HarmonyMethod(typeof(ModEntry), nameof(Prefix_PlayerDisconnected))
@@ -472,12 +470,6 @@ public class ModEntry : Mod
     }
 
     // 下线重置特殊物品
-
-    /// <summary>
-    /// Harmony Prefix：在 Multiplayer.playerDisconnected 原方法执行前重置标记物品。
-    /// 必须在这里做，因为原方法内部会调用 saveFarmhand → CloneInto 拍快照到 farmhandData，
-    /// 重连时 farmhand 从 farmhandData 全量同步。SMAPI 的 PeerDisconnected 事件在原方法之后才触发，太晚。
-    /// </summary>
     public static void Prefix_PlayerDisconnected(long id)
     {
         if (!Context.IsMainPlayer) return;
