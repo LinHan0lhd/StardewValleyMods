@@ -26,7 +26,13 @@ namespace CPXnbExporter
             string hid=hostName.Replace('\\','/');int ls=hid.LastIndexOf('/');if(ls>=0)hid=hid[(ls+1)..];
             var hostTs=map.TileSheets.FirstOrDefault(ts=>ts.ImageSource?.Replace('\\','/').Equals(hostName,StringComparison.OrdinalIgnoreCase)==true||ts.Id.Equals(hid,StringComparison.OrdinalIgnoreCase));
             Texture2D hTex;try{hTex=h.GameContent.Load<Texture2D>(hostName);}catch{return null;}
-            int hPw=hTex.Width,hPh=hTex.Height,hTw=hostTs?.TileWidth??64,hTh=hostTs?.TileHeight??64;
+            int hTw=hostTs?.TileWidth??64,hTh=hostTs?.TileHeight??64;
+            int hPw=hTex.Width,hPh=hTex.Height;
+            if(hostTs==null)
+            {
+                hostTs=new TileSheet(hid,map,hostName,new Size(hTw,hTh),new Size(hPw/hTw,hPh/hTh));
+                map.AddTileSheet(hostTs);
+            }
             var vData=new List<VData>();var all=new List<(VData vd,int ox,int oy,Color[] px)>();
             foreach(var vs in vList)
             {
