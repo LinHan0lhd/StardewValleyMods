@@ -21,6 +21,14 @@ public class ModConfig
     public List<long> InfiniteGiftsWhitelist { get; set; } = new();
 }
 
+// ───── 辅助类：用于包裹 Item ─────
+[XmlRoot("Items")]
+public class ItemsWrapper
+{
+    [XmlElement("Item")]
+    public Item[] Items { get; set; }
+}
+
 // ───── 主入口 ─────
 public class ModEntry : Mod
 {
@@ -34,17 +42,23 @@ public class ModEntry : Mod
     private static new IModHelper Helper { get; set; }
     private static ModConfig Config { get; set; }
     private static long FavoredPlayerId => Config?.FavoredPlayerId ?? 0;
-    private static readonly XmlSerializer ItemSerializer;
+
+    // 全部 Item 派生类型
+    private static readonly Type[] ItemDerivedTypes;
+
+    // 用于包裹 <Items> 反序列化的序列化器
+    private static readonly XmlSerializer ItemsWrapperSerializer;
 
     private bool isTimeFrozen;
 
     static ModEntry()
     {
-        var itemTypes = Assembly.GetAssembly(typeof(Item))
+        ItemDerivedTypes = Assembly.GetAssembly(typeof(Item))
             .GetTypes()
             .Where(t => t.IsSubclassOf(typeof(Item)) && !t.IsAbstract)
             .ToArray();
-        ItemSerializer = new XmlSerializer(typeof(Item), itemTypes);
+
+        ItemsWrapperSerializer = new XmlSerializer(typeof(ItemsWrapper), ItemDerivedTypes);
     }
 
     public override void Entry(IModHelper helper)
@@ -76,7 +90,7 @@ public class ModEntry : Mod
         // 物品池
         LoadItemPool();
 
-        // Harmony 补丁：无限送礼
+        // Harmony 补丁
         var harmony = new Harmony(ModManifest.UniqueID);
         harmony.Patch(
             original: AccessTools.Method(typeof(Farmer), nameof(Farmer.updateFriendshipGifts)),
@@ -90,14 +104,13 @@ public class ModEntry : Mod
             original: AccessTools.Method(typeof(NetWorldState), nameof(NetWorldState.SaveFarmhand)),
             postfix: new HarmonyMethod(typeof(ModEntry), nameof(Postfix_NetWorldState_SaveFarmhand))
         );
-        // 关键：必须在 playerDisconnected 原方法执行前重置物品
         harmony.Patch(
             original: AccessTools.Method(typeof(Multiplayer), nameof(Multiplayer.playerDisconnected)),
             prefix: new HarmonyMethod(typeof(ModEntry), nameof(Prefix_PlayerDisconnected))
         );
     }
 
-    // 工具方法
+    // ─── 工具方法 ───
 
     private static void SaveConfig() => Helper.Data.WriteJsonFile("config.json", Config);
 
@@ -123,7 +136,6 @@ public class ModEntry : Mod
         return farmer;
     }
 
-    /// <summary>解析整数参数，支持 ~ 代表默认值</summary>
     private static int? TryParseIntArg(string[] args, int index, int? min = null, int? max = null, int? fallback = null)
     {
         if (args.Length <= index || args[index] == "~")
@@ -137,7 +149,6 @@ public class ModEntry : Mod
         return fallback;
     }
 
-    /// <summary>解析 bool 参数，支持 true/false/0/1/~</summary>
     private static bool? TryParseBoolArg(string[] args, int index, bool? fallback = null)
     {
         if (args.Length <= index || args[index] == "~")
@@ -147,7 +158,6 @@ public class ModEntry : Mod
         return fallback;
     }
 
-    /// <summary>解析玩家 ID，支持 ~ 代指眷者</summary>
     private static long ResolvePlayerId(string arg, bool logError = true)
     {
         if (arg == "~")
@@ -165,7 +175,7 @@ public class ModEntry : Mod
         return 0;
     }
 
-    // 眷者管理
+    // ─── 眷者管理 ───
 
     private static void SetFavoredPlayer(string _, string[] args)
     {
@@ -204,7 +214,7 @@ public class ModEntry : Mod
         }
     }
 
-    // 物品池
+    // ─── 物品池 ───
 
     private void LoadItemPool()
     {
@@ -226,7 +236,52 @@ public class ModEntry : Mod
         }
     }
 
-    // 送礼
+    private static Item LoadPoolItemInternal(string itemName, int stack, int quality)
+    {
+        string filePath = Path.Combine(Helper.DirectoryPath, ItemPoolFolder, itemName + ".xml");
+        if (!File.Exists(filePath))
+        {
+            Mon.Log($"[警告] 物品 '{itemName}' 不存在于物品池", LogLevel.Warn);
+            return null;
+        }
+
+        try
+        {
+            string xml = File.ReadAllText(filePath);
+            xml = RemoveXsiNamespace(xml);
+
+            string wrappedXml = $"<Items xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">{xml}</Items>";
+
+            ItemsWrapper wrapper;
+            using (var sr = new StringReader(wrappedXml))
+                wrapper = (ItemsWrapper)ItemsWrapperSerializer.Deserialize(sr);
+
+            if (wrapper?.Items == null || wrapper.Items.Length == 0)
+            {
+                Mon.Log($"[错误] 物品 '{itemName}' 的 XML 中没有找到 Item 元素", LogLevel.Warn);
+                return null;
+            }
+
+            Item item = wrapper.Items[0];
+
+            if (item is not StardewValley.Object obj)
+                return item;
+
+            if (stack > 0) obj.Stack = stack;
+            if (quality >= 0) obj.Quality = quality;
+            return obj;
+        }
+        catch (Exception ex)
+        {
+            Mon.Log($"[内部错误] 处理物品 '{itemName}' 时异常: {ex.Message}", LogLevel.Error);
+            return null;
+        }
+    }
+
+    private static string RemoveXsiNamespace(string xml)
+        => Regex.Replace(xml, @"\s+xmlns:xsi\s*=\s*[""'][^""']*[""']", "");
+
+    // ─── 送礼 ───
 
     internal static class GiftProposalManager
     {
@@ -234,7 +289,6 @@ public class ModEntry : Mod
         {
             if (target == null || item == null) return false;
 
-            // 标记重置信息
             if (resetOnDisconnect && !string.IsNullOrEmpty(poolItemName))
             {
                 item.modData[ModDataResetKey] = "1";
@@ -359,55 +413,6 @@ public class ModEntry : Mod
             Mon.Log($"  {i + 1,2}. {Path.GetFileNameWithoutExtension(files[i])}", LogLevel.Info);
     }
 
-    /// <summary>从池文件加载物品实例</summary>
-    private static Item LoadPoolItemInternal(string itemName, int stack, int quality)
-    {
-        string filePath = Path.Combine(Helper.DirectoryPath, ItemPoolFolder, itemName + ".xml");
-        if (!File.Exists(filePath))
-        {
-            Mon.Log($"[警告] 物品 '{itemName}' 不存在于物品池", LogLevel.Warn);
-            return null;
-        }
-
-        try
-        {
-            string xml = File.ReadAllText(filePath);
-            xml = RemoveXsiNamespace(xml);
-            if (xml.Contains("xsi:type"))
-            {
-                int tagEnd = xml.IndexOf('>');
-                if (tagEnd > 0)
-                    xml = xml.Insert(tagEnd, " xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"");
-            }
-
-            var doc = XDocument.Parse(xml);
-            if (doc.Root == null)
-            {
-                Mon.Log($"[错误] 物品 '{itemName}' 的 XML 根元素无效", LogLevel.Warn);
-                return null;
-            }
-
-            Item item;
-            using (var sr = new StringReader(doc.Root.ToString()))
-                item = ItemSerializer.Deserialize(sr) as Item;
-
-            if (item is not StardewValley.Object obj)
-                return item;
-
-            if (stack > 0) obj.Stack = stack;
-            if (quality >= 0) obj.Quality = quality;
-            return obj;
-        }
-        catch (Exception ex)
-        {
-            Mon.Log($"[内部错误] 处理物品 '{itemName}' 时异常: {ex.Message}", LogLevel.Error);
-            return null;
-        }
-    }
-
-    private static string RemoveXsiNamespace(string xml)
-        => Regex.Replace(xml, @"\s+xmlns:xsi\s*=\s*[""'][^""']*[""']", "");
-
     // 金钱
 
     private void SetMoney(string _, string[] args)
@@ -474,18 +479,17 @@ public class ModEntry : Mod
     }
 
     // 下线重置特殊物品
+
     public static void Prefix_PlayerDisconnected(long id)
     {
         if (!Context.IsMainPlayer) return;
 
-        // 1. 改在线对象（尽量同步当前显示值）
         var onlineFarmer = Game1.GetPlayer(id, true);
         if (onlineFarmer != null)
         {
             ResetMarkedItemsOnDisconnect(onlineFarmer);
         }
 
-        // 2. 直接改 farmhandData 里的存档对象（这才是重连时真正读取的）
         var farmhandData = Game1.netWorldState?.Value?.farmhandData;
         if (farmhandData != null && farmhandData.FieldDict.TryGetValue(id, out var farmhandRef) && farmhandRef?.Value != null)
         {
@@ -517,7 +521,6 @@ public class ModEntry : Mod
                 continue;
             }
 
-            // 重新打标记，使下次下线仍可重置
             fresh.modData[ModDataResetKey] = "1";
             fresh.modData[ModDataPoolItemNameKey] = poolName;
             fresh.modData[ModDataOrigStackKey] = origStack.ToString();
@@ -739,18 +742,15 @@ public class ModEntry : Mod
         }
     }
 
-    /// <summary>对所有在线及离线白名单玩家重置友谊数据</summary>
     private static void ApplyInfiniteGiftsToAllWhitelistedFarmers(string context)
     {
         if (!Context.IsMainPlayer) return;
 
-        // 主机玩家
         if (IsInfiniteGiftsEnabled(Game1.player))
         {
             ReplaceAllFriendships(Game1.player);
         }
 
-        // 离线 farmhand
         foreach (var farmhand in Game1.netWorldState?.Value?.farmhandData?.Values ?? Enumerable.Empty<Farmer>())
         {
             if (farmhand != null && IsInfiniteGiftsEnabled(farmhand))
@@ -760,18 +760,16 @@ public class ModEntry : Mod
         }
     }
 
-    /// <summary>Harmony 补丁：阻止主机玩家过夜清零送礼记录</summary>
     public static bool Prefix_UpdateFriendshipGifts(Farmer __instance)
     {
         if (__instance == Game1.player && IsInfiniteGiftsEnabled(__instance))
         {
             ReplaceAllFriendships(__instance);
-            return false; // 跳过原方法
+            return false;
         }
         return true;
     }
 
-    /// <summary>Harmony 补丁：farmhand 下线前重置友谊</summary>
     public static void Prefix_SaveFarmhand(NetFarmerRoot farmhand)
     {
         if (farmhand?.Value != null && IsInfiniteGiftsEnabled(farmhand.Value))
@@ -780,7 +778,6 @@ public class ModEntry : Mod
         }
     }
 
-    /// <summary>Harmony 补丁：CloneInto 后再次修正 farmhandData（兜底）</summary>
     public static void Postfix_NetWorldState_SaveFarmhand(NetFarmerRoot farmhand)
     {
         if (!Context.IsMainPlayer || farmhand?.Value == null) return;
@@ -794,11 +791,6 @@ public class ModEntry : Mod
         farmhandData.MarkDirty();
     }
 
-    /// <summary>
-    /// 将所有可送礼 NPC 的
-    /// GiftsToday/GiftsThisWeek 设为 -999，
-    /// LastGiftDate 设为今天，实现无限送礼。
-    /// </summary>
     public static void ReplaceAllFriendships(Farmer farmer)
     {
         if (farmer?.friendshipData == null || Game1.NPCGiftTastes == null) return;
