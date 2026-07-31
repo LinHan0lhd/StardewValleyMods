@@ -484,6 +484,12 @@ public class ModEntry : Mod
     {
         if (!Context.IsMainPlayer) return;
 
+        // 防重复触发：游戏底层可能多次调用 playerDisconnected，但只需要处理一次
+        var disconnectingField = AccessTools.Field(typeof(Multiplayer), "disconnectingFarmers");
+        var disconnectingSet = (HashSet<long>)disconnectingField?.GetValue(Game1.multiplayer);
+        if (disconnectingSet != null && disconnectingSet.Contains(id))
+            return;
+
         var onlineFarmer = Game1.GetPlayer(id, true);
         if (onlineFarmer != null)
         {
