@@ -485,28 +485,30 @@ public class ModEntry : Mod
         if (!Context.IsMainPlayer) return;
 
         // 防重复触发：游戏底层可能多次调用 playerDisconnected，但只需要处理一次
+        var multiplayerField = AccessTools.Field(typeof(Game1), "multiplayer");
+        var multiplayerInstance = multiplayerField?.GetValue(null) as Multiplayer;
         var disconnectingField = AccessTools.Field(typeof(Multiplayer), "disconnectingFarmers");
-        var disconnectingSet = (HashSet<long>)disconnectingField?.GetValue(Game1.multiplayer);
+        var disconnectingSet = (HashSet<long>)disconnectingField?.GetValue(multiplayerInstance);
         if (disconnectingSet != null && disconnectingSet.Contains(id))
             return;
 
         var onlineFarmer = Game1.GetPlayer(id, true);
         if (onlineFarmer != null)
         {
-            ResetMarkedItemsOnDisconnect(onlineFarmer);
+            ResetMarkedItemsOnDisconnect(onlineFarmer, logOnReset: false);
         }
 
         var farmhandData = Game1.netWorldState?.Value?.farmhandData;
         if (farmhandData != null && farmhandData.FieldDict.TryGetValue(id, out var farmhandRef) && farmhandRef?.Value != null)
         {
-            ResetMarkedItemsOnDisconnect(farmhandRef.Value);
+            ResetMarkedItemsOnDisconnect(farmhandRef.Value, logOnReset: false);
             farmhandRef.MarkDirty();
             farmhandData.MarkDirty();
             Game1.netWorldState.MarkDirty();
         }
     }
 
-    private static void ResetMarkedItemsOnDisconnect(Farmer farmer)
+    private static int ResetMarkedItemsOnDisconnect(Farmer farmer, bool logOnReset = false)
     {
         int resetCount = 0;
         for (int i = 0; i < farmer.Items.Count; i++)
@@ -536,8 +538,10 @@ public class ModEntry : Mod
             resetCount++;
         }
 
-        if (resetCount > 0)
+        if (resetCount > 0 && logOnReset)
             Mon.Log($"[重置] {farmer.Name} 的 {resetCount} 个特殊物品已复原", LogLevel.Info);
+
+        return resetCount;
     }
 
     // 天气
@@ -792,7 +796,7 @@ public class ModEntry : Mod
         if (farmhandData?.FieldDict.TryGetValue(id, out var farmhandRef) != true || farmhandRef?.Value == null)
             return;
 
-        ResetMarkedItemsOnDisconnect(farmhandRef.Value);
+        ResetMarkedItemsOnDisconnect(farmhandRef.Value, logOnReset: true);
         farmhandRef.MarkDirty();
         farmhandData.MarkDirty();
     }
