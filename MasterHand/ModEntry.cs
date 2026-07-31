@@ -86,6 +86,10 @@ public class ModEntry : Mod
             original: AccessTools.Method(typeof(Multiplayer), "saveFarmhand", new[] { typeof(NetFarmerRoot) }),
             prefix: new HarmonyMethod(typeof(ModEntry), nameof(Prefix_SaveFarmhand))
         );
+        harmony.Patch(
+            original: AccessTools.Method(typeof(NetWorldState), nameof(NetWorldState.SaveFarmhand)),
+            postfix: new HarmonyMethod(typeof(ModEntry), nameof(Postfix_NetWorldState_SaveFarmhand))
+        );
         // 关键：必须在 playerDisconnected 原方法执行前重置物品
         harmony.Patch(
             original: AccessTools.Method(typeof(Multiplayer), nameof(Multiplayer.playerDisconnected)),
@@ -473,13 +477,23 @@ public class ModEntry : Mod
     public static void Prefix_PlayerDisconnected(long id)
     {
         if (!Context.IsMainPlayer) return;
-        var farmer = Game1.GetPlayer(id, true);
-        if (farmer == null)
+
+        // 1. 改在线对象（尽量同步当前显示值）
+        var onlineFarmer = Game1.GetPlayer(id, true);
+        if (onlineFarmer != null)
         {
-            Mon.Log($"[重置] 下线玩家 {id} 未找到", LogLevel.Warn);
-            return;
+            ResetMarkedItemsOnDisconnect(onlineFarmer);
         }
-        ResetMarkedItemsOnDisconnect(farmer);
+
+        // 2. 直接改 farmhandData 里的存档对象（这才是重连时真正读取的）
+        var farmhandData = Game1.netWorldState?.Value?.farmhandData;
+        if (farmhandData != null && farmhandData.FieldDict.TryGetValue(id, out var farmhandRef) && farmhandRef?.Value != null)
+        {
+            ResetMarkedItemsOnDisconnect(farmhandRef.Value);
+            farmhandRef.MarkDirty();
+            farmhandData.MarkDirty();
+            Game1.netWorldState.MarkDirty();
+        }
     }
 
     private static void ResetMarkedItemsOnDisconnect(Farmer farmer)
@@ -764,6 +778,20 @@ public class ModEntry : Mod
         {
             ReplaceAllFriendships(farmhand.Value);
         }
+    }
+
+    /// <summary>Harmony 补丁：CloneInto 后再次修正 farmhandData（兜底）</summary>
+    public static void Postfix_NetWorldState_SaveFarmhand(NetFarmerRoot farmhand)
+    {
+        if (!Context.IsMainPlayer || farmhand?.Value == null) return;
+        long id = farmhand.Value.UniqueMultiplayerID;
+        var farmhandData = Game1.netWorldState?.Value?.farmhandData;
+        if (farmhandData?.FieldDict.TryGetValue(id, out var farmhandRef) != true || farmhandRef?.Value == null)
+            return;
+
+        ResetMarkedItemsOnDisconnect(farmhandRef.Value);
+        farmhandRef.MarkDirty();
+        farmhandData.MarkDirty();
     }
 
     /// <summary>
