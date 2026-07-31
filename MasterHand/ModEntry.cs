@@ -484,20 +484,25 @@ public class ModEntry : Mod
     {
         if (!Context.IsMainPlayer) return;
 
-        // 防重复触发：游戏底层可能多次调用 playerDisconnected，但只需要处理一次
+        // 获取 Multiplayer 实例
         var multiplayerField = AccessTools.Field(typeof(Game1), "multiplayer");
-        var multiplayerInstance = multiplayerField?.GetValue(null) as Multiplayer;
+        var multiplayer = multiplayerField?.GetValue(null) as Multiplayer;
+        if (multiplayer == null) return;
+
+        // 获取私有的 disconnectingFarmers 列表
         var disconnectingField = AccessTools.Field(typeof(Multiplayer), "disconnectingFarmers");
-        var disconnectingSet = (HashSet<long>)disconnectingField?.GetValue(multiplayerInstance);
-        if (disconnectingSet != null && disconnectingSet.Contains(id))
+        var disconnectingList = disconnectingField?.GetValue(multiplayer) as List<long>;
+
+        // 如果玩家 ID 不在“正在断线”列表中 说明已经处理过 直接跳过
+        if (disconnectingList == null || !disconnectingList.Contains(id))
             return;
 
+        // 重置在线对象中的物品（不输出日志）
         var onlineFarmer = Game1.GetPlayer(id, true);
         if (onlineFarmer != null)
-        {
             ResetMarkedItemsOnDisconnect(onlineFarmer, logOnReset: false);
-        }
 
+        // 重置 farmhandData 中的持久化数据
         var farmhandData = Game1.netWorldState?.Value?.farmhandData;
         if (farmhandData != null && farmhandData.FieldDict.TryGetValue(id, out var farmhandRef) && farmhandRef?.Value != null)
         {
@@ -525,7 +530,7 @@ public class ModEntry : Mod
             var fresh = LoadPoolItemInternal(poolName, origStack, origQuality);
             if (fresh == null)
             {
-                Mon.Log($"[重置] 重新加载 {poolName} 失败，保留原物品", LogLevel.Warn);
+                Mon.Log($"[重置] 重新加载 {poolName} 失败 保留原物品", LogLevel.Warn);
                 continue;
             }
 
@@ -570,11 +575,21 @@ public class ModEntry : Mod
 
         string weatherStr = weatherId.Value switch
         {
-            1 => "Wind", 2 => "Rain", 3 => "Storm", 4 => "Snow", 5 => "GreenRain", _ => "Sun"
+            1 => "Wind",
+            2 => "Rain",
+            3 => "Storm",
+            4 => "Snow",
+            5 => "GreenRain",
+            _ => "Sun"
         };
         string weatherCn = weatherId.Value switch
         {
-            1 => "刮风", 2 => "雨天", 3 => "雷雨", 4 => "降雪", 5 => "苔雨", _ => "晴天"
+            1 => "刮风",
+            2 => "雨天",
+            3 => "雷雨",
+            4 => "降雪",
+            5 => "苔雨",
+            _ => "晴天"
         };
 
         try
@@ -664,7 +679,11 @@ public class ModEntry : Mod
 
     private static string GetSeasonCnName(int season) => season switch
     {
-        0 => "春季", 1 => "夏季", 2 => "秋季", 3 => "冬季", _ => "春季"
+        0 => "春季",
+        1 => "夏季",
+        2 => "秋季",
+        3 => "冬季",
+        _ => "春季"
     };
 
     // 玩家管理
@@ -718,30 +737,30 @@ public class ModEntry : Mod
                 }
                 break;
             case "add":
-            {
-                if (args.Length < 2) { Mon.Log("用法: mh_giftwl add <玩家ID>", LogLevel.Warn); return; }
-                long id = ResolvePlayerId(args[1], logError: false);
-                if (id == 0 && long.TryParse(args[1], out long raw) && raw > 0) id = raw;
-                if (id == 0) { Mon.Log("[错误] 无效的玩家 ID", LogLevel.Warn); return; }
-                if (!Config.InfiniteGiftsWhitelist.Contains(id))
-                    Config.InfiniteGiftsWhitelist.Add(id);
-                SaveConfig();
-                Mon.Log($"[无限送礼] 已添加 {Game1.GetPlayer(id, true)?.Name ?? "未知"} [ID: {id}]", LogLevel.Info);
-                break;
-            }
-            case "remove":
-            {
-                if (args.Length < 2) { Mon.Log("用法: mh_giftwl remove <玩家ID>", LogLevel.Warn); return; }
-                long id = ResolvePlayerId(args[1], logError: false);
-                if (id == 0 && long.TryParse(args[1], out long raw) && raw > 0) id = raw;
-                if (Config.InfiniteGiftsWhitelist.Remove(id))
                 {
+                    if (args.Length < 2) { Mon.Log("用法: mh_giftwl add <玩家ID>", LogLevel.Warn); return; }
+                    long id = ResolvePlayerId(args[1], logError: false);
+                    if (id == 0 && long.TryParse(args[1], out long raw) && raw > 0) id = raw;
+                    if (id == 0) { Mon.Log("[错误] 无效的玩家 ID", LogLevel.Warn); return; }
+                    if (!Config.InfiniteGiftsWhitelist.Contains(id))
+                        Config.InfiniteGiftsWhitelist.Add(id);
                     SaveConfig();
-                    Mon.Log($"[无限送礼] 已移除 [ID: {id}]", LogLevel.Info);
+                    Mon.Log($"[无限送礼] 已添加 {Game1.GetPlayer(id, true)?.Name ?? "未知"} [ID: {id}]", LogLevel.Info);
+                    break;
                 }
-                else Mon.Log($"[无限送礼] [ID: {id}] 不在白名单", LogLevel.Warn);
-                break;
-            }
+            case "remove":
+                {
+                    if (args.Length < 2) { Mon.Log("用法: mh_giftwl remove <玩家ID>", LogLevel.Warn); return; }
+                    long id = ResolvePlayerId(args[1], logError: false);
+                    if (id == 0 && long.TryParse(args[1], out long raw) && raw > 0) id = raw;
+                    if (Config.InfiniteGiftsWhitelist.Remove(id))
+                    {
+                        SaveConfig();
+                        Mon.Log($"[无限送礼] 已移除 [ID: {id}]", LogLevel.Info);
+                    }
+                    else Mon.Log($"[无限送礼] [ID: {id}] 不在白名单", LogLevel.Warn);
+                    break;
+                }
             case "clear":
                 Config.InfiniteGiftsWhitelist.Clear(); SaveConfig();
                 Mon.Log("[无限送礼] 白名单已清空", LogLevel.Info);
