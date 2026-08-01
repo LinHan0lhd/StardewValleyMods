@@ -74,6 +74,58 @@ namespace AutoServerPro
 
             // 手动备份
             Helper.ConsoleCommands.Add("save_backup", "手动备份当前存档", _saveManager.ManualBackupCommand);
+
+            // 聊天指令: chat tell "消息" 或 chat <聊天指令> [参数]
+            Helper.ConsoleCommands.Add("chat",
+                "聊天: chat tell \"消息\" 广播聊天 | chat <聊天指令> [参数] 执行聊天指令",
+                (_, args) => HandleChatCommand(args));
+        }
+
+        private void HandleChatCommand(string[] args)
+        {
+            if (!Context.IsWorldReady)
+            {
+                Monitor.Log("世界未加载，无法使用聊天指令", LogLevel.Warn);
+                return;
+            }
+            if (args.Length < 1)
+            {
+                Monitor.Log("用法: chat tell \"消息内容\"  或  chat <聊天指令> [参数]", LogLevel.Info);
+                Monitor.Log("示例: chat tell 大家好  |  chat color red  |  chat emote happy  |  chat list", LogLevel.Info);
+                return;
+            }
+
+            // chat tell "消息" — 向所有玩家广播聊天消息
+            if (string.Equals(args[0], "tell", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 2)
+                {
+                    Monitor.Log("用法: chat tell \"消息内容\"", LogLevel.Info);
+                    return;
+                }
+                string message = string.Join(" ", args.Skip(1));
+                // 兼容带引号输入，去除两端成对引号
+                if (message.Length >= 2 && message[0] == '"' && message[message.Length - 1] == '"')
+                    message = message.Substring(1, message.Length - 2);
+                if (string.IsNullOrWhiteSpace(message))
+                {
+                    Monitor.Log("消息内容不能为空", LogLevel.Warn);
+                    return;
+                }
+                Game1.multiplayer.sendChatMessage(LocalizedContentManager.CurrentLanguageCode, message, Multiplayer.AllPlayers);
+                Game1.chatBox?.receiveChatMessage(Game1.player.UniqueMultiplayerID, 0, LocalizedContentManager.CurrentLanguageCode, message);
+                Monitor.Log($"已广播聊天: {message}", LogLevel.Info);
+                return;
+            }
+
+            // chat <聊天指令> [参数] — 执行游戏内聊天指令
+            if (Game1.chatBox == null)
+            {
+                Monitor.Log("聊天框未就绪", LogLevel.Warn);
+                return;
+            }
+            if (!ChatCommands.TryHandle(args, Game1.chatBox))
+                Monitor.Log($"未知的聊天指令: {args[0]}  (使用 chat tell \"消息\" 广播聊天)", LogLevel.Warn);
         }
 
         private void BindEvents()
