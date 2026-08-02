@@ -66,6 +66,7 @@ namespace AutoServerPro
                 _saveManager.UpdateConfig(_config);
                 _sleepManager.UpdateConfig(_config);
                 _syncManager.UpdateConfig(_config);
+                ApplyMoveBuildingPermission();
                 Monitor.Log("配置文件已重新加载", LogLevel.Info);
             });
 
@@ -95,7 +96,7 @@ namespace AutoServerPro
                 return;
             }
 
-            // chat tell "消息" — 向所有玩家广播聊天消息
+            // chat tell "消息" — 向所有玩家广播聊天消息 (SMAPI 自动解析引号参数)
             if (string.Equals(args[0], "tell", StringComparison.OrdinalIgnoreCase))
             {
                 if (args.Length < 2)
@@ -104,9 +105,6 @@ namespace AutoServerPro
                     return;
                 }
                 string message = string.Join(" ", args.Skip(1));
-                // 兼容带引号输入，去除两端成对引号
-                if (message.Length >= 2 && message[0] == '"' && message[message.Length - 1] == '"')
-                    message = message.Substring(1, message.Length - 2);
                 if (string.IsNullOrWhiteSpace(message))
                 {
                     Monitor.Log("消息内容不能为空", LogLevel.Warn);
@@ -147,6 +145,7 @@ namespace AutoServerPro
             {
                 AutoReadMail();
                 _saveManager.AutoBackupCheck();
+                ApplyMoveBuildingPermission();
             }
         }
 
@@ -280,6 +279,32 @@ namespace AutoServerPro
                 Monitor.Log($"设置 {lang} 作为游戏语言", LogLevel.Info);
             }
             else Monitor.Log($"语言 '{_config.Language}' 无效", LogLevel.Warn);
+        }
+
+        private void ApplyMoveBuildingPermission()
+        {
+            if (!Context.IsWorldReady || !Context.IsMainPlayer || !Context.IsMultiplayer) return;
+            if (string.IsNullOrWhiteSpace(_config.MoveBuildingPermission)) return;
+            if (!Enum.TryParse<FarmerTeam.RemoteBuildingPermissions>(_config.MoveBuildingPermission, true, out var perm))
+            {
+                Monitor.Log($"MoveBuildingPermission 配置值无效: '{_config.MoveBuildingPermission}'，仅支持 Off / OwnedBuildings / On", LogLevel.Warn);
+                return;
+            }
+            if (Game1.player?.team == null) return;
+            var current = Game1.player.team.farmhandsCanMoveBuildings.Value;
+            if (current == perm) return;
+            Game1.player.team.farmhandsCanMoveBuildings.Value = perm;
+            Monitor.Log($"已应用 farmhandsCanMoveBuildings = {perm}", LogLevel.Info);
+            if (Game1.IsMultiplayer)
+            {
+                string display = perm switch
+                {
+                    FarmerTeam.RemoteBuildingPermissions.Off => "off",
+                    FarmerTeam.RemoteBuildingPermissions.OwnedBuildings => "owned",
+                    _ => "on"
+                };
+                Game1.chatBox?.addMessage($"moveBuildingPermission {display}", Microsoft.Xna.Framework.Color.White);
+            }
         }
 
         private void AutoReadMail()
