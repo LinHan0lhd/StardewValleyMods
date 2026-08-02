@@ -110,7 +110,7 @@ namespace AutoServerPro
                     Monitor.Log("消息内容不能为空", LogLevel.Warn);
                     return;
                 }
-                Game1.multiplayer.sendChatMessage(LocalizedContentManager.CurrentLanguageCode, message, Multiplayer.AllPlayers);
+                Game1.Multiplayer.sendChatMessage(LocalizedContentManager.CurrentLanguageCode, message, Multiplayer.AllPlayers);
                 Game1.chatBox?.receiveChatMessage(Game1.player.UniqueMultiplayerID, 0, LocalizedContentManager.CurrentLanguageCode, message);
                 Monitor.Log($"已广播聊天: {message}", LogLevel.Info);
                 return;
