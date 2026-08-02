@@ -9,6 +9,7 @@ using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewModdingAPI.Utilities;
 using StardewValley;
+using StardewValley.Buildings;
 using StardewValley.Network;
 
 namespace MasterHand;
@@ -81,6 +82,7 @@ public class ModEntry : Mod
         helper.ConsoleCommands.Add("mh_kick", "踢出玩家 > mh_kick <玩家ID>", KickPlayer);
         helper.ConsoleCommands.Add("mh_favored", "设置/清除眷者 > mh_favored <玩家ID> | clear | show", SetFavoredPlayer);
         helper.ConsoleCommands.Add("mh_giftwl", "无限送礼 > mh_giftwl on|off|list|add|remove|clear", GiftWhitelist);
+        helper.ConsoleCommands.Add("mh_demolish", "拆除指定玩家偏移位置的建筑 > mh_demolish <玩家ID> <偏移x> <偏移y>", DemolishBuilding);
 
         // 事件
         helper.Events.GameLoop.SaveLoaded += (_, _) => ApplyInfiniteGiftsToAllWhitelistedFarmers("存档加载");
@@ -703,6 +705,69 @@ public class ModEntry : Mod
         }
         Game1.server.kick(id);
         Mon.Log($"[踢出] 已踢出玩家 ID {id}", LogLevel.Info);
+    }
+
+    // 建筑
+
+    private void DemolishBuilding(string _, string[] args)
+    {
+        if (!RequireWorldReady() || !RequireHost()) return;
+        if (args.Length < 3)
+        {
+            Mon.Log("用法: mh_demolish <玩家ID> <偏移x> <偏移y>", LogLevel.Info);
+            Mon.Log("示例: mh_demolish 765611989 0 0  (拆除玩家脚下的建筑)", LogLevel.Info);
+            return;
+        }
+
+        long playerId = ResolvePlayerId(args[0]);
+        if (playerId == 0) return;
+        var farmer = GetOnlinePlayer(playerId);
+        if (farmer == null) return;
+
+        if (!int.TryParse(args[1], out int offX) || !int.TryParse(args[2], out int offY))
+        {
+            Mon.Log("[错误] 偏移量必须是整数 (单位: 格)", LogLevel.Warn);
+            return;
+        }
+
+        // 计算目标坐标
+        int tx = (int)farmer.Tile.X + offX;
+        int ty = (int)farmer.Tile.Y + offY;
+        Vector2 targetTile = new Vector2(tx, ty);
+
+        // 优先查玩家当前所在地图
+        GameLocation loc = farmer.currentLocation;
+        Building b = loc.getBuildingAt(targetTile);
+
+        // 如果当前地图没有，回退到主农场
+        if (b == null && loc != Game1.getFarm())
+        {
+            loc = Game1.getFarm();
+            b = loc.getBuildingAt(targetTile);
+        }
+
+        if (b == null)
+        {
+            Mon.Log($"[错误] 在 ({tx}, {ty}) 没有找到建筑", LogLevel.Warn);
+            return;
+        }
+
+        // 保护主农舍和温室
+        string bType = b.buildingType.Value;
+        if ((bType == "Farmhouse" && b.HasIndoorsName("FarmHouse"))
+            || (bType == "Greenhouse" && b.HasIndoorsName("Greenhouse")))
+        {
+            Mon.Log("[错误] 该建筑不允许拆除", LogLevel.Warn);
+            return;
+        }
+
+        // 走原生拆除流程
+        b.BeforeDemolish();                    // 收集任务物品 → 失物招领
+        bool ok = loc.destroyStructure(b);     // 原生拆除（Remove + performActionOnDemolition + 网络同步）
+
+        Mon.Log(ok
+            ? $"[拆除] 已拆除 {farmer.Name} 偏移({offX},{offY}) 处的 {bType} @({tx},{ty})"
+            : $"[错误] 拆除 {bType} 失败", LogLevel.Info);
     }
 
     // 无限送礼
