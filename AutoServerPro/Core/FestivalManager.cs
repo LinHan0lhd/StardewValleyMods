@@ -79,29 +79,35 @@ namespace AutoServerPro.Core
                 if (info.NeedsLuauSoup) AddLuauIngredient();
             }
 
-            int delta = Math.Abs(now - state.FestivalStartTimeOfDay);
+            state.ElapsedSeconds++;
 
-            if (delta >= state.TargetCountdownGameMinutes && !state.EventTriggered)
+            // 倒计时结束 → 触发节日主流程（复活节 Egg Hunt / 花舞节邀约 / 夏威夷宴会 / 水母节 / 星露谷展览 / 冰雪节）
+            if (!state.EventTriggered && info.HasCountdown && state.ElapsedSeconds >= state.TargetCountdownSeconds)
             {
                 if (info.NeedsLuauSoup) AddLuauIngredient();
                 AnswerYesFromLewis();
                 state.EventTriggered = true;
-                state.PostEventGameMinutes = 0;
+                state.PostEventSeconds = 0;
             }
 
-            if (state.ForceLeaveTimer && delta >= 100)
+            // 星露谷展览（fall16）：forceFestivalContinue 会启动农庄评审（走专用主机 DoHostAction）
+            // 评审完成后 CurrentEvent 仍然存活，给 10 秒缓冲确保对话/结算走稳后再离开
+            if (state.EventTriggered && info.NeedsPostEventLeave)
+            {
+                state.PostEventSeconds++;
+                if (state.PostEventSeconds >= 10) LeaveFestival(true);
+            }
+
+            // 无倒计时的节日（fall27 月光水母节 / winter25 星夜盛宴）
+            // 没有 Lewis yes/no 对话，节日内部自带结束条件；仅兜底超时确保不卡死
+            if (state.ForceLeaveTimer && state.ElapsedSeconds >= 300)
             {
                 LeaveFestival(true);
                 return;
             }
 
-            if (state.EventTriggered && info.NeedsPostEventLeave)
-            {
-                state.PostEventGameMinutes++;
-                if (state.PostEventGameMinutes >= 10) LeaveFestival(true);
-            }
-
-            if (delta >= 6000)
+            // 兜底超时（真实时间 15 分钟）
+            if (state.ElapsedSeconds >= 900)
             {
                 _monitor.Log("节日超时 > 强制离开", LogLevel.Warn);
                 LeaveFestival(true);
@@ -141,10 +147,11 @@ namespace AutoServerPro.Core
             {
                 Active = true,
                 FestivalStartTimeOfDay = enterTime,
-                TargetCountdownGameMinutes = info.CountdownSeconds,
+                TargetCountdownSeconds = info.CountdownSeconds,
+                ElapsedSeconds = 0,
+                PostEventSeconds = 0,
                 EventCommandUsed = false,
                 EventTriggered = false,
-                PostEventGameMinutes = 0,
                 ForceLeaveTimer = !info.HasCountdown,
                 LinkedFestivalInfo = info
             };
@@ -187,10 +194,11 @@ namespace AutoServerPro.Core
         {
             public bool Active;
             public int FestivalStartTimeOfDay;
-            public int TargetCountdownGameMinutes;
+            public int TargetCountdownSeconds;
+            public int ElapsedSeconds;
+            public int PostEventSeconds;
             public bool EventCommandUsed;
             public bool EventTriggered;
-            public int PostEventGameMinutes;
             public bool ForceLeaveTimer;
             public FestivalInfo LinkedFestivalInfo;
         }
