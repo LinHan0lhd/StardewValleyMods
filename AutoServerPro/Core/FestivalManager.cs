@@ -16,16 +16,16 @@ namespace AutoServerPro.Core
         private int _gameClockTicks;
         private bool _waitingForFestivalEndDialog;
 
-        private static readonly Dictionary<SDate, FestivalInfo> FestivalConfigs = new()
+        private static readonly Dictionary<(int Day, string Season), FestivalInfo> FestivalConfigs = new()
         {
-            [new SDate(13, "spring")] = new FestivalInfo { Location = "Town", StartTime = 900, EndTime = 1400, HasCountdown = true, CountdownSeconds = 120 },
-            [new SDate(24, "spring")] = new FestivalInfo { Location = "Forest", StartTime = 900, EndTime = 1400, HasCountdown = true, CountdownSeconds = 120 },
-            [new SDate(11, "summer")] = new FestivalInfo { Location = "Beach", StartTime = 900, EndTime = 1400, HasCountdown = true, CountdownSeconds = 120, NeedsLuauSoup = true },
-            [new SDate(28, "summer")] = new FestivalInfo { Location = "Beach", StartTime = 2200, EndTime = 2400, HasCountdown = true, CountdownSeconds = 120 },
-            [new SDate(16, "fall")] = new FestivalInfo { Location = "Town", StartTime = 900, EndTime = 1500, HasCountdown = true, CountdownSeconds = 120, NeedsPostEventLeave = true },
-            [new SDate(27, "fall")] = new FestivalInfo { Location = "Town", StartTime = 2200, EndTime = 2350, HasCountdown = false },
-            [new SDate(8, "winter")] = new FestivalInfo { Location = "Forest", StartTime = 900, EndTime = 1400, HasCountdown = true, CountdownSeconds = 120 },
-            [new SDate(25, "winter")] = new FestivalInfo { Location = "Town", StartTime = 900, EndTime = 1400, HasCountdown = false }
+            [(13, "spring")] = new FestivalInfo { Location = "Town", StartTime = 900, EndTime = 1400, HasCountdown = true, CountdownSeconds = 120 },
+            [(24, "spring")] = new FestivalInfo { Location = "Forest", StartTime = 900, EndTime = 1400, HasCountdown = true, CountdownSeconds = 120 },
+            [(11, "summer")] = new FestivalInfo { Location = "Beach", StartTime = 900, EndTime = 1400, HasCountdown = true, CountdownSeconds = 120, NeedsLuauSoup = true },
+            [(28, "summer")] = new FestivalInfo { Location = "Beach", StartTime = 2200, EndTime = 2400, HasCountdown = true, CountdownSeconds = 120 },
+            [(16, "fall")] = new FestivalInfo { Location = "Town", StartTime = 900, EndTime = 1500, HasCountdown = true, CountdownSeconds = 120, NeedsPostEventLeave = true },
+            [(27, "fall")] = new FestivalInfo { Location = "Town", StartTime = 2200, EndTime = 2350, HasCountdown = false },
+            [(8, "winter")] = new FestivalInfo { Location = "Forest", StartTime = 900, EndTime = 1400, HasCountdown = true, CountdownSeconds = 120 },
+            [(25, "winter")] = new FestivalInfo { Location = "Town", StartTime = 900, EndTime = 1400, HasCountdown = false }
         };
 
         public FestivalManager(IMonitor monitor)
@@ -40,9 +40,6 @@ namespace AutoServerPro.Core
             if (!Context.IsWorldReady) return;
             if (!HasPlayers()) return;
 
-            // 节日只会在今日尚未触发时启动一次；_currentState == null 已防止重复触发
-            if (_currentState != null) return;
-
             _gameClockTicks++;
             if (_gameClockTicks < 3) return;
             _gameClockTicks = 0;
@@ -50,12 +47,11 @@ namespace AutoServerPro.Core
             SDate today = SDate.Now();
             int now = Game1.timeOfDay;
 
-            if (FestivalConfigs.TryGetValue(today, out var festivalInfo))
+            if (FestivalConfigs.TryGetValue((today.Day, today.Season), out var festivalInfo) && _currentState == null)
             {
                 if (now >= festivalInfo.StartTime && now <= festivalInfo.EndTime)
                     StartFestival(festivalInfo, today, now);
             }
-
         }
 
         public void OnOneSecondUpdate()
@@ -173,7 +169,7 @@ namespace AutoServerPro.Core
             _waitingForFestivalEndDialog = false;
         }
 
-        private static bool HasPlayers() => Game1.getOnlineFarmers()?.Any(f => f?.isActive() == true) == true;
+        private static bool HasPlayers() => Game1.otherFarmers?.Values?.Any(f => f?.isActive() == true) == true;
 
         private static void AnswerYesFromLewis()
         {
