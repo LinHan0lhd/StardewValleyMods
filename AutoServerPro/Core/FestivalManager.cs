@@ -141,7 +141,7 @@ namespace AutoServerPro.Core
             {
                 Active = true,
                 FestivalStartTimeOfDay = enterTime,
-                TargetCountdownGameMinutes = info.CountdownSeconds * 10,
+                TargetCountdownGameMinutes = info.CountdownSeconds,
                 EventCommandUsed = false,
                 EventTriggered = false,
                 PostEventGameMinutes = 0,
