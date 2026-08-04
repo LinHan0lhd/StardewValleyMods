@@ -720,7 +720,6 @@ public class ModEntry : Mod
         if (args.Length < 3)
         {
             Mon.Log("用法: mh_demolish <玩家ID> <偏移x> <偏移y>", LogLevel.Info);
-            Mon.Log("示例: mh_demolish 765611989 0 0  (拆除玩家脚下的建筑)", LogLevel.Info);
             return;
         }
 
@@ -731,7 +730,7 @@ public class ModEntry : Mod
 
         if (!int.TryParse(args[1], out int offX) || !int.TryParse(args[2], out int offY))
         {
-            Mon.Log("[错误] 偏移量必须是整数 (单位: 格)", LogLevel.Warn);
+            Mon.Log("[错误] 偏移量必须是整数", LogLevel.Warn);
             return;
         }
 
@@ -771,7 +770,7 @@ public class ModEntry : Mod
         bool ok = loc.destroyStructure(b);     // 原生拆除（Remove + performActionOnDemolition + 网络同步）
 
         Mon.Log(ok
-            ? $"[拆除] 已拆除 {farmer.Name} 偏移({offX},{offY}) 处的 {bType} @({tx},{ty})"
+            ? $"[拆除] 已拆除 {farmer.Name} 偏移 ({offX},{offY}) 处的 {bType} @({tx},{ty})"
             : $"[错误] 拆除 {bType} 失败", LogLevel.Info);
     }
 
@@ -825,7 +824,7 @@ public class ModEntry : Mod
             Mon.Log("  mh_build Mill                       自动在农场找空地建磨坊(即时)", LogLevel.Info);
             Mon.Log("  mh_build \"Stone Cabin\"              建石屋(参数含空格需加引号)", LogLevel.Info);
             Mon.Log("  mh_build Silo near 765611989         在指定玩家附近找空地", LogLevel.Info);
-            Mon.Log("  mh_build Silo 765611989              玩家ID简写形式", LogLevel.Info);
+            Mon.Log("  mh_build Silo 765611989              上方指令简写形式", LogLevel.Info);
             Mon.Log("  mh_build Mill wait                   走正常工期(不即时)", LogLevel.Info);
             Mon.Log("  mh_build Mill loc Farm               指定建造地点(默认 Farm)", LogLevel.Info);
             return;
@@ -834,7 +833,7 @@ public class ModEntry : Mod
         string typeId = args[0];
 
         // 解析可选参数
-        bool instant = true;        // 默认即时(上帝之手)
+        bool instant = true;        // 默认即时
         long nearPlayerId = 0;      // 0 = 不指定玩家
         string locName = "Farm";    // 默认地点
 
@@ -979,7 +978,7 @@ public class ModEntry : Mod
                 if (!loc.isBuildable(t, false)) return false;
             }
 
-        // 额外占地（如 Mill 的磨坊前地块）
+        // 额外占地
         if (data.AdditionalPlacementTiles != null)
         {
             foreach (BuildingPlacementTile pt in data.AdditionalPlacementTiles)
@@ -992,7 +991,7 @@ public class ModEntry : Mod
             }
         }
 
-        // 人类门下方需可通行（参考 buildStructure 的判断：data.HumanDoor != new Point(-1, -1)）
+        // 人类门下方需可通行
         if (data.HumanDoor != new Point(-1, -1))
         {
             Vector2 doorPos = tile + new Vector2(data.HumanDoor.X, data.HumanDoor.Y + 1);
