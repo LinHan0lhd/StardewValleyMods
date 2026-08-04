@@ -988,54 +988,87 @@ public class ModEntry : Mod
             + (forceSkinId != null ? $" [{forceSkinId}]" : "")
             + $" ({typeId}) 大小 {w}x{h} ...", LogLevel.Info);
 
-        // 螺旋搜索空地
         Vector2 found = Vector2.Zero;
         Building built = null;
         bool foundSpot = false;
-        const int maxRadius = 60;
-        foreach (Vector2 tile in EnumerateSpiralTiles(center, maxRadius))
+
+        // 阶段 1：以起点为中心螺旋搜索（坐标 (0,0)=左上角，X 右正、Y 下正）
+        const int spiralRadius = 200;
+        foreach (Vector2 tile in EnumerateSpiralTiles(center, spiralRadius))
         {
             if (!IsWithinBuildableRect(loc, tile, w, h)) continue;
             if (!CanPlaceBuilding(loc, data, tile)) continue;
-
-            // 需要设置 skinId 时，先构建实例再用 buildStructure(Building,...) 重载
-            if (forceSkinId != null)
+            if (TryPlace(loc, typeId, data, forceSkinId, instant, tile, out built, out found))
             {
-                Building building = Building.CreateInstanceFromId(typeId, tile);
-                building.owner.Value = Game1.player.UniqueMultiplayerID;
-                building.skinId.Value = forceSkinId;
-                if (instant)
-                {
-                    building.magical.Value = true;
-                    building.daysOfConstructionLeft.Value = 0;
-                }
-                if (loc.buildStructure(building, tile, Game1.player, skipSafetyChecks: false))
-                {
-                    found = tile;
-                    foundSpot = true;
-                    built = building;
-                    break;
-                }
-            }
-            else if (loc.buildStructure(typeId, tile, Game1.player, out built, magicalConstruction: instant, skipSafetyChecks: false))
-            {
-                found = tile;
                 foundSpot = true;
-                if (instant && built != null)
-                    built.daysOfConstructionLeft.Value = 0;
                 break;
             }
         }
 
+        // 阶段 2：螺旋没覆盖到则对整个可建造矩形做逐格兜底扫描
         if (!foundSpot)
         {
-            Mon.Log($"[错误] 在 {locName} 周围 {maxRadius} 格内未找到可建造 {displayName} 的空地", LogLevel.Warn);
+            Rectangle rect = loc.GetBuildableRectangle();
+            if (rect == Rectangle.Empty)
+            {
+                // 没限制时拿整个地图大小
+                try { rect = new Rectangle(0, 0, loc.Map.Layers[0].LayerWidth, loc.Map.Layers[0].LayerHeight); }
+                catch { rect = new Rectangle(0, 0, 160, 100); }
+            }
+            for (int y = rect.Y; y + h <= rect.Y + rect.Height; y++)
+                for (int x = rect.X; x + w <= rect.X + rect.Width; x++)
+                {
+                    Vector2 tile = new Vector2(x, y);
+                    if (!CanPlaceBuilding(loc, data, tile)) continue;
+                    if (TryPlace(loc, typeId, data, forceSkinId, instant, tile, out built, out found))
+                    {
+                        foundSpot = true;
+                        break;
+                    }
+                }
+            if (foundSpot)
+                Mon.Log("[建造] 螺旋搜索未命中，已在兜底扫描阶段找到空地", LogLevel.Trace);
+        }
+
+        if (!foundSpot)
+        {
+            Mon.Log($"[错误] 在 {locName} 范围内未找到可建造 {displayName} ({w}x{h}) 的空地", LogLevel.Warn);
             return;
         }
 
         Mon.Log($"[成功] 已在 {locName} ({(int)found.X},{(int)found.Y}) 建造 {displayName}"
             + (forceSkinId != null ? $" [{forceSkinId}]" : "")
             + (instant ? " (即时)" : " (工期中)"), LogLevel.Info);
+    }
+
+    private static bool TryPlace(GameLocation loc, string typeId, BuildingData data, string forceSkinId, bool instant, Vector2 tile, out Building built, out Vector2 outPos)
+    {
+        built = null;
+        outPos = tile;
+        if (forceSkinId != null)
+        {
+            Building building = Building.CreateInstanceFromId(typeId, tile);
+            building.owner.Value = Game1.player.UniqueMultiplayerID;
+            building.skinId.Value = forceSkinId;
+            if (instant)
+            {
+                building.magical.Value = true;
+                building.daysOfConstructionLeft.Value = 0;
+            }
+            if (loc.buildStructure(building, tile, Game1.player, skipSafetyChecks: false))
+            {
+                built = building;
+                return true;
+            }
+            return false;
+        }
+        if (loc.buildStructure(typeId, tile, Game1.player, out Building b, magicalConstruction: instant, skipSafetyChecks: false))
+        {
+            built = b;
+            if (instant && b != null) b.daysOfConstructionLeft.Value = 0;
+            return true;
+        }
+        return false;
     }
 
     private static Vector2 GetBuildableCenter(GameLocation loc, BuildingData data)
