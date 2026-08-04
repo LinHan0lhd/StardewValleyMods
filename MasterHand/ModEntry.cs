@@ -808,11 +808,32 @@ public class ModEntry : Mod
 
             Mon.Log($"  [{cn}] 大小:{size} 费用:{cost} 工期:{days} 建造者:{builder}{upgrade}", LogLevel.Info);
             any = true;
+
+            // Cabin 额外列出 7 种风格（可直接用 mh_build "Stone Cabin" 指定）
+            if (id == "Cabin" && (filter == null
+                || "stone".Contains(filter) || "log".Contains(filter) || "plank".Contains(filter)
+                || "rustic".Contains(filter) || "trailer".Contains(filter) || "neighbor".Contains(filter)
+                || "beach".Contains(filter)
+                || displayName.ToLowerInvariant().Contains(filter)))
+            {
+                string[] cabinStyles = { "Stone Cabin", "Log Cabin", "Plank Cabin", "Rustic Cabin", "Trailer Cabin", "Neighbor Cabin", "Beach Cabin" };
+                foreach (string s in cabinStyles)
+                {
+                    if (filter == null || s.ToLowerInvariant().Contains(filter)
+                        || "石".Contains(filter) || "木".Contains(filter) || "小屋".Contains(filter) || "风格".Contains(filter))
+                    {
+                        string styleCn = TokenParser.ParseText($"[{s}]", null, null, null);
+                        styleCn = styleCn != null && styleCn.StartsWith("[") && styleCn.EndsWith("]")
+                            ? styleCn.Substring(1, styleCn.Length - 2) : s;
+                        Mon.Log($"    风格: {styleCn} / {s}  (用 mh_build \"{s}\" 直接建造)", LogLevel.Info);
+                    }
+                }
+            }
         }
         if (!any)
             Mon.Log(filter == null ? "  (无建筑数据)" : $"  (未匹配到包含 '{filter}' 的建筑)", LogLevel.Info);
         else
-            Mon.Log("提示: 使用 mh_build <英文ID> 自动选址建造", LogLevel.Info);
+            Mon.Log("提示: 使用 mh_build <英文ID> 自动选址建造，小屋风格可直接当 ID 使用", LogLevel.Info);
     }
 
     private void BuildBuilding(string _, string[] args)
@@ -821,9 +842,11 @@ public class ModEntry : Mod
         if (args.Length == 0)
         {
             Mon.Log("用法: mh_build <建筑ID> [near <玩家ID>|<玩家ID>] [wait] [loc <地点>]", LogLevel.Info);
+            Mon.Log("小屋风格: Stone Cabin | Log Cabin | Plank Cabin | Rustic Cabin | Trailer Cabin | Neighbor Cabin | Beach Cabin", LogLevel.Info);
             Mon.Log("示例:", LogLevel.Info);
             Mon.Log("  mh_build Mill                       自动在农场找空地建磨坊(即时)", LogLevel.Info);
-            Mon.Log("  mh_build \"Stone Cabin\"              建石屋(参数含空格需加引号)", LogLevel.Info);
+            Mon.Log("  mh_build Cabin                       建小屋(自动按现有数量循环分配风格)", LogLevel.Info);
+            Mon.Log("  mh_build \"Stone Cabin\"               建石屋(指定风格)", LogLevel.Info);
             Mon.Log("  mh_build Silo near 765611989         在指定玩家附近找空地", LogLevel.Info);
             Mon.Log("  mh_build Silo 765611989              玩家ID简写形式", LogLevel.Info);
             Mon.Log("  mh_build Mill wait                   走正常工期(不即时)", LogLevel.Info);
@@ -869,6 +892,15 @@ public class ModEntry : Mod
             }
         }
 
+        // 允许风格小屋作为别名（Stone Cabin、Log Cabin 等），统一映射为 Cabin + 指定 skinId
+        string forceSkinId = null;
+        string[] cabinStyles = { "Stone Cabin", "Log Cabin", "Plank Cabin", "Rustic Cabin", "Trailer Cabin", "Neighbor Cabin", "Beach Cabin" };
+        if (cabinStyles.Contains(typeId, StringComparer.OrdinalIgnoreCase))
+        {
+            forceSkinId = typeId;
+            typeId = "Cabin";
+        }
+
         // 取建筑数据
         if (!Building.TryGetData(typeId, out BuildingData data) || data == null)
         {
@@ -876,15 +908,15 @@ public class ModEntry : Mod
             return;
         }
 
-        // 黑名单：禁止建造唯一建筑（农舍/温室只能原生一个，多出来的无法进入或无意义；出货箱同理）
-        string[] forbiddenIds = { "Farmhouse", "Greenhouse", "Shipping Bin" };
+        // 黑名单：禁止建造唯一建筑（农舍/温室只能原生一个，多出来的无法进入或无意义）
+        string[] forbiddenIds = { "Farmhouse", "Greenhouse" };
         if (forbiddenIds.Contains(typeId, StringComparer.OrdinalIgnoreCase))
         {
             Mon.Log($"[错误] 建筑 '{typeId}' 为场地原生唯一建筑，禁止建造", LogLevel.Warn);
             return;
         }
 
-        // Cabin 必须建在 Farm（提前判断以免取地点后白费力气）
+        // Cabin 必须建在 Farm
         if (typeId.Equals("Cabin", StringComparison.OrdinalIgnoreCase) && locName != "Farm")
         {
             Mon.Log("[错误] Cabin 只能建造在 Farm", LogLevel.Warn);
@@ -941,10 +973,24 @@ public class ModEntry : Mod
             center = GetBuildableCenter(loc, data);
         }
 
-        Mon.Log($"[建造] 准备在 {locName} 自动选址建造 {displayName} ({typeId}) 大小 {w}x{h} ...", LogLevel.Info);
+        // Cabin 自动分配风格（用户未通过别名指定时，按 Farm 现有 Cabin 数循环选择，与 BuildStartingCabins 逻辑基本一致）
+        bool isCabin = typeId.Equals("Cabin", StringComparison.OrdinalIgnoreCase);
+        if (isCabin && forceSkinId == null)
+        {
+            string[] defaultOrder = { "Stone Cabin", "Log Cabin", "Plank Cabin", "Rustic Cabin", "Trailer Cabin", "Neighbor Cabin", "Beach Cabin" };
+            int cabinCount = 0;
+            foreach (Building b in loc.buildings)
+                if (b.buildingType.Value == "Cabin") cabinCount++;
+            forceSkinId = defaultOrder[cabinCount % defaultOrder.Length];
+        }
+
+        Mon.Log($"[建造] 准备在 {locName} 自动选址建造 {displayName}"
+            + (forceSkinId != null ? $" [{forceSkinId}]" : "")
+            + $" ({typeId}) 大小 {w}x{h} ...", LogLevel.Info);
 
         // 螺旋搜索空地
         Vector2 found = Vector2.Zero;
+        Building built = null;
         bool foundSpot = false;
         const int maxRadius = 60;
         foreach (Vector2 tile in EnumerateSpiralTiles(center, maxRadius))
@@ -952,11 +998,29 @@ public class ModEntry : Mod
             if (!IsWithinBuildableRect(loc, tile, w, h)) continue;
             if (!CanPlaceBuilding(loc, data, tile)) continue;
 
-            if (loc.buildStructure(typeId, tile, Game1.player, out Building built, magicalConstruction: instant, skipSafetyChecks: false))
+            // 需要设置 skinId 时，先构建实例再用 buildStructure(Building,...) 重载
+            if (forceSkinId != null)
+            {
+                Building building = Building.CreateInstanceFromId(typeId, tile);
+                building.owner.Value = Game1.player.UniqueMultiplayerID;
+                building.skinId.Value = forceSkinId;
+                if (instant)
+                {
+                    building.magical.Value = true;
+                    building.daysOfConstructionLeft.Value = 0;
+                }
+                if (loc.buildStructure(building, tile, Game1.player, skipSafetyChecks: false))
+                {
+                    found = tile;
+                    foundSpot = true;
+                    built = building;
+                    break;
+                }
+            }
+            else if (loc.buildStructure(typeId, tile, Game1.player, out built, magicalConstruction: instant, skipSafetyChecks: false))
             {
                 found = tile;
                 foundSpot = true;
-                // 即时建造时确保工期为 0（buildStructure 内部已处理 magicalConstruction=true 的情况）
                 if (instant && built != null)
                     built.daysOfConstructionLeft.Value = 0;
                 break;
@@ -969,7 +1033,8 @@ public class ModEntry : Mod
             return;
         }
 
-        Mon.Log($"[成功] 已在 {locName} ({(int)found.X},{(int)found.Y}) 建造 {displayName} [{typeId}]"
+        Mon.Log($"[成功] 已在 {locName} ({(int)found.X},{(int)found.Y}) 建造 {displayName}"
+            + (forceSkinId != null ? $" [{forceSkinId}]" : "")
             + (instant ? " (即时)" : " (工期中)"), LogLevel.Info);
     }
 
