@@ -10,7 +10,9 @@ using StardewModdingAPI.Events;
 using StardewModdingAPI.Utilities;
 using StardewValley;
 using StardewValley.Buildings;
+using StardewValley.GameData.Buildings;
 using StardewValley.Network;
+using StardewValley.TokenizableStrings;
 
 namespace MasterHand;
 
@@ -83,6 +85,8 @@ public class ModEntry : Mod
         helper.ConsoleCommands.Add("mh_favored", "设置/清除眷者 > mh_favored <玩家ID> | clear | show", SetFavoredPlayer);
         helper.ConsoleCommands.Add("mh_giftwl", "无限送礼 > mh_giftwl on|off|list|add|remove|clear", GiftWhitelist);
         helper.ConsoleCommands.Add("mh_demolish", "拆除指定玩家偏移位置的建筑 > mh_demolish <玩家ID> <偏移x> <偏移y>", DemolishBuilding);
+        helper.ConsoleCommands.Add("mh_buildings", "查询建筑列表 (中文名+英文ID) > mh_buildings [关键词]", ListBuildings);
+        helper.ConsoleCommands.Add("mh_build", "自动查询空地建造建筑 > mh_build <建筑ID> [near <玩家ID>|<玩家ID>] [wait] [loc <地点>]", BuildBuilding);
 
         // 事件
         helper.Events.GameLoop.SaveLoaded += (_, _) => ApplyInfiniteGiftsToAllWhitelistedFarmers("存档加载");
@@ -768,6 +772,253 @@ public class ModEntry : Mod
         Mon.Log(ok
             ? $"[拆除] 已拆除 {farmer.Name} 偏移({offX},{offY}) 处的 {bType} @({tx},{ty})"
             : $"[错误] 拆除 {bType} 失败", LogLevel.Info);
+    }
+
+    private void ListBuildings(string _, string[] args)
+    {
+        if (!RequireWorldReady()) return;
+
+        string filter = args.Length > 0 ? string.Join(" ", args).ToLowerInvariant() : null;
+        bool any = false;
+
+        Mon.Log("=== 建筑列表 (中文名 / 英文ID) ===", LogLevel.Info);
+        foreach (KeyValuePair<string, BuildingData> pair in Game1.buildingData)
+        {
+            string id = pair.Key;
+            BuildingData data = pair.Value;
+            if (data == null) continue;
+
+            string displayName = TokenParser.ParseText(data.Name, null, null, null) ?? id;
+            string desc = TokenParser.ParseText(data.Description, null, null, null);
+
+            // 过滤：同时匹配中文名、英文ID、描述
+            if (filter != null
+                && !displayName.ToLowerInvariant().Contains(filter)
+                && !id.ToLowerInvariant().Contains(filter)
+                && (desc == null || !desc.ToLowerInvariant().Contains(filter)))
+                continue;
+
+            string cn = displayName == id ? displayName : $"{displayName} / {id}";
+            string size = $"{data.Size.X}x{data.Size.Y}";
+            string cost = data.BuildCost > 0 ? $"{data.BuildCost}g" : "免费";
+            string days = data.BuildDays > 0 ? $"{data.BuildDays}天" : "即时";
+            string builder = data.Builder ?? "?";
+            string upgrade = !string.IsNullOrEmpty(data.BuildingToUpgrade) ? $" 升级自:{data.BuildingToUpgrade}" : "";
+
+            Mon.Log($"  [{cn}] 大小:{size} 费用:{cost} 工期:{days} 建造者:{builder}{upgrade}", LogLevel.Info);
+            any = true;
+        }
+        if (!any)
+            Mon.Log(filter == null ? "  (无建筑数据)" : $"  (未匹配到包含 '{filter}' 的建筑)", LogLevel.Info);
+        else
+            Mon.Log("提示: 使用 mh_build <英文ID> 自动选址建造", LogLevel.Info);
+    }
+
+    private void BuildBuilding(string _, string[] args)
+    {
+        if (!RequireWorldReady() || !RequireHost()) return;
+        if (args.Length == 0)
+        {
+            Mon.Log("用法: mh_build <建筑ID> [near <玩家ID>|<玩家ID>] [wait] [loc <地点>]", LogLevel.Info);
+            Mon.Log("示例:", LogLevel.Info);
+            Mon.Log("  mh_build Mill                       自动在农场找空地建磨坊(即时)", LogLevel.Info);
+            Mon.Log("  mh_build \"Stone Cabin\"              建石屋(参数含空格需加引号)", LogLevel.Info);
+            Mon.Log("  mh_build Silo near 765611989         在指定玩家附近找空地", LogLevel.Info);
+            Mon.Log("  mh_build Silo 765611989              玩家ID简写形式", LogLevel.Info);
+            Mon.Log("  mh_build Mill wait                   走正常工期(不即时)", LogLevel.Info);
+            Mon.Log("  mh_build Mill loc Farm               指定建造地点(默认 Farm)", LogLevel.Info);
+            return;
+        }
+
+        string typeId = args[0];
+
+        // 解析可选参数
+        bool instant = true;        // 默认即时(上帝之手)
+        long nearPlayerId = 0;      // 0 = 不指定玩家
+        string locName = "Farm";    // 默认地点
+
+        for (int i = 1; i < args.Length; i++)
+        {
+            string a = args[i];
+            if (a.Equals("wait", StringComparison.OrdinalIgnoreCase))
+            {
+                instant = false;
+            }
+            else if (a.Equals("near", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                nearPlayerId = ResolvePlayerId(args[++i], logError: false);
+                if (nearPlayerId == 0)
+                {
+                    Mon.Log($"[错误] 无效的玩家ID: {args[i]}", LogLevel.Warn);
+                    return;
+                }
+            }
+            else if (a.Equals("loc", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                locName = args[++i];
+            }
+            else if (long.TryParse(a, out long pid) && pid > 0)
+            {
+                // 简写: mh_build <id> <玩家ID>
+                nearPlayerId = pid;
+            }
+            else
+            {
+                Mon.Log($"[警告] 忽略未知参数: {a}", LogLevel.Warn);
+            }
+        }
+
+        // 取建筑数据
+        if (!Building.TryGetData(typeId, out BuildingData data) || data == null)
+        {
+            Mon.Log($"[错误] 找不到建筑 '{typeId}'，使用 mh_buildings 查询可用建筑", LogLevel.Warn);
+            return;
+        }
+
+        // 取目标地点
+        GameLocation loc = Game1.getLocationFromName(locName);
+        if (loc == null)
+        {
+            Mon.Log($"[错误] 找不到地点 '{locName}'", LogLevel.Warn);
+            return;
+        }
+        if (!loc.IsBuildableLocation())
+        {
+            Mon.Log($"[错误] 地点 '{locName}' 不允许建造建筑", LogLevel.Warn);
+            return;
+        }
+
+        string displayName = TokenParser.ParseText(data.Name, null, null, null) ?? typeId;
+        int w = Math.Max(1, data.Size.X);
+        int h = Math.Max(1, data.Size.Y);
+
+        // 决定搜索起点
+        Vector2 center;
+        if (nearPlayerId != 0)
+        {
+            Farmer farmer = GetOnlinePlayer(nearPlayerId);
+            if (farmer == null) return;
+            // 玩家若在农场内则用其位置；否则在农场可建区域内找近玩家位置
+            if (farmer.currentLocation == loc)
+                center = new Vector2((int)farmer.Tile.X, (int)farmer.Tile.Y);
+            else
+                center = GetBuildableCenter(loc, data);
+        }
+        else
+        {
+            center = GetBuildableCenter(loc, data);
+        }
+
+        Mon.Log($"[建造] 准备在 {locName} 自动选址建造 {displayName} ({typeId}) 大小 {w}x{h} ...", LogLevel.Info);
+
+        // 螺旋搜索空地
+        Vector2 found = Vector2.Zero;
+        bool foundSpot = false;
+        const int maxRadius = 60;
+        foreach (Vector2 tile in EnumerateSpiralTiles(center, maxRadius))
+        {
+            if (!IsWithinBuildableRect(loc, tile, w, h)) continue;
+            if (!CanPlaceBuilding(loc, data, tile)) continue;
+
+            if (loc.buildStructure(typeId, tile, Game1.player, out Building built, magicalConstruction: instant, skipSafetyChecks: false))
+            {
+                found = tile;
+                foundSpot = true;
+                // 即时建造时确保工期为 0（buildStructure 内部已处理 magicalConstruction=true 的情况）
+                if (instant && built != null)
+                    built.daysOfConstructionLeft.Value = 0;
+                break;
+            }
+        }
+
+        if (!foundSpot)
+        {
+            Mon.Log($"[错误] 在 {locName} 周围 {maxRadius} 格内未找到可建造 {displayName} 的空地", LogLevel.Warn);
+            return;
+        }
+
+        Mon.Log($"[成功] 已在 {locName} ({(int)found.X},{(int)found.Y}) 建造 {displayName} [{typeId}]"
+            + (instant ? " (即时)" : " (工期中)"), LogLevel.Info);
+    }
+
+    private static Vector2 GetBuildableCenter(GameLocation loc, BuildingData data)
+    {
+        Rectangle rect = loc.GetBuildableRectangle();
+        if (rect != Rectangle.Empty && rect.Width > 0 && rect.Height > 0)
+        {
+            int w = Math.Max(1, data.Size.X);
+            int h = Math.Max(1, data.Size.Y);
+            int cx = rect.X + (rect.Width - w) / 2;
+            int cy = rect.Y + (rect.Height - h) / 2;
+            return new Vector2(cx, cy);
+        }
+        return new Vector2(10, 10);
+    }
+
+    private static bool IsWithinBuildableRect(GameLocation loc, Vector2 tile, int w, int h)
+    {
+        Rectangle rect = loc.GetBuildableRectangle();
+        if (rect == Rectangle.Empty) return true; // 无限制
+        return tile.X >= rect.X
+            && tile.Y >= rect.Y
+            && tile.X + w <= rect.X + rect.Width
+            && tile.Y + h <= rect.Y + rect.Height;
+    }
+
+    private static bool CanPlaceBuilding(GameLocation loc, BuildingData data, Vector2 tile)
+    {
+        int w = Math.Max(1, data.Size.X);
+        int h = Math.Max(1, data.Size.Y);
+
+        // 主占地
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                Vector2 t = new Vector2(tile.X + x, tile.Y + y);
+                if (!loc.isBuildable(t, false)) return false;
+            }
+
+        // 额外占地（如 Mill 的磨坊前地块）
+        if (data.AdditionalPlacementTiles != null)
+        {
+            foreach (BuildingPlacementTile pt in data.AdditionalPlacementTiles)
+            {
+                foreach (Point p in pt.TileArea.GetPoints())
+                {
+                    Vector2 t = new Vector2(tile.X + p.X, tile.Y + p.Y);
+                    if (!loc.isBuildable(t, pt.OnlyNeedsToBePassable)) return false;
+                }
+            }
+        }
+
+        // 人类门下方需可通行（参考 buildStructure 的判断：data.HumanDoor != new Point(-1, -1)）
+        if (data.HumanDoor != new Point(-1, -1))
+        {
+            Vector2 doorPos = tile + new Vector2(data.HumanDoor.X, data.HumanDoor.Y + 1);
+            if (!loc.isBuildable(doorPos, true) && !loc.isPath(doorPos)) return false;
+        }
+
+        return true;
+    }
+
+    private static IEnumerable<Vector2> EnumerateSpiralTiles(Vector2 center, int maxRadius)
+    {
+        yield return center;
+        for (int r = 1; r <= maxRadius; r++)
+        {
+            // 上边: 从 (-r, -r) 到 (r-1, -r)
+            for (int x = -r; x < r; x++)
+                yield return new Vector2(center.X + x, center.Y - r);
+            // 右边: 从 (r, -r) 到 (r, r-1)
+            for (int y = -r; y < r; y++)
+                yield return new Vector2(center.X + r, center.Y + y);
+            // 下边: 从 (r, r) 到 (-r+1, r)
+            for (int x = r; x > -r; x--)
+                yield return new Vector2(center.X + x, center.Y + r);
+            // 左边: 从 (-r, r) 到 (-r, -r+1)
+            for (int y = r; y > -r; y--)
+                yield return new Vector2(center.X - r, center.Y + y);
+        }
     }
 
     // 无限送礼
