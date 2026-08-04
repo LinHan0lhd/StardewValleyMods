@@ -842,6 +842,7 @@ public class ModEntry : Mod
         if (args.Length == 0)
         {
             Mon.Log("用法: mh_build <建筑ID> [near <玩家ID>|<玩家ID>] [wait] [loc <地点>]", LogLevel.Info);
+            Mon.Log("常见地点: Farm(农场) | IslandWest(姜岛农场) | Forest(农场森林) | Mountain(山顶) | Beach(沙滩) | Town(小镇)", LogLevel.Info);
             Mon.Log("小屋风格: Stone Cabin | Log Cabin | Plank Cabin | Rustic Cabin | Trailer Cabin | Neighbor Cabin | Beach Cabin", LogLevel.Info);
             Mon.Log("示例:", LogLevel.Info);
             Mon.Log("  mh_build Mill                       自动在农场找空地建磨坊(即时)", LogLevel.Info);
@@ -851,6 +852,7 @@ public class ModEntry : Mod
             Mon.Log("  mh_build Silo 765611989              玩家ID简写形式", LogLevel.Info);
             Mon.Log("  mh_build Mill wait                   走正常工期(不即时)", LogLevel.Info);
             Mon.Log("  mh_build Mill loc Farm               指定建造地点(默认 Farm)", LogLevel.Info);
+            Mon.Log("  mh_build \"Shipping Bin\" loc IslandWest  在姜岛农场建额外出货箱", LogLevel.Info);
             return;
         }
 
