@@ -10,6 +10,7 @@ using StardewModdingAPI.Events;
 using StardewModdingAPI.Utilities;
 using StardewValley;
 using StardewValley.Buildings;
+using StardewValley.Extensions;
 using StardewValley.GameData.Buildings;
 using StardewValley.Network;
 using StardewValley.TokenizableStrings;
