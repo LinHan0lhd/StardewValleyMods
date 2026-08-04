@@ -88,6 +88,7 @@ public class ModEntry : Mod
         helper.ConsoleCommands.Add("mh_demolish", "拆除指定玩家偏移位置的建筑 > mh_demolish <玩家ID> <偏移x> <偏移y>", DemolishBuilding);
         helper.ConsoleCommands.Add("mh_buildings", "查询建筑列表 (中文名+英文ID) > mh_buildings [关键词]", ListBuildings);
         helper.ConsoleCommands.Add("mh_build", "自动查询空地建造建筑 > mh_build <建筑ID> [near <玩家ID>|<玩家ID>] [wait] [loc <地点>]", BuildBuilding);
+        helper.ConsoleCommands.Add("mh_buildat", "精准建造(以玩家位置为参考，瓦片偏移) > mh_buildat <玩家ID> <偏移x> <偏移y> <建筑ID> [wait]", BuildBuildingAt);
 
         // 事件
         helper.Events.GameLoop.SaveLoaded += (_, _) => ApplyInfiniteGiftsToAllWhitelistedFarmers("存档加载");
@@ -1071,6 +1072,137 @@ public class ModEntry : Mod
             return true;
         }
         return false;
+    }
+
+    private void BuildBuildingAt(string _, string[] args)
+    {
+        if (!RequireWorldReady() || !RequireHost()) return;
+        if (args.Length < 4)
+        {
+            Mon.Log("用法: mh_buildat <玩家ID> <偏移x> <偏移y> <建筑ID> [wait]", LogLevel.Info);
+            Mon.Log("说明: 以玩家当前所在瓦片为基准，偏移 (x,y) 放置建筑左上角", LogLevel.Info);
+            Mon.Log("      坐标系统: (0,0)=地图左上角，X 向右为正，Y 向下为正", LogLevel.Info);
+            Mon.Log("示例:", LogLevel.Info);
+            Mon.Log("  mh_buildat 765611989 2 -3 Mill       在玩家脚下 +2,-3 瓦片处建磨坊", LogLevel.Info);
+            Mon.Log("  mh_buildat 765611989 0 0 \"Stone Cabin\" 玩家脚下(0,0)建石屋", LogLevel.Info);
+            Mon.Log("  mh_buildat 765611989 0 0 Silo wait     玩家脚下建筒仓(走正常工期)", LogLevel.Info);
+            Mon.Log("  mh_buildat ~ 1 2 \"Shipping Bin\"        以眷者为基准偏移(1,2)建出货箱", LogLevel.Info);
+            return;
+        }
+
+        long pid = ResolvePlayerId(args[0]);
+        if (pid == 0) return;
+        Farmer farmer = GetOnlinePlayer(pid);
+        if (farmer == null) return;
+
+        if (!int.TryParse(args[1], out int offX) || !int.TryParse(args[2], out int offY))
+        {
+            Mon.Log("[错误] 偏移 x/y 必须是整数(瓦片数)", LogLevel.Warn);
+            return;
+        }
+
+        string typeId = args[3];
+        bool instant = !(args.Length >= 5 && args[4].Equals("wait", StringComparison.OrdinalIgnoreCase));
+
+        GameLocation loc = farmer.currentLocation;
+        if (loc == null)
+        {
+            Mon.Log("[错误] 玩家所在地点无效", LogLevel.Warn);
+            return;
+        }
+        if (!loc.IsBuildableLocation())
+        {
+            Mon.Log($"[错误] 玩家当前地点 '{loc.NameOrUniqueName}' 不允许建造建筑；请先到允许建造的地点再执行", LogLevel.Warn);
+            return;
+        }
+
+        // 允许风格小屋作别名：Stone Cabin / Log Cabin / ... 映射为 Cabin + skinId
+        string forceSkinId = null;
+        string[] cabinStyles = { "Stone Cabin", "Log Cabin", "Plank Cabin", "Rustic Cabin", "Trailer Cabin", "Neighbor Cabin", "Beach Cabin" };
+        if (cabinStyles.Contains(typeId, StringComparer.OrdinalIgnoreCase))
+        {
+            forceSkinId = typeId;
+            typeId = "Cabin";
+        }
+
+        if (!Building.TryGetData(typeId, out BuildingData data) || data == null)
+        {
+            Mon.Log($"[错误] 找不到建筑 '{typeId}'，使用 mh_buildings 查询可用建筑", LogLevel.Warn);
+            return;
+        }
+
+        // 黑名单：唯一建筑禁止
+        string[] forbiddenIds = { "Farmhouse", "Greenhouse" };
+        if (forbiddenIds.Contains(typeId, StringComparer.OrdinalIgnoreCase))
+        {
+            Mon.Log($"[错误] 建筑 '{typeId}' 为场地原生唯一建筑，禁止建造", LogLevel.Warn);
+            return;
+        }
+        // Cabin 必须在 Farm
+        if (typeId.Equals("Cabin", StringComparison.OrdinalIgnoreCase) && !loc.NameOrUniqueName.Equals("Farm", StringComparison.OrdinalIgnoreCase))
+        {
+            Mon.Log("[错误] Cabin 只能建造在 Farm；请玩家先到农场再使用此命令", LogLevel.Warn);
+            return;
+        }
+
+        // BuildCondition + 升级前置校验
+        if (!string.IsNullOrEmpty(data.BuildCondition)
+            && !GameStateQuery.CheckConditions(data.BuildCondition, loc, Game1.player, null, null, null, null))
+        {
+            Mon.Log($"[错误] 建筑 '{typeId}' 不满足建造条件（BuildCondition 未通过）", LogLevel.Warn);
+            return;
+        }
+        if (!string.IsNullOrEmpty(data.BuildingToUpgrade)
+            && loc.getNumberBuildingsConstructed(data.BuildingToUpgrade, false) == 0)
+        {
+            Mon.Log($"[错误] 建筑 '{typeId}' 为升级建筑，需先建造 {data.BuildingToUpgrade}", LogLevel.Warn);
+            return;
+        }
+
+        // Cabin 自动分配风格（未通过别名指定时）
+        bool isCabin = typeId.Equals("Cabin", StringComparison.OrdinalIgnoreCase);
+        if (isCabin && forceSkinId == null)
+        {
+            string[] defaultOrder = { "Stone Cabin", "Log Cabin", "Plank Cabin", "Rustic Cabin", "Trailer Cabin", "Neighbor Cabin", "Beach Cabin" };
+            int cabinCount = 0;
+            foreach (Building b in loc.buildings)
+                if (b.buildingType.Value == "Cabin") cabinCount++;
+            forceSkinId = defaultOrder[cabinCount % defaultOrder.Length];
+        }
+
+        int tileX = (int)farmer.Tile.X + offX;
+        int tileY = (int)farmer.Tile.Y + offY;
+        Vector2 tile = new Vector2(tileX, tileY);
+        int w = Math.Max(1, data.Size.X);
+        int h = Math.Max(1, data.Size.Y);
+        string displayName = TokenParser.ParseText(data.Name, null, null, null) ?? typeId;
+
+        // 范围 + 占地 + 门 校验
+        if (!IsWithinBuildableRect(loc, tile, w, h))
+        {
+            Rectangle rect = loc.GetBuildableRectangle();
+            Mon.Log($"[错误] 偏移后位置 ({tileX},{tileY}) 超出可建造区域 {rect} (建筑 {w}x{h})", LogLevel.Warn);
+            return;
+        }
+        if (!CanPlaceBuilding(loc, data, tile))
+        {
+            Mon.Log($"[错误] 位置 ({tileX},{tileY}) 无法放置 {displayName} (有障碍物/地形不可建/门下方不可通行)", LogLevel.Warn);
+            return;
+        }
+
+        // 执行建造
+        Building built = null;
+        bool ok = TryPlace(loc, typeId, data, forceSkinId, instant, tile, out built, out Vector2 _);
+        if (!ok)
+        {
+            Mon.Log($"[错误] 放置失败：{displayName} @ ({tileX},{tileY})", LogLevel.Warn);
+            return;
+        }
+
+        Mon.Log($"[精准建造] {farmer.Name} [{farmer.UniqueMultiplayerID}] 瓦片({(int)farmer.Tile.X},{(int)farmer.Tile.Y}) "
+            + $"偏移 ({offX},{offY}) → ({tileX},{tileY}) 放置 {displayName}"
+            + (forceSkinId != null ? $" [{forceSkinId}]" : "")
+            + (instant ? " (即时)" : " (工期中)"), LogLevel.Info);
     }
 
     private static Vector2 GetBuildableCenter(GameLocation loc, BuildingData data)
