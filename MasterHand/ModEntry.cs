@@ -992,8 +992,8 @@ public class ModEntry : Mod
         Building built = null;
         bool foundSpot = false;
 
-        // 阶段 1：以起点为中心螺旋搜索（坐标 (0,0)=左上角，X 右正、Y 下正）
-        const int spiralRadius = 200;
+        // 阶段 1：以起点为中心螺旋搜索（坐标 (0,0)=左上角，X 右正、Y 下正；地图瓦片最大 0~255 即 0xFF）
+        const int spiralRadius = 255;
         foreach (Vector2 tile in EnumerateSpiralTiles(center, spiralRadius))
         {
             if (!IsWithinBuildableRect(loc, tile, w, h)) continue;
@@ -1011,9 +1011,9 @@ public class ModEntry : Mod
             Rectangle rect = loc.GetBuildableRectangle();
             if (rect == Rectangle.Empty)
             {
-                // 没限制时拿整个地图大小
-                try { rect = new Rectangle(0, 0, loc.Map.Layers[0].LayerWidth, loc.Map.Layers[0].LayerHeight); }
-                catch { rect = new Rectangle(0, 0, 160, 100); }
+                // 没限制时拿整个地图大小；瓦片坐标按字节存，最大 255×255
+                try { rect = new Rectangle(0, 0, Math.Min(255, loc.Map.Layers[0].LayerWidth), Math.Min(255, loc.Map.Layers[0].LayerHeight)); }
+                catch { rect = new Rectangle(0, 0, 255, 255); }
             }
             for (int y = rect.Y; y + h <= rect.Y + rect.Height; y++)
                 for (int x = rect.X; x + w <= rect.X + rect.Width; x++)
