@@ -876,6 +876,21 @@ public class ModEntry : Mod
             return;
         }
 
+        // 黑名单：禁止建造唯一建筑（农舍/温室只能原生一个，多出来的无法进入或无意义；出货箱同理）
+        string[] forbiddenIds = { "Farmhouse", "Greenhouse", "Shipping Bin" };
+        if (forbiddenIds.Contains(typeId, StringComparer.OrdinalIgnoreCase))
+        {
+            Mon.Log($"[错误] 建筑 '{typeId}' 为场地原生唯一建筑，禁止建造", LogLevel.Warn);
+            return;
+        }
+
+        // Cabin 必须建在 Farm（提前判断以免取地点后白费力气）
+        if (typeId.Equals("Cabin", StringComparison.OrdinalIgnoreCase) && locName != "Farm")
+        {
+            Mon.Log("[错误] Cabin 只能建造在 Farm", LogLevel.Warn);
+            return;
+        }
+
         // 取目标地点
         GameLocation loc = Game1.getLocationFromName(locName);
         if (loc == null)
@@ -886,6 +901,22 @@ public class ModEntry : Mod
         if (!loc.IsBuildableLocation())
         {
             Mon.Log($"[错误] 地点 '{locName}' 不允许建造建筑", LogLevel.Warn);
+            return;
+        }
+
+        // 游戏内建 BuildCondition（例如：需要前置建筑、已存在唯一建筑时不允许再建）
+        if (!string.IsNullOrEmpty(data.BuildCondition)
+            && !GameStateQuery.CheckConditions(data.BuildCondition, loc, Game1.player, null, null, null, null))
+        {
+            Mon.Log($"[错误] 建筑 '{typeId}' 不满足建造条件，已被游戏规则阻止（BuildCondition 未通过）", LogLevel.Warn);
+            return;
+        }
+
+        // 升级类建筑：要求已建造 BuildingToUpgrade 的前一级
+        if (!string.IsNullOrEmpty(data.BuildingToUpgrade)
+            && loc.getNumberBuildingsConstructed(data.BuildingToUpgrade, false) == 0)
+        {
+            Mon.Log($"[错误] 建筑 '{typeId}' 为升级建筑，需先建造 {data.BuildingToUpgrade}", LogLevel.Warn);
             return;
         }
 
