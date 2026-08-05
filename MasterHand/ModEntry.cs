@@ -857,9 +857,6 @@ public class ModEntry : Mod
         string filter = args.Length > 0 ? string.Join(" ", args).ToLowerInvariant() : null;
         bool any = false;
 
-        // 黑名单：场地原生唯一建筑不列出
-        var forbidden = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Farmhouse", "Greenhouse" };
-
         // 与游戏 CarpenterMenu 一致：通过 TokenParser 解析 BuildingSkin.Name 获取本地化中文名
         bool MatchFilter(params string[] texts)
         {
@@ -877,7 +874,6 @@ public class ModEntry : Mod
             string id = pair.Key;
             BuildingData data = pair.Value;
             if (data == null) continue;
-            if (forbidden.Contains(id)) continue;
 
             string displayName = TokenParser.ParseText(data.Name, null, null, null) ?? id;
             string desc = TokenParser.ParseText(data.Description, null, null, null);
@@ -954,6 +950,7 @@ public class ModEntry : Mod
             Mon.Log("  mh_build Mill wait                  走正常工期(不即时)", LogLevel.Info);
             Mon.Log("  mh_build Mill loc Farm              指定建造地点(默认 Farm)", LogLevel.Info);
             Mon.Log("  mh_build \"Shipping Bin\" loc IslandWest  在姜岛农场建额外出货箱", LogLevel.Info);
+            Mon.Log("升级建筑会自动升级已有同类建筑，而不是新建", LogLevel.Info);
             return;
         }
 
@@ -1011,21 +1008,6 @@ public class ModEntry : Mod
             return;
         }
 
-        // 黑名单：禁止建造唯一建筑
-        string[] forbiddenIds = { "Farmhouse", "Greenhouse" };
-        if (forbiddenIds.Contains(typeId, StringComparer.OrdinalIgnoreCase))
-        {
-            Mon.Log($"[错误] 建筑 '{typeId}' 为场地原生唯一建筑，禁止建造", LogLevel.Warn);
-            return;
-        }
-
-        // Cabin 必须建在 Farm
-        if (typeId.Equals("Cabin", StringComparison.OrdinalIgnoreCase) && locName != "Farm")
-        {
-            Mon.Log("[错误] Cabin 只能建造在 Farm", LogLevel.Warn);
-            return;
-        }
-
         // 取目标地点
         GameLocation loc = Game1.getLocationFromName(locName);
         if (loc == null)
@@ -1039,25 +1021,34 @@ public class ModEntry : Mod
             return;
         }
 
-        // 游戏内建 BuildCondition
-        if (!string.IsNullOrEmpty(data.BuildCondition)
-            && !GameStateQuery.CheckConditions(data.BuildCondition, loc, Game1.player, null, null, null, null))
-        {
-            Mon.Log($"[错误] 建筑 '{typeId}' 不满足建造条件", LogLevel.Warn);
-            return;
-        }
-
-        // 升级类建筑：要求已建造 BuildingToUpgrade 的前一级
-        if (!string.IsNullOrEmpty(data.BuildingToUpgrade)
-            && loc.getNumberBuildingsConstructed(data.BuildingToUpgrade, false) == 0)
-        {
-            Mon.Log($"[错误] 建筑 '{typeId}' 为升级建筑 & 需先建造 {data.BuildingToUpgrade}", LogLevel.Warn);
-            return;
-        }
-
         string displayName = TokenParser.ParseText(data.Name, null, null, null) ?? typeId;
         int w = Math.Max(1, data.Size.X);
         int h = Math.Max(1, data.Size.Y);
+
+        // 升级建筑：尝试升级已有同类建筑
+        if (!string.IsNullOrEmpty(data.BuildingToUpgrade))
+        {
+            // 决定搜索起点（用于找最近的建筑）
+            Vector2? nearTile = null;
+            if (nearPlayerId != 0)
+            {
+                Farmer farmer = GetOnlinePlayer(nearPlayerId);
+                if (farmer != null && farmer.currentLocation == loc)
+                    nearTile = new Vector2((int)farmer.Tile.X, (int)farmer.Tile.Y);
+            }
+
+            if (TryUpgradeBuilding(loc, typeId, data, instant, nearTile, out Building upgraded))
+            {
+                string oldType = upgraded.buildingType.Value;
+                Vector2 pos = new Vector2(upgraded.tileX.Value, upgraded.tileY.Value);
+                Mon.Log($"[升级] 已将 ({(int)pos.X},{(int)pos.Y}) 的 {oldType} 升级为 {displayName}{(instant ? " (即时)" : " (工期中)")}", LogLevel.Info);
+                return;
+            }
+            else
+            {
+                Mon.Log($"[提示] 找不到可升级的 {data.BuildingToUpgrade}，改为新建 {displayName}", LogLevel.Info);
+            }
+        }
 
         // 决定搜索起点
         Vector2 center;
@@ -1173,6 +1164,55 @@ public class ModEntry : Mod
         return false;
     }
 
+    // 在已有建筑中查找 prerequisite 类型并升级
+    // nearTile: 指定时找最近的；null 时找第一个
+    private static bool TryUpgradeBuilding(GameLocation loc, string upgradeTypeId, BuildingData upgradeData, bool instant, Vector2? nearTile, out Building upgraded)
+    {
+        upgraded = null;
+        string prerequisiteType = upgradeData.BuildingToUpgrade;
+        if (string.IsNullOrEmpty(prerequisiteType)) return false;
+
+        Building target = null;
+        float bestDist = float.MaxValue;
+
+        foreach (Building b in loc.buildings)
+        {
+            if (b.buildingType.Value != prerequisiteType) continue;
+            if (b.isUnderConstruction(false)) continue;
+
+            if (nearTile.HasValue)
+            {
+                float dist = Vector2.Distance(nearTile.Value, new Vector2(b.tileX.Value, b.tileY.Value));
+                if (dist < bestDist)
+                {
+                    bestDist = dist;
+                    target = b;
+                }
+            }
+            else
+            {
+                target = b;
+                break;
+            }
+        }
+
+        if (target == null) return false;
+
+        target.upgradeName.Value = upgradeTypeId;
+        if (instant)
+        {
+            target.daysUntilUpgrade.Value = 0;
+            target.FinishConstruction(false);
+        }
+        else
+        {
+            target.daysUntilUpgrade.Value = Math.Max(upgradeData.BuildDays, 1);
+        }
+
+        upgraded = target;
+        return true;
+    }
+
     private void BuildBuildingAt(string _, string[] args)
     {
         if (!RequireWorldReady() || !RequireHost()) return;
@@ -1182,6 +1222,7 @@ public class ModEntry : Mod
             Mon.Log("说明: 以玩家当前所在瓦片为基准并偏移 (x,y) 放置建筑左上角", LogLevel.Info);
             Mon.Log("      坐标系统: (0,0)=地图左上角 | X 向右为正 | Y 向下为正", LogLevel.Info);
             Mon.Log("      玩家ID 可填: 数字ID | ~ (眷者) | admin (主机)", LogLevel.Info);
+            Mon.Log("升级建筑会优先升级目标位置的已有建筑，否则升级最近的同类建筑", LogLevel.Info);
             return;
         }
 
@@ -1226,32 +1267,48 @@ public class ModEntry : Mod
             return;
         }
 
-        // 黑名单：唯一建筑禁止
-        string[] forbiddenIds = { "Farmhouse", "Greenhouse" };
-        if (forbiddenIds.Contains(typeId, StringComparer.OrdinalIgnoreCase))
-        {
-            Mon.Log($"[错误] 建筑 '{typeId}' 为场地原生唯一建筑，禁止建造", LogLevel.Warn);
-            return;
-        }
-        // Cabin 必须在 Farm
-        if (typeId.Equals("Cabin", StringComparison.OrdinalIgnoreCase) && !loc.NameOrUniqueName.Equals("Farm", StringComparison.OrdinalIgnoreCase))
-        {
-            Mon.Log("[错误] Cabin 只能建造在 Farm；请玩家先到农场再使用此命令", LogLevel.Warn);
-            return;
-        }
+        int tileX = (int)farmer.Tile.X + offX;
+        int tileY = (int)farmer.Tile.Y + offY;
+        Vector2 tile = new Vector2(tileX, tileY);
+        int w = Math.Max(1, data.Size.X);
+        int h = Math.Max(1, data.Size.Y);
+        string displayName = TokenParser.ParseText(data.Name, null, null, null) ?? typeId;
 
-        // BuildCondition + 升级前置校验
-        if (!string.IsNullOrEmpty(data.BuildCondition)
-            && !GameStateQuery.CheckConditions(data.BuildCondition, loc, Game1.player, null, null, null, null))
+        // 升级建筑：尝试升级目标位置或最近的同类建筑
+        if (!string.IsNullOrEmpty(data.BuildingToUpgrade))
         {
-            Mon.Log($"[错误] 建筑 '{typeId}' 不满足建造条件（BuildCondition 未通过）", LogLevel.Warn);
-            return;
-        }
-        if (!string.IsNullOrEmpty(data.BuildingToUpgrade)
-            && loc.getNumberBuildingsConstructed(data.BuildingToUpgrade, false) == 0)
-        {
-            Mon.Log($"[错误] 建筑 '{typeId}' 为升级建筑，需先建造 {data.BuildingToUpgrade}", LogLevel.Warn);
-            return;
+            // 优先检查目标位置是否已有同类可升级建筑
+            Building existingAtTarget = loc.getBuildingAt(tile);
+            if (existingAtTarget != null
+                && existingAtTarget.buildingType.Value == data.BuildingToUpgrade
+                && !existingAtTarget.isUnderConstruction(false))
+            {
+                existingAtTarget.upgradeName.Value = typeId;
+                if (instant)
+                {
+                    existingAtTarget.daysUntilUpgrade.Value = 0;
+                    existingAtTarget.FinishConstruction(false);
+                }
+                else
+                {
+                    existingAtTarget.daysUntilUpgrade.Value = Math.Max(data.BuildDays, 1);
+                }
+                Mon.Log($"[精准升级] {farmer.Name} [{farmer.UniqueMultiplayerID}] 位置 ({tileX},{tileY}) 的 {data.BuildingToUpgrade} 升级为 {displayName}{(instant ? " (即时)" : " (工期中)")}", LogLevel.Info);
+                return;
+            }
+
+            // 否则找最近的同类建筑
+            if (TryUpgradeBuilding(loc, typeId, data, instant, tile, out Building upgraded))
+            {
+                string oldType = upgraded.buildingType.Value;
+                Vector2 pos = new Vector2(upgraded.tileX.Value, upgraded.tileY.Value);
+                Mon.Log($"[精准升级] {farmer.Name} 位置 ({tileX},{tileY}) 附近的 {oldType} 升级为 {displayName} @ ({(int)pos.X},{(int)pos.Y}){(instant ? " (即时)" : " (工期中)")}", LogLevel.Info);
+                return;
+            }
+            else
+            {
+                Mon.Log($"[提示] 找不到可升级的 {data.BuildingToUpgrade}，改为在 ({tileX},{tileY}) 新建 {displayName}", LogLevel.Info);
+            }
         }
 
         // Cabin 自动分配风格
@@ -1264,13 +1321,6 @@ public class ModEntry : Mod
                 if (b.buildingType.Value == "Cabin") cabinCount++;
             forceSkinId = defaultOrder[cabinCount % defaultOrder.Length];
         }
-
-        int tileX = (int)farmer.Tile.X + offX;
-        int tileY = (int)farmer.Tile.Y + offY;
-        Vector2 tile = new Vector2(tileX, tileY);
-        int w = Math.Max(1, data.Size.X);
-        int h = Math.Max(1, data.Size.Y);
-        string displayName = TokenParser.ParseText(data.Name, null, null, null) ?? typeId;
 
         // 范围 + 占地 + 门 校验
         if (!IsWithinBuildableRect(loc, tile, w, h))
