@@ -162,6 +162,23 @@ public class ModEntry : Mod
         return null;
     }
 
+    /// <summary>
+    /// 取玩家显示名：在线或离线存档均可（基于 Game1.getAllFarmers()），找不到返回 null。
+    /// 用于日志/UI 显示，避免离线时只能输出"未知"。
+    /// </summary>
+    private static string PlayerName(long id)
+    {
+        if (id <= 0) return null;
+        var f = Game1.GetPlayer(id, true);
+        if (f != null) return f.Name;
+        foreach (var x in Game1.getAllFarmers())
+        {
+            if (x != null && x.UniqueMultiplayerID == id)
+                return x.Name;
+        }
+        return null;
+    }
+
     private static Farmer GetPlayerByName(string name, bool logError = true)
     {
         if (string.IsNullOrWhiteSpace(name)) return null;
@@ -234,19 +251,30 @@ public class ModEntry : Mod
                 break;
 
             case "show":
-                var f = FavoredPlayerId != 0 ? Game1.GetPlayer(FavoredPlayerId, true) : null;
-                Mon.Log(f != null
-                    ? $"[眷者] {f.Name} [ID: {FavoredPlayerId}]"
-                    : $"[眷者] 未设置或不在线 (ID:{FavoredPlayerId})", LogLevel.Info);
+                if (FavoredPlayerId == 0)
+                {
+                    Mon.Log("[眷者] 未设置", LogLevel.Info);
+                }
+                else
+                {
+                    string name = PlayerName(FavoredPlayerId);
+                    bool online = Game1.GetPlayer(FavoredPlayerId, true) != null;
+                    Mon.Log(name != null
+                        ? $"[眷者] {name} [ID: {FavoredPlayerId}]{(online ? "" : " (离线)")}"
+                        : $"[眷者] 未找到此玩家 (ID:{FavoredPlayerId})", LogLevel.Info);
+                }
                 break;
 
             default:
                 if (long.TryParse(cmd, out long id) && id > 0)
                 {
-                    var farmer = Game1.GetPlayer(id, true);
                     Config.FavoredPlayerId = id;
                     SaveConfig();
-                    Mon.Log($"[眷者] 已设置为 {farmer?.Name ?? "未知"} [ID: {id}]", LogLevel.Info);
+                    string name = PlayerName(id);
+                    bool online = Game1.GetPlayer(id, true) != null;
+                    Mon.Log(name != null
+                        ? $"[眷者] 已设置为 {name} [ID: {id}]{(online ? "" : " (离线)")}"
+                        : $"[眷者] 已设置 [ID: {id}] (玩家不存在)", LogLevel.Info);
                 }
                 else Mon.Log("[错误] 无效的玩家 ID", LogLevel.Warn);
                 break;
@@ -362,14 +390,22 @@ public class ModEntry : Mod
 
     private static void ListPlayers()
     {
-        var farmers = Game1.getOnlineFarmers();
-        if (!farmers.Any())
+        // 列出所有存档玩家（包括离线 farmhand），并标注在线状态
+        var all = Game1.getAllFarmers()?.Where(f => f != null).ToList();
+        if (all == null || all.Count == 0)
         {
-            Mon.Log("[列表] 当前无在线玩家", LogLevel.Info);
+            Mon.Log("[列表] 无玩家数据", LogLevel.Info);
             return;
         }
-        foreach (var f in farmers)
-            Mon.Log($"  {f.Name} [ID: {f.UniqueMultiplayerID}]", LogLevel.Info);
+        var onlineIds = new HashSet<long>(Game1.getOnlineFarmers()
+            .Where(f => f != null)
+            .Select(f => f.UniqueMultiplayerID));
+        Mon.Log($"[列表] 共 {all.Count} 名玩家（在线 {onlineIds.Count}）", LogLevel.Info);
+        foreach (var f in all)
+        {
+            bool online = onlineIds.Contains(f.UniqueMultiplayerID);
+            Mon.Log($"  {f.Name} [ID: {f.UniqueMultiplayerID}]{(online ? "" : " (离线)")}", LogLevel.Info);
+        }
     }
 
     private static void GiveItem(string _, string[] args)
@@ -1342,8 +1378,8 @@ public class ModEntry : Mod
                 Mon.Log($"[无限送礼] 状态{(Config.InfiniteGiftsEnabled ? "开启" : "关闭")}：白名单 {Config.InfiniteGiftsWhitelist.Count} 人", LogLevel.Info);
                 foreach (var id in Config.InfiniteGiftsWhitelist)
                 {
-                    var f = Game1.GetPlayer(id, true);
-                    Mon.Log($"  {f?.Name ?? "未知"} [ID: {id}]", LogLevel.Info);
+                    bool online = Game1.GetPlayer(id, true) != null;
+                    Mon.Log($"  {PlayerName(id) ?? $"ID:{id}"} [ID: {id}]{(online ? "" : " (离线)")}", LogLevel.Info);
                 }
                 break;
             case "add":
@@ -1355,7 +1391,7 @@ public class ModEntry : Mod
                     if (!Config.InfiniteGiftsWhitelist.Contains(id))
                         Config.InfiniteGiftsWhitelist.Add(id);
                     SaveConfig();
-                    Mon.Log($"[无限送礼] 已添加 {Game1.GetPlayer(id, true)?.Name ?? "未知"} [ID: {id}]", LogLevel.Info);
+                    Mon.Log($"[无限送礼] 已添加 {PlayerName(id) ?? $"ID:{id}"} [ID: {id}]", LogLevel.Info);
                     break;
                 }
             case "remove":
@@ -1366,9 +1402,9 @@ public class ModEntry : Mod
                     if (Config.InfiniteGiftsWhitelist.Remove(id))
                     {
                         SaveConfig();
-                        Mon.Log($"[无限送礼] 已移除 [ID: {id}]", LogLevel.Info);
+                        Mon.Log($"[无限送礼] 已移除 {PlayerName(id) ?? $"ID:{id}"} [ID: {id}]", LogLevel.Info);
                     }
-                    else Mon.Log($"[无限送礼] [ID: {id}] 不在白名单", LogLevel.Warn);
+                    else Mon.Log($"[无限送礼] {PlayerName(id) ?? $"ID:{id}"} [ID: {id}] 不在白名单", LogLevel.Warn);
                     break;
                 }
             case "clear":
