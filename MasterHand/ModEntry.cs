@@ -1008,7 +1008,7 @@ public class ModEntry : Mod
         // 取建筑数据
         if (!Building.TryGetData(typeId, out BuildingData data) || data == null)
         {
-            Mon.Log($"[错误] 找不到建筑 '{typeId}'，使用 mh_buildings 查询可用建筑", LogLevel.Warn);
+            Mon.Log($"[错误] 找不到建筑 '{typeId}' 使用 mh_buildings 查询可用建筑", LogLevel.Warn);
             return;
         }
 
@@ -1016,7 +1016,7 @@ public class ModEntry : Mod
         string[] forbiddenIds = { "Farmhouse", "Greenhouse" };
         if (forbiddenIds.Contains(typeId, StringComparer.OrdinalIgnoreCase))
         {
-            Mon.Log($"[错误] 建筑 '{typeId}' 为场地原生唯一建筑，禁止建造", LogLevel.Warn);
+            Mon.Log($"[错误] 建筑 '{typeId}' 为场地原生唯一建筑", LogLevel.Warn);
             return;
         }
 
@@ -1151,7 +1151,7 @@ public class ModEntry : Mod
         return false;
     }
 
-    // 获取目标建筑升级链上所有前置类型（支持跨级升级）
+    // 获取目标建筑升级链上所有前置类型
     private static HashSet<string> GetUpgradePrerequisites(string typeId)
     {
         var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -1222,10 +1222,10 @@ public class ModEntry : Mod
         {
             Mon.Log("用法: mh_upgrade <目标建筑类型> [near <玩家ID>|<玩家ID>] [wait] [loc <地点>]", LogLevel.Info);
             Mon.Log("说明: 把已有的升级前建筑升级为目标建筑", LogLevel.Info);
-            Mon.Log("      目标建筑类型必须是升级类建筑（BuildingToUpgrade 不为空）", LogLevel.Info);
-            Mon.Log("      若指定 near，会升级最近的同类建筑；否则升级找到的第一个", LogLevel.Info);
+            Mon.Log("      目标建筑类型必须是升级类建筑", LogLevel.Info);
+            Mon.Log("      若指定 near 会升级最近的同类建筑；否则升级找到的第一个", LogLevel.Info);
             Mon.Log("示例:", LogLevel.Info);
-            Mon.Log("  mh_upgrade \"Big Coop\"              升级第一个 Coop 为大鸡舍", LogLevel.Info);
+            Mon.Log("  mh_upgrade \"Big Coop\"               升级第一个 Coop 为大鸡舍", LogLevel.Info);
             Mon.Log("  mh_upgrade \"Big Coop\" near admin    升级主机附近的 Coop", LogLevel.Info);
             Mon.Log("  mh_upgrade \"Big Barn\" near 1145140  升级指定玩家附近的 Barn", LogLevel.Info);
             Mon.Log("  mh_upgrade \"Big Coop\" wait          走正常工期(不即时)", LogLevel.Info);
@@ -1257,14 +1257,13 @@ public class ModEntry : Mod
 
         if (!Building.TryGetData(typeId, out BuildingData data) || data == null)
         {
-            Mon.Log($"[错误] 找不到建筑 '{typeId}'，使用 mh_buildings 查询可用建筑", LogLevel.Warn);
+            Mon.Log($"[错误] 找不到建筑 '{typeId}' 使用 mh_buildings 查询可用建筑", LogLevel.Warn);
             return;
         }
 
         if (string.IsNullOrEmpty(data.BuildingToUpgrade))
         {
-            Mon.Log($"[错误] '{typeId}' 不是升级类建筑（BuildingToUpgrade 为空），无法使用 mh_upgrade", LogLevel.Warn);
-            Mon.Log("       请直接使用 mh_build 建造", LogLevel.Info);
+            Mon.Log($"[错误] '{typeId}' 不是升级类建筑", LogLevel.Warn);
             return;
         }
 
@@ -1317,7 +1316,7 @@ public class ModEntry : Mod
 
         if (!int.TryParse(args[1], out int offX) || !int.TryParse(args[2], out int offY))
         {
-            Mon.Log("[错误] 偏移 x/y 必须是整数(瓦片数)", LogLevel.Warn);
+            Mon.Log("[错误] 偏移 x/y 必须是整数", LogLevel.Warn);
             return;
         }
 
@@ -1332,7 +1331,7 @@ public class ModEntry : Mod
         }
         if (!loc.IsBuildableLocation())
         {
-            Mon.Log($"[错误] 玩家当前地点 '{loc.NameOrUniqueName}' 不允许建造建筑；请先到允许建造的地点再执行", LogLevel.Warn);
+            Mon.Log($"[错误] 玩家当前地点 '{loc.NameOrUniqueName}' 不允许建造建筑", LogLevel.Warn);
             return;
         }
 
@@ -1347,7 +1346,7 @@ public class ModEntry : Mod
 
         if (!Building.TryGetData(typeId, out BuildingData data) || data == null)
         {
-            Mon.Log($"[错误] 找不到建筑 '{typeId}'，使用 mh_buildings 查询可用建筑", LogLevel.Warn);
+            Mon.Log($"[错误] 找不到建筑 '{typeId}' 使用 mh_buildings 查询可用建筑", LogLevel.Warn);
             return;
         }
 
@@ -1355,7 +1354,7 @@ public class ModEntry : Mod
         string[] forbiddenIds = { "Farmhouse", "Greenhouse" };
         if (forbiddenIds.Contains(typeId, StringComparer.OrdinalIgnoreCase))
         {
-            Mon.Log($"[错误] 建筑 '{typeId}' 为场地原生唯一建筑，禁止建造", LogLevel.Warn);
+            Mon.Log($"[错误] 建筑 '{typeId}' 为场地原生唯一建筑", LogLevel.Warn);
             return;
         }
 
@@ -1392,7 +1391,7 @@ public class ModEntry : Mod
                     && (int)f.Tile.X >= tileX && (int)f.Tile.X < tileX + w
                     && (int)f.Tile.Y >= tileY && (int)f.Tile.Y < tileY + h)
                 .Select(f => f.Name));
-            Mon.Log($"[错误] 位置 ({tileX},{tileY}) 内有玩家 [{trapNames}]，建造会卡死玩家；请调整偏移或让玩家移开", LogLevel.Warn);
+            Mon.Log($"[错误] 位置 ({tileX},{tileY}) 内有玩家 [{trapNames}] 建造会卡死玩家；请调整偏移或让玩家移开", LogLevel.Warn);
             return;
         }
         if (!CanPlaceBuilding(loc, data, tile))
