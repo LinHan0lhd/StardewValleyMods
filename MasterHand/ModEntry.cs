@@ -1261,6 +1261,17 @@ public class ModEntry : Mod
             Mon.Log($"[错误] 偏移后位置 ({tileX},{tileY}) 超出可建造区域 {rect} (建筑 {w}x{h})", LogLevel.Warn);
             return;
         }
+        // 防卡死优先提示：建筑主占地内有玩家则拒绝（避免把玩家盖进建筑里）
+        if (WouldTrapPlayer(loc, tile, w, h))
+        {
+            string trapNames = string.Join(", ", Game1.getOnlineFarmers()
+                .Where(f => f != null && f.currentLocation == loc
+                    && (int)f.Tile.X >= tileX && (int)f.Tile.X < tileX + w
+                    && (int)f.Tile.Y >= tileY && (int)f.Tile.Y < tileY + h)
+                .Select(f => f.Name));
+            Mon.Log($"[错误] 位置 ({tileX},{tileY}) 内有玩家 [{trapNames}]，建造会卡死玩家；请调整偏移或让玩家移开", LogLevel.Warn);
+            return;
+        }
         if (!CanPlaceBuilding(loc, data, tile))
         {
             Mon.Log($"[错误] 位置 ({tileX},{tileY}) 无法放置 {displayName} (有障碍物/地形不可建/门下方不可通行)", LogLevel.Warn);
@@ -1339,7 +1350,30 @@ public class ModEntry : Mod
             if (!loc.isBuildable(doorPos, true) && !loc.isPath(doorPos)) return false;
         }
 
+        // 防卡死：建筑主占地内不得有任何在线玩家（包括 mh_buildat 偏移 0,0 脚下场景）
+        if (WouldTrapPlayer(loc, tile, w, h)) return false;
+
         return true;
+    }
+
+    /// <summary>
+    /// 检查建筑主占地范围内是否有在线玩家（同地点）。
+    /// 用于防止把建筑盖在玩家头上导致卡死。
+    /// </summary>
+    private static bool WouldTrapPlayer(GameLocation loc, Vector2 tile, int w, int h)
+    {
+        var farmers = Game1.getOnlineFarmers();
+        if (farmers == null) return false;
+        foreach (var f in farmers)
+        {
+            if (f == null) continue;
+            if (f.currentLocation != loc) continue;
+            int px = (int)f.Tile.X;
+            int py = (int)f.Tile.Y;
+            if (px >= tile.X && px < tile.X + w && py >= tile.Y && py < tile.Y + h)
+                return true;
+        }
+        return false;
     }
 
     private static IEnumerable<Vector2> EnumerateSpiralTiles(Vector2 center, int maxRadius)
