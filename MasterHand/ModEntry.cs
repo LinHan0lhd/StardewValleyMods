@@ -225,6 +225,12 @@ public class ModEntry : Mod
             }
             return FavoredPlayerId;
         }
+        if (arg.Equals("admin", StringComparison.OrdinalIgnoreCase))
+        {
+            long hostId = Game1.player?.UniqueMultiplayerID ?? 0;
+            if (hostId == 0 && logError) Mon.Log("[错误] 主机玩家不可用", LogLevel.Warn);
+            return hostId;
+        }
         if (long.TryParse(arg, out long id) && id > 0)
             return id;
         if (logError) Mon.Log($"[错误] 无效的玩家ID: {arg}", LogLevel.Warn);
@@ -416,6 +422,7 @@ public class ModEntry : Mod
         if (!RequireWorldReady() || args.Length < 2)
         {
             Mon.Log("用法: mh_give <玩家ID> <物品ID> [数量] [品质]", LogLevel.Info);
+            Mon.Log("      玩家ID 可填: 数字ID | ~ (眷者) | admin (主机)", LogLevel.Info);
             return;
         }
         long playerId = ResolvePlayerId(args[0]);
@@ -441,6 +448,7 @@ public class ModEntry : Mod
         if (!RequireWorldReady() || args.Length == 0)
         {
             Mon.Log("用法: mh_poolitem <玩家ID> <物品名称> [数量] [品质] [reset] | list", LogLevel.Info);
+            Mon.Log("      玩家ID 可填: 数字ID | ~ (眷者) | admin (主机)", LogLevel.Info);
             return;
         }
 
@@ -791,6 +799,7 @@ public class ModEntry : Mod
         if (args.Length < 3)
         {
             Mon.Log("用法: mh_demolish <玩家ID> <偏移x> <偏移y>", LogLevel.Info);
+            Mon.Log("      玩家ID 可填: 数字ID | ~ (眷者) | admin (主机)", LogLevel.Info);
             return;
         }
 
@@ -913,6 +922,7 @@ public class ModEntry : Mod
         {
             Mon.Log("用法: mh_build <建筑ID> [near <玩家ID>|<玩家ID>] [wait] [loc <地点>]", LogLevel.Info);
             Mon.Log("常见地点: Farm(农场) | IslandWest(姜岛农场) | Forest(农场森林) | Mountain(山顶) | Beach(沙滩) | Town(小镇)", LogLevel.Info);
+            Mon.Log("玩家ID 可填: 数字ID | ~ (眷者) | admin (主机)", LogLevel.Info);
             Mon.Log("小屋风格: Stone Cabin | Log Cabin | Plank Cabin | Rustic Cabin | Trailer Cabin | Neighbor Cabin | Beach Cabin", LogLevel.Info);
             Mon.Log("示例:", LogLevel.Info);
             Mon.Log("  mh_build Mill                       自动在农场找空地建磨坊(即时)", LogLevel.Info);
@@ -920,6 +930,7 @@ public class ModEntry : Mod
             Mon.Log("  mh_build \"Stone Cabin\"               建石屋(指定风格)", LogLevel.Info);
             Mon.Log("  mh_build Silo near 765611989         在指定玩家附近找空地", LogLevel.Info);
             Mon.Log("  mh_build Silo 765611989              上方指令简写形式", LogLevel.Info);
+            Mon.Log("  mh_build Silo near admin             在主机附近找空地", LogLevel.Info);
             Mon.Log("  mh_build Mill wait                   走正常工期(不即时)", LogLevel.Info);
             Mon.Log("  mh_build Mill loc Farm               指定建造地点(默认 Farm)", LogLevel.Info);
             Mon.Log("  mh_build \"Shipping Bin\" loc IslandWest  在姜岛农场建额外出货箱", LogLevel.Info);
@@ -1151,11 +1162,13 @@ public class ModEntry : Mod
             Mon.Log("用法: mh_buildat <玩家ID> <偏移x> <偏移y> <建筑ID> [wait]", LogLevel.Info);
             Mon.Log("说明: 以玩家当前所在瓦片为基准，偏移 (x,y) 放置建筑左上角", LogLevel.Info);
             Mon.Log("      坐标系统: (0,0)=地图左上角，X 向右为正，Y 向下为正", LogLevel.Info);
+            Mon.Log("      玩家ID 可填: 数字ID | ~ (眷者) | admin (主机)", LogLevel.Info);
             Mon.Log("示例:", LogLevel.Info);
             Mon.Log("  mh_buildat 765611989 2 -3 Mill       在玩家脚下 +2,-3 瓦片处建磨坊", LogLevel.Info);
             Mon.Log("  mh_buildat 765611989 0 0 \"Stone Cabin\" 玩家脚下(0,0)建石屋", LogLevel.Info);
             Mon.Log("  mh_buildat 765611989 0 0 Silo wait     玩家脚下建筒仓(走正常工期)", LogLevel.Info);
             Mon.Log("  mh_buildat ~ 1 2 \"Shipping Bin\"        以眷者为基准偏移(1,2)建出货箱", LogLevel.Info);
+            Mon.Log("  mh_buildat admin 0 0 Mill              以主机为基准脚下建磨坊", LogLevel.Info);
             return;
         }
 
