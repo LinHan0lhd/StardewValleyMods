@@ -857,21 +857,37 @@ public class ModEntry : Mod
         string filter = args.Length > 0 ? string.Join(" ", args).ToLowerInvariant() : null;
         bool any = false;
 
+        // 黑名单：场地原生唯一建筑不列出
+        var forbidden = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Farmhouse", "Greenhouse" };
+
+        // 与游戏 CarpenterMenu 一致：通过 TokenParser 解析 BuildingSkin.Name 获取本地化中文名
+        bool MatchFilter(params string[] texts)
+        {
+            if (filter == null) return true;
+            foreach (var t in texts)
+            {
+                if (t != null && t.ToLowerInvariant().Contains(filter)) return true;
+            }
+            return false;
+        }
+
         Mon.Log("=== 建筑列表 ===", LogLevel.Info);
         foreach (KeyValuePair<string, BuildingData> pair in Game1.buildingData)
         {
             string id = pair.Key;
             BuildingData data = pair.Value;
             if (data == null) continue;
+            if (forbidden.Contains(id)) continue;
 
             string displayName = TokenParser.ParseText(data.Name, null, null, null) ?? id;
             string desc = TokenParser.ParseText(data.Description, null, null, null);
 
-            // 过滤：同时匹配名称、英文ID、描述
+            // 过滤：同时匹配名称、英文ID、描述、皮肤
             if (filter != null
                 && !displayName.ToLowerInvariant().Contains(filter)
                 && !id.ToLowerInvariant().Contains(filter)
-                && (desc == null || !desc.ToLowerInvariant().Contains(filter)))
+                && (desc == null || !desc.ToLowerInvariant().Contains(filter))
+                && !HasMatchingSkin(data, filter))
                 continue;
 
             string cn = displayName == id ? displayName : $"{displayName} / {id}";
@@ -884,31 +900,49 @@ public class ModEntry : Mod
             Mon.Log($"  [{cn}] 大小:{size} 费用:{cost} 工期:{days} 建造者:{builder}{upgrade}", LogLevel.Info);
             any = true;
 
-            // Cabin 额外列出 7 种风格（可直接用 mh_build "Stone Cabin" 指定）
-            if (id == "Cabin" && (filter == null
-                || "stone".Contains(filter) || "log".Contains(filter) || "plank".Contains(filter)
-                || "rustic".Contains(filter) || "trailer".Contains(filter) || "neighbor".Contains(filter)
-                || "beach".Contains(filter)
-                || displayName.ToLowerInvariant().Contains(filter)))
+            // 列出该建筑所有可用皮肤（中文名来自 BuildingSkin.Name 本地化）
+            // 与 CarpenterMenu 一致：通过 TokenParser 解析 skin.Name 取中文名
+            if (data.Skins != null && data.Skins.Count > 0)
             {
-                string[] cabinStyles = { "Stone Cabin", "Log Cabin", "Plank Cabin", "Rustic Cabin", "Trailer Cabin", "Neighbor Cabin", "Beach Cabin" };
-                foreach (string s in cabinStyles)
+                foreach (BuildingSkin skin in data.Skins)
                 {
-                    if (filter == null || s.ToLowerInvariant().Contains(filter)
-                        || "石".Contains(filter) || "木".Contains(filter) || "小屋".Contains(filter) || "风格".Contains(filter))
-                    {
-                        string styleCn = TokenParser.ParseText($"[{s}]", null, null, null);
-                        styleCn = styleCn != null && styleCn.StartsWith("[") && styleCn.EndsWith("]")
-                            ? styleCn.Substring(1, styleCn.Length - 2) : s;
-                        Mon.Log($"    风格: {styleCn} / {s}  (用 mh_build \"{s}\" 直接建造)", LogLevel.Info);
-                    }
+                    if (skin == null) continue;
+                    // 与游戏一致的可见性判断：满足 Condition 才显示
+                    if (!string.IsNullOrEmpty(skin.Condition)
+                        && !GameStateQuery.CheckConditions(skin.Condition, Game1.getFarm(), null, null, null, null, null))
+                        continue;
+
+                    // 中文名：skin.Name 是 tokenizable，回退到 data.Name，再回退到 skin.Id
+                    string skinNameToken = skin.Name ?? data.Name;
+                    string skinCn = TokenParser.ParseText(skinNameToken, null, null, null);
+                    if (string.IsNullOrWhiteSpace(skinCn) || skinCn == skinNameToken)
+                        skinCn = skin.Id;
+
+                    if (!MatchFilter(skin.Id, skinCn)) continue;
+
+                    string tag = skin.ShowAsSeparateConstructionEntry ? " [独立建造]" : "";
+                    Mon.Log($"    风格: {skinCn} / {skin.Id}{tag}  (用 mh_build \"{skin.Id}\" 直接建造)", LogLevel.Info);
                 }
             }
         }
         if (!any)
             Mon.Log(filter == null ? "  (无建筑数据)" : $"  (未匹配到包含 '{filter}' 的建筑)", LogLevel.Info);
         else
-            Mon.Log(">> 提示: 使用 mh_build <英文ID> 小屋风格可直接当 ID 使用", LogLevel.Info);
+            Mon.Log(">> 提示: 小屋风格可直接当 ID 使用，如 mh_build \"Stone Cabin\"", LogLevel.Info);
+    }
+
+    // 判断建筑是否拥有匹配过滤词的皮肤（用于过滤阶段）
+    private static bool HasMatchingSkin(BuildingData data, string filter)
+    {
+        if (data?.Skins == null || string.IsNullOrEmpty(filter)) return false;
+        foreach (BuildingSkin skin in data.Skins)
+        {
+            if (skin == null) continue;
+            string skinCn = TokenParser.ParseText(skin.Name ?? data.Name, null, null, null);
+            if (skin.Id != null && skin.Id.ToLowerInvariant().Contains(filter)) return true;
+            if (skinCn != null && skinCn.ToLowerInvariant().Contains(filter)) return true;
+        }
+        return false;
     }
 
     private void BuildBuilding(string _, string[] args)
