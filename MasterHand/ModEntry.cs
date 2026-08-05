@@ -140,8 +140,39 @@ public class ModEntry : Mod
     {
         var farmer = Game1.GetPlayer(id, true);
         if (farmer == null && logError)
-            Mon.Log($"[警告] 玩家 ID {id} 不在线或不存在", LogLevel.Warn);
+        {
+            // 离线时也尝试从所有 farmer 中取名称用于提示
+            var any = GetAnyPlayer(id, false);
+            Mon.Log(any != null
+                ? $"[警告] 玩家 {any.Name} [ID: {id}] 当前不在线"
+                : $"[警告] 玩家 ID {id} 不存在", LogLevel.Warn);
+        }
         return farmer;
+    }
+
+    private static Farmer GetAnyPlayer(long id, bool logError = true)
+    {
+        foreach (var f in Game1.getAllFarmers())
+        {
+            if (f != null && f.UniqueMultiplayerID == id)
+                return f;
+        }
+        if (logError)
+            Mon.Log($"[警告] 玩家 ID {id} 不存在", LogLevel.Warn);
+        return null;
+    }
+
+    private static Farmer GetPlayerByName(string name, bool logError = true)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        foreach (var f in Game1.getAllFarmers())
+        {
+            if (f != null && string.Equals(f.Name, name, StringComparison.OrdinalIgnoreCase))
+                return f;
+        }
+        if (logError)
+            Mon.Log($"[警告] 找不到名为 '{name}' 的玩家", LogLevel.Warn);
+        return null;
     }
 
     private static int? TryParseIntArg(string[] args, int index, int? min = null, int? max = null, int? fallback = null)
