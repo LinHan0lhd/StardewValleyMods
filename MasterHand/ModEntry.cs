@@ -88,7 +88,7 @@ public class ModEntry : Mod
         helper.ConsoleCommands.Add("mh_demolish", "拆除指定玩家偏移位置的建筑 > mh_demolish <玩家ID> <偏移x> <偏移y>", DemolishBuilding);
         helper.ConsoleCommands.Add("mh_buildings", "查询建筑列表 (中文名+英文ID) > mh_buildings [关键词]", ListBuildings);
         helper.ConsoleCommands.Add("mh_build", "自动查询空地建造建筑 > mh_build <建筑ID> [near <玩家ID>|<玩家ID>] [wait] [loc <地点>]", BuildBuilding);
-        helper.ConsoleCommands.Add("mh_buildat", "精准建造(以玩家位置为参考，瓦片偏移) > mh_buildat <玩家ID> <偏移x> <偏移y> <建筑ID> [wait]", BuildBuildingAt);
+        helper.ConsoleCommands.Add("mh_buildat", "以玩家位置建造建筑 > mh_buildat <玩家ID> <偏移x> <偏移y> <建筑ID> [wait]", BuildBuildingAt);
 
         // 事件
         helper.Events.GameLoop.SaveLoaded += (_, _) => ApplyInfiniteGiftsToAllWhitelistedFarmers("存档加载");
@@ -162,10 +162,6 @@ public class ModEntry : Mod
         return null;
     }
 
-    /// <summary>
-    /// 取玩家显示名：在线或离线存档均可（基于 Game1.getAllFarmers()），找不到返回 null。
-    /// 用于日志/UI 显示，避免离线时只能输出"未知"。
-    /// </summary>
     private static string PlayerName(long id)
     {
         if (id <= 0) return null;
@@ -403,7 +399,7 @@ public class ModEntry : Mod
             .ToList();
         if (all == null || all.Count == 0)
         {
-            Mon.Log("[列表] 无其他玩家（仅主机）", LogLevel.Info);
+            Mon.Log("[列表] 不存在其他在线玩家", LogLevel.Info);
             return;
         }
         var onlineIds = new HashSet<long>(Game1.getOnlineFarmers()
@@ -823,7 +819,7 @@ public class ModEntry : Mod
         GameLocation loc = farmer.currentLocation;
         Building b = loc.getBuildingAt(targetTile);
 
-        // 如果当前地图没有，回退到主农场
+        // 回退到主农场
         if (b == null && loc != Game1.getFarm())
         {
             loc = Game1.getFarm();
@@ -841,13 +837,13 @@ public class ModEntry : Mod
         if ((bType == "Farmhouse" && b.HasIndoorsName("FarmHouse"))
             || (bType == "Greenhouse" && b.HasIndoorsName("Greenhouse")))
         {
-            Mon.Log("[错误] 该建筑不允许拆除", LogLevel.Warn);
+            Mon.Log("[错误] 该类建筑不允许拆除", LogLevel.Warn);
             return;
         }
 
         // 走原生拆除流程
-        b.BeforeDemolish();                    // 收集任务物品 → 失物招领
-        bool ok = loc.destroyStructure(b);     // 原生拆除（Remove + performActionOnDemolition + 网络同步）
+        b.BeforeDemolish();
+        bool ok = loc.destroyStructure(b);
 
         Mon.Log(ok
             ? $"[拆除] 已拆除 {farmer.Name} 偏移 ({offX},{offY}) 处的 {bType} @({tx},{ty})"
@@ -861,7 +857,7 @@ public class ModEntry : Mod
         string filter = args.Length > 0 ? string.Join(" ", args).ToLowerInvariant() : null;
         bool any = false;
 
-        Mon.Log("=== 建筑列表 (中文名 / 英文ID) ===", LogLevel.Info);
+        Mon.Log("=== 建筑列表 ===", LogLevel.Info);
         foreach (KeyValuePair<string, BuildingData> pair in Game1.buildingData)
         {
             string id = pair.Key;
@@ -871,7 +867,7 @@ public class ModEntry : Mod
             string displayName = TokenParser.ParseText(data.Name, null, null, null) ?? id;
             string desc = TokenParser.ParseText(data.Description, null, null, null);
 
-            // 过滤：同时匹配中文名、英文ID、描述
+            // 过滤：同时匹配名称、英文ID、描述
             if (filter != null
                 && !displayName.ToLowerInvariant().Contains(filter)
                 && !id.ToLowerInvariant().Contains(filter)
@@ -912,7 +908,7 @@ public class ModEntry : Mod
         if (!any)
             Mon.Log(filter == null ? "  (无建筑数据)" : $"  (未匹配到包含 '{filter}' 的建筑)", LogLevel.Info);
         else
-            Mon.Log("提示: 使用 mh_build <英文ID> 自动选址建造，小屋风格可直接当 ID 使用", LogLevel.Info);
+            Mon.Log(">> 提示: 使用 mh_build <英文ID> 小屋风格可直接当 ID 使用", LogLevel.Info);
     }
 
     private void BuildBuilding(string _, string[] args)
@@ -921,18 +917,18 @@ public class ModEntry : Mod
         if (args.Length == 0)
         {
             Mon.Log("用法: mh_build <建筑ID> [near <玩家ID>|<玩家ID>] [wait] [loc <地点>]", LogLevel.Info);
-            Mon.Log("常见地点: Farm(农场) | IslandWest(姜岛农场) | Forest(农场森林) | Mountain(山顶) | Beach(沙滩) | Town(小镇)", LogLevel.Info);
+            Mon.Log("常见地点: Farm(农场) | IslandWest(姜岛农场)", LogLevel.Info);
             Mon.Log("玩家ID 可填: 数字ID | ~ (眷者) | admin (主机)", LogLevel.Info);
             Mon.Log("小屋风格: Stone Cabin | Log Cabin | Plank Cabin | Rustic Cabin | Trailer Cabin | Neighbor Cabin | Beach Cabin", LogLevel.Info);
             Mon.Log("示例:", LogLevel.Info);
             Mon.Log("  mh_build Mill                       自动在农场找空地建磨坊(即时)", LogLevel.Info);
-            Mon.Log("  mh_build Cabin                       建小屋(自动按现有数量循环分配风格)", LogLevel.Info);
-            Mon.Log("  mh_build \"Stone Cabin\"               建石屋(指定风格)", LogLevel.Info);
-            Mon.Log("  mh_build Silo near 765611989         在指定玩家附近找空地", LogLevel.Info);
-            Mon.Log("  mh_build Silo 765611989              上方指令简写形式", LogLevel.Info);
-            Mon.Log("  mh_build Silo near admin             在主机附近找空地", LogLevel.Info);
-            Mon.Log("  mh_build Mill wait                   走正常工期(不即时)", LogLevel.Info);
-            Mon.Log("  mh_build Mill loc Farm               指定建造地点(默认 Farm)", LogLevel.Info);
+            Mon.Log("  mh_build Cabin                      建小屋(自动按现有数量循环分配风格)", LogLevel.Info);
+            Mon.Log("  mh_build \"Stone Cabin\"            建石屋(指定风格)", LogLevel.Info);
+            Mon.Log("  mh_build Silo near 1145140          在指定玩家附近找空地", LogLevel.Info);
+            Mon.Log("  mh_build Silo 1145140               上方指令简写形式", LogLevel.Info);
+            Mon.Log("  mh_build Silo near admin            在主机附近找空地", LogLevel.Info);
+            Mon.Log("  mh_build Mill wait                  走正常工期(不即时)", LogLevel.Info);
+            Mon.Log("  mh_build Mill loc Farm              指定建造地点(默认 Farm)", LogLevel.Info);
             Mon.Log("  mh_build \"Shipping Bin\" loc IslandWest  在姜岛农场建额外出货箱", LogLevel.Info);
             return;
         }
@@ -975,7 +971,7 @@ public class ModEntry : Mod
             }
         }
 
-        // 允许风格小屋作为别名（Stone Cabin、Log Cabin 等），统一映射为 Cabin + 指定 skinId
+        // 允许风格小屋作为别名
         string forceSkinId = null;
         string[] cabinStyles = { "Stone Cabin", "Log Cabin", "Plank Cabin", "Rustic Cabin", "Trailer Cabin", "Neighbor Cabin", "Beach Cabin" };
         if (cabinStyles.Contains(typeId, StringComparer.OrdinalIgnoreCase))
@@ -991,7 +987,7 @@ public class ModEntry : Mod
             return;
         }
 
-        // 黑名单：禁止建造唯一建筑（农舍/温室只能原生一个，多出来的无法进入或无意义）
+        // 黑名单：禁止建造唯一建筑
         string[] forbiddenIds = { "Farmhouse", "Greenhouse" };
         if (forbiddenIds.Contains(typeId, StringComparer.OrdinalIgnoreCase))
         {
@@ -1019,11 +1015,11 @@ public class ModEntry : Mod
             return;
         }
 
-        // 游戏内建 BuildCondition（例如：需要前置建筑、已存在唯一建筑时不允许再建）
+        // 游戏内建 BuildCondition
         if (!string.IsNullOrEmpty(data.BuildCondition)
             && !GameStateQuery.CheckConditions(data.BuildCondition, loc, Game1.player, null, null, null, null))
         {
-            Mon.Log($"[错误] 建筑 '{typeId}' 不满足建造条件，已被游戏规则阻止（BuildCondition 未通过）", LogLevel.Warn);
+            Mon.Log($"[错误] 建筑 '{typeId}' 不满足建造条件", LogLevel.Warn);
             return;
         }
 
@@ -1031,7 +1027,7 @@ public class ModEntry : Mod
         if (!string.IsNullOrEmpty(data.BuildingToUpgrade)
             && loc.getNumberBuildingsConstructed(data.BuildingToUpgrade, false) == 0)
         {
-            Mon.Log($"[错误] 建筑 '{typeId}' 为升级建筑，需先建造 {data.BuildingToUpgrade}", LogLevel.Warn);
+            Mon.Log($"[错误] 建筑 '{typeId}' 为升级建筑 & 需先建造 {data.BuildingToUpgrade}", LogLevel.Warn);
             return;
         }
 
@@ -1056,7 +1052,7 @@ public class ModEntry : Mod
             center = GetBuildableCenter(loc, data);
         }
 
-        // Cabin 自动分配风格（用户未通过别名指定时，按 Farm 现有 Cabin 数循环选择，与 BuildStartingCabins 逻辑基本一致）
+        // Cabin 自动分配风格
         bool isCabin = typeId.Equals("Cabin", StringComparison.OrdinalIgnoreCase);
         if (isCabin && forceSkinId == null)
         {
@@ -1075,7 +1071,7 @@ public class ModEntry : Mod
         Building built = null;
         bool foundSpot = false;
 
-        // 阶段 1：以起点为中心螺旋搜索（坐标 (0,0)=左上角，X 右正、Y 下正；地图瓦片最大 0~255 即 0xFF）
+        // 阶段 1：以起点为中心螺旋搜索
         const int spiralRadius = 255;
         foreach (Vector2 tile in EnumerateSpiralTiles(center, spiralRadius))
         {
@@ -1094,7 +1090,6 @@ public class ModEntry : Mod
             Rectangle rect = loc.GetBuildableRectangle();
             if (rect == Rectangle.Empty)
             {
-                // 没限制时拿整个地图大小；瓦片坐标按字节存，最大 255×255
                 try { rect = new Rectangle(0, 0, Math.Min(255, loc.Map.Layers[0].LayerWidth), Math.Min(255, loc.Map.Layers[0].LayerHeight)); }
                 catch { rect = new Rectangle(0, 0, 255, 255); }
             }
@@ -1110,7 +1105,7 @@ public class ModEntry : Mod
                     }
                 }
             if (foundSpot)
-                Mon.Log("[建造] 螺旋搜索未命中，已在兜底扫描阶段找到空地", LogLevel.Trace);
+                Mon.Log("[建造] 螺旋搜索未命中 & 已在兜底扫描阶段找到空地", LogLevel.Trace);
         }
 
         if (!foundSpot)
@@ -1160,13 +1155,13 @@ public class ModEntry : Mod
         if (args.Length < 4)
         {
             Mon.Log("用法: mh_buildat <玩家ID> <偏移x> <偏移y> <建筑ID> [wait]", LogLevel.Info);
-            Mon.Log("说明: 以玩家当前所在瓦片为基准，偏移 (x,y) 放置建筑左上角", LogLevel.Info);
-            Mon.Log("      坐标系统: (0,0)=地图左上角，X 向右为正，Y 向下为正", LogLevel.Info);
+            Mon.Log("说明: 以玩家当前所在瓦片为基准并偏移 (x,y) 放置建筑左上角", LogLevel.Info);
+            Mon.Log("      坐标系统: (0,0)=地图左上角 | X 向右为正 | Y 向下为正", LogLevel.Info);
             Mon.Log("      玩家ID 可填: 数字ID | ~ (眷者) | admin (主机)", LogLevel.Info);
             Mon.Log("示例:", LogLevel.Info);
-            Mon.Log("  mh_buildat 765611989 2 -3 Mill       在玩家脚下 +2,-3 瓦片处建磨坊", LogLevel.Info);
-            Mon.Log("  mh_buildat 765611989 0 0 \"Stone Cabin\" 玩家脚下(0,0)建石屋", LogLevel.Info);
-            Mon.Log("  mh_buildat 765611989 0 0 Silo wait     玩家脚下建筒仓(走正常工期)", LogLevel.Info);
+            Mon.Log("  mh_buildat 1145140 2 -3 Mill       在玩家脚下 +2,-3 瓦片处建磨坊", LogLevel.Info);
+            Mon.Log("  mh_buildat 1145140 0 0 \"Stone Cabin\" 玩家脚下(0,0)建石屋", LogLevel.Info);
+            Mon.Log("  mh_buildat 1145140 0 0 Silo wait     玩家脚下建筒仓(走正常工期)", LogLevel.Info);
             Mon.Log("  mh_buildat ~ 1 2 \"Shipping Bin\"        以眷者为基准偏移(1,2)建出货箱", LogLevel.Info);
             Mon.Log("  mh_buildat admin 0 0 Mill              以主机为基准脚下建磨坊", LogLevel.Info);
             return;
