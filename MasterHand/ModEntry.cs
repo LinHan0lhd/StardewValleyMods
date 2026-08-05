@@ -921,10 +921,10 @@ public class ModEntry : Mod
         if (!any)
             Mon.Log(filter == null ? "  (无建筑数据)" : $"  (未匹配到包含 '{filter}' 的建筑)", LogLevel.Info);
         else
-            Mon.Log(">> 提示: 小屋风格可直接当 ID 使用，如 mh_build \"Stone Cabin\"", LogLevel.Info);
+            Mon.Log(">> 提示: 小屋风格可直接当 ID 使用", LogLevel.Info);
     }
 
-    // 判断建筑是否拥有匹配过滤词的皮肤（用于过滤阶段）
+    // 判断建筑是否拥有匹配过滤词的皮肤
     private static bool HasMatchingSkin(BuildingData data, string filter)
     {
         if (data?.Skins == null || string.IsNullOrEmpty(filter)) return false;
@@ -948,7 +948,6 @@ public class ModEntry : Mod
             Mon.Log("示例:", LogLevel.Info);
             Mon.Log("  mh_build Mill                       自动在农场找空地建磨坊(即时)", LogLevel.Info);
             Mon.Log("  mh_build Cabin                      建小屋(自动按现有数量循环分配风格)", LogLevel.Info);
-            Mon.Log("  mh_build \"Stone Cabin\"            建石屋(指定风格)", LogLevel.Info);
             Mon.Log("  mh_build Silo near 1145140          在指定玩家附近找空地", LogLevel.Info);
             Mon.Log("  mh_build Silo 1145140               上方指令简写形式", LogLevel.Info);
             Mon.Log("  mh_build Silo near admin            在主机附近找空地", LogLevel.Info);
@@ -1183,12 +1182,6 @@ public class ModEntry : Mod
             Mon.Log("说明: 以玩家当前所在瓦片为基准并偏移 (x,y) 放置建筑左上角", LogLevel.Info);
             Mon.Log("      坐标系统: (0,0)=地图左上角 | X 向右为正 | Y 向下为正", LogLevel.Info);
             Mon.Log("      玩家ID 可填: 数字ID | ~ (眷者) | admin (主机)", LogLevel.Info);
-            Mon.Log("示例:", LogLevel.Info);
-            Mon.Log("  mh_buildat 1145140 2 -3 Mill       在玩家脚下 +2,-3 瓦片处建磨坊", LogLevel.Info);
-            Mon.Log("  mh_buildat 1145140 0 0 \"Stone Cabin\" 玩家脚下(0,0)建石屋", LogLevel.Info);
-            Mon.Log("  mh_buildat 1145140 0 0 Silo wait     玩家脚下建筒仓(走正常工期)", LogLevel.Info);
-            Mon.Log("  mh_buildat ~ 1 2 \"Shipping Bin\"        以眷者为基准偏移(1,2)建出货箱", LogLevel.Info);
-            Mon.Log("  mh_buildat admin 0 0 Mill              以主机为基准脚下建磨坊", LogLevel.Info);
             return;
         }
 
@@ -1261,7 +1254,7 @@ public class ModEntry : Mod
             return;
         }
 
-        // Cabin 自动分配风格（未通过别名指定时）
+        // Cabin 自动分配风格
         bool isCabin = typeId.Equals("Cabin", StringComparison.OrdinalIgnoreCase);
         if (isCabin && forceSkinId == null)
         {
@@ -1286,7 +1279,7 @@ public class ModEntry : Mod
             Mon.Log($"[错误] 偏移后位置 ({tileX},{tileY}) 超出可建造区域 {rect} (建筑 {w}x{h})", LogLevel.Warn);
             return;
         }
-        // 防卡死优先提示：建筑主占地内有玩家则拒绝（避免把玩家盖进建筑里）
+        // 防卡死优先提示：建筑主占地内有玩家则拒绝
         if (WouldTrapPlayer(loc, tile, w, h))
         {
             string trapNames = string.Join(", ", Game1.getOnlineFarmers()
@@ -1375,16 +1368,12 @@ public class ModEntry : Mod
             if (!loc.isBuildable(doorPos, true) && !loc.isPath(doorPos)) return false;
         }
 
-        // 防卡死：建筑主占地内不得有任何在线玩家（包括 mh_buildat 偏移 0,0 脚下场景）
+        // 防卡死：建筑主占地内不得有任何在线玩家
         if (WouldTrapPlayer(loc, tile, w, h)) return false;
 
         return true;
     }
 
-    /// <summary>
-    /// 检查建筑主占地范围内是否有在线玩家（同地点）。
-    /// 用于防止把建筑盖在玩家头上导致卡死。
-    /// </summary>
     private static bool WouldTrapPlayer(GameLocation loc, Vector2 tile, int w, int h)
     {
         var farmers = Game1.getOnlineFarmers();
