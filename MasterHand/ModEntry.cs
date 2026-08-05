@@ -1159,11 +1159,9 @@ public class ModEntry : Mod
             Mon.Log("      坐标系统: (0,0)=地图左上角 | X 向右为正 | Y 向下为正", LogLevel.Info);
             Mon.Log("      玩家ID 可填: 数字ID | ~ (眷者) | admin (主机)", LogLevel.Info);
             Mon.Log("示例:", LogLevel.Info);
-            Mon.Log("  mh_buildat 1145140 2 -3 Mill       在玩家脚下 +2,-3 瓦片处建磨坊", LogLevel.Info);
-            Mon.Log("  mh_buildat 1145140 0 0 \"Stone Cabin\" 玩家脚下(0,0)建石屋", LogLevel.Info);
-            Mon.Log("  mh_buildat 1145140 0 0 Silo wait     玩家脚下建筒仓(走正常工期)", LogLevel.Info);
-            Mon.Log("  mh_buildat ~ 1 2 \"Shipping Bin\"        以眷者为基准偏移(1,2)建出货箱", LogLevel.Info);
-            Mon.Log("  mh_buildat admin 0 0 Mill              以主机为基准脚下建磨坊", LogLevel.Info);
+            Mon.Log("  mh_buildat 1145140 0 1 Mill       建磨坊（即时）", LogLevel.Info);
+            Mon.Log("  mh_buildat 1145140 0 1 Silo wait  建筒仓（不即时）", LogLevel.Info);
+            Mon.Log("  mh_buildat ~ 1 2 \"Shipping Bin\"  以眷者为基准偏移(1,2)建出货箱", LogLevel.Info);
             return;
         }
 
@@ -1174,7 +1172,7 @@ public class ModEntry : Mod
 
         if (!int.TryParse(args[1], out int offX) || !int.TryParse(args[2], out int offY))
         {
-            Mon.Log("[错误] 偏移 x/y 必须是整数(瓦片数)", LogLevel.Warn);
+            Mon.Log("[错误] 偏移 x/y 必须是整数", LogLevel.Warn);
             return;
         }
 
@@ -1226,17 +1224,17 @@ public class ModEntry : Mod
         if (!string.IsNullOrEmpty(data.BuildCondition)
             && !GameStateQuery.CheckConditions(data.BuildCondition, loc, Game1.player, null, null, null, null))
         {
-            Mon.Log($"[错误] 建筑 '{typeId}' 不满足建造条件（BuildCondition 未通过）", LogLevel.Warn);
+            Mon.Log($"[错误] 建筑 '{typeId}' 不满足建造条件", LogLevel.Warn);
             return;
         }
         if (!string.IsNullOrEmpty(data.BuildingToUpgrade)
             && loc.getNumberBuildingsConstructed(data.BuildingToUpgrade, false) == 0)
         {
-            Mon.Log($"[错误] 建筑 '{typeId}' 为升级建筑，需先建造 {data.BuildingToUpgrade}", LogLevel.Warn);
+            Mon.Log($"[错误] 建筑 '{typeId}' 为升级建筑 & 需先建造 {data.BuildingToUpgrade}", LogLevel.Warn);
             return;
         }
 
-        // Cabin 自动分配风格（未通过别名指定时）
+        // Cabin 自动分配风格
         bool isCabin = typeId.Equals("Cabin", StringComparison.OrdinalIgnoreCase);
         if (isCabin && forceSkinId == null)
         {
@@ -1261,7 +1259,7 @@ public class ModEntry : Mod
             Mon.Log($"[错误] 偏移后位置 ({tileX},{tileY}) 超出可建造区域 {rect} (建筑 {w}x{h})", LogLevel.Warn);
             return;
         }
-        // 防卡死优先提示：建筑主占地内有玩家则拒绝（避免把玩家盖进建筑里）
+        // 防卡死优先提示：建筑主占地内有玩家则拒绝
         if (WouldTrapPlayer(loc, tile, w, h))
         {
             string trapNames = string.Join(", ", Game1.getOnlineFarmers()
@@ -1269,7 +1267,7 @@ public class ModEntry : Mod
                     && (int)f.Tile.X >= tileX && (int)f.Tile.X < tileX + w
                     && (int)f.Tile.Y >= tileY && (int)f.Tile.Y < tileY + h)
                 .Select(f => f.Name));
-            Mon.Log($"[错误] 位置 ({tileX},{tileY}) 内有玩家 [{trapNames}]，建造会卡死玩家；请调整偏移或让玩家移开", LogLevel.Warn);
+            Mon.Log($"[错误] 位置 ({tileX},{tileY}) 内有玩家 [{trapNames}] 建造会卡死玩家；请调整偏移或让玩家移开", LogLevel.Warn);
             return;
         }
         if (!CanPlaceBuilding(loc, data, tile))
@@ -1350,16 +1348,12 @@ public class ModEntry : Mod
             if (!loc.isBuildable(doorPos, true) && !loc.isPath(doorPos)) return false;
         }
 
-        // 防卡死：建筑主占地内不得有任何在线玩家（包括 mh_buildat 偏移 0,0 脚下场景）
+        // 防卡死：建筑主占地内不得有任何在线玩家
         if (WouldTrapPlayer(loc, tile, w, h)) return false;
 
         return true;
     }
-
-    /// <summary>
-    /// 检查建筑主占地范围内是否有在线玩家（同地点）。
-    /// 用于防止把建筑盖在玩家头上导致卡死。
-    /// </summary>
+    
     private static bool WouldTrapPlayer(GameLocation loc, Vector2 tile, int w, int h)
     {
         var farmers = Game1.getOnlineFarmers();
