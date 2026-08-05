@@ -858,11 +858,14 @@ public class ModEntry : Mod
         bool any = false;
 
         Mon.Log("=== 建筑列表 ===", LogLevel.Info);
+        // 黑名单：场地原生唯一建筑，建造会出问题（农舍进不去/温室重复无意义）
+        HashSet<string> blacklist = new(StringComparer.OrdinalIgnoreCase) { "Farmhouse", "Greenhouse" };
         foreach (KeyValuePair<string, BuildingData> pair in Game1.buildingData)
         {
             string id = pair.Key;
             BuildingData data = pair.Value;
             if (data == null) continue;
+            if (blacklist.Contains(id)) continue;
 
             string displayName = TokenParser.ParseText(data.Name, null, null, null) ?? id;
             string desc = TokenParser.ParseText(data.Description, null, null, null);
