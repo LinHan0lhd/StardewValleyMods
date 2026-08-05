@@ -915,7 +915,7 @@ public class ModEntry : Mod
                     if (!MatchFilter(skin.Id)) continue;
 
                     string tag = skin.ShowAsSeparateConstructionEntry ? " [独立建造]" : "";
-                    Mon.Log($"    风格: {skin.Id}{tag}  (用 mh_build \"{skin.Id}\" 直接建造)", LogLevel.Info);
+                    Mon.Log($"    风格: {skin.Id}{tag}", LogLevel.Info);
                 }
             }
         }
@@ -1250,8 +1250,7 @@ public class ModEntry : Mod
 
         if (string.IsNullOrEmpty(data.BuildingToUpgrade))
         {
-            Mon.Log($"[错误] '{typeId}' 不是升级类建筑（BuildingToUpgrade 为空），无法使用 mh_upgrade", LogLevel.Warn);
-            Mon.Log("       请直接使用 mh_build 建造", LogLevel.Info);
+            Mon.Log($"[错误] '{typeId}' 不是升级类建筑", LogLevel.Warn);
             return;
         }
 
