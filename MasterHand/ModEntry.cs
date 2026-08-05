@@ -1151,20 +1151,35 @@ public class ModEntry : Mod
         return false;
     }
 
+    // 获取目标建筑升级链上所有前置类型（支持跨级升级）
+    private static HashSet<string> GetUpgradePrerequisites(string typeId)
+    {
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        string current = typeId;
+        while (Building.TryGetData(current, out BuildingData data) && data != null)
+        {
+            string prereq = data.BuildingToUpgrade;
+            if (string.IsNullOrEmpty(prereq) || result.Contains(prereq)) break;
+            result.Add(prereq);
+            current = prereq;
+        }
+        return result;
+    }
+
     // 在已有建筑中查找 prerequisite 类型并升级
     // nearTile: 指定时找最近的；null 时找第一个
     private static bool TryUpgradeBuilding(GameLocation loc, string upgradeTypeId, BuildingData upgradeData, bool instant, Vector2? nearTile, out Building upgraded)
     {
         upgraded = null;
-        string prerequisiteType = upgradeData.BuildingToUpgrade;
-        if (string.IsNullOrEmpty(prerequisiteType)) return false;
+        var prerequisites = GetUpgradePrerequisites(upgradeTypeId);
+        if (prerequisites.Count == 0) return false;
 
         Building target = null;
         float bestDist = float.MaxValue;
 
         foreach (Building b in loc.buildings)
         {
-            if (b.buildingType.Value != prerequisiteType) continue;
+            if (!prerequisites.Contains(b.buildingType.Value)) continue;
             if (b.isUnderConstruction(false)) continue;
 
             if (nearTile.HasValue)
