@@ -900,8 +900,7 @@ public class ModEntry : Mod
             Mon.Log($"  [{cn}] 大小:{size} 费用:{cost} 工期:{days} 建造者:{builder}{upgrade}", LogLevel.Info);
             any = true;
 
-            // 列出该建筑所有可用皮肤（中文名来自 BuildingSkin.Name 本地化）
-            // 与 CarpenterMenu 一致：通过 TokenParser 解析 skin.Name 取中文名
+            // 列出该建筑所有可用皮肤
             if (data.Skins != null && data.Skins.Count > 0)
             {
                 foreach (BuildingSkin skin in data.Skins)
@@ -912,16 +911,10 @@ public class ModEntry : Mod
                         && !GameStateQuery.CheckConditions(skin.Condition, Game1.getFarm(), null, null, null, null, null))
                         continue;
 
-                    // 中文名：skin.Name 是 tokenizable，回退到 data.Name，再回退到 skin.Id
-                    string skinNameToken = skin.Name ?? data.Name;
-                    string skinCn = TokenParser.ParseText(skinNameToken, null, null, null);
-                    if (string.IsNullOrWhiteSpace(skinCn) || skinCn == skinNameToken)
-                        skinCn = skin.Id;
-
-                    if (!MatchFilter(skin.Id, skinCn)) continue;
+                    if (!MatchFilter(skin.Id)) continue;
 
                     string tag = skin.ShowAsSeparateConstructionEntry ? " [独立建造]" : "";
-                    Mon.Log($"    风格: {skinCn} / {skin.Id}{tag}  (用 mh_build \"{skin.Id}\" 直接建造)", LogLevel.Info);
+                    Mon.Log($"    风格: {skin.Id}{tag}  (用 mh_build \"{skin.Id}\" 直接建造)", LogLevel.Info);
                 }
             }
         }
@@ -938,9 +931,7 @@ public class ModEntry : Mod
         foreach (BuildingSkin skin in data.Skins)
         {
             if (skin == null) continue;
-            string skinCn = TokenParser.ParseText(skin.Name ?? data.Name, null, null, null);
             if (skin.Id != null && skin.Id.ToLowerInvariant().Contains(filter)) return true;
-            if (skinCn != null && skinCn.ToLowerInvariant().Contains(filter)) return true;
         }
         return false;
     }
