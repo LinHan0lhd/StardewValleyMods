@@ -87,9 +87,9 @@ public class ModEntry : Mod
         helper.ConsoleCommands.Add("mh_giftwl", "无限送礼 > mh_giftwl on|off|list|add|remove|clear", GiftWhitelist);
         helper.ConsoleCommands.Add("mh_demolish", "拆除指定玩家偏移位置的建筑 > mh_demolish <玩家ID> <偏移x> <偏移y>", DemolishBuilding);
         helper.ConsoleCommands.Add("mh_buildings", "查询建筑列表 (中文名+英文ID) > mh_buildings [关键词]", ListBuildings);
-        helper.ConsoleCommands.Add("mh_build", "自动查询空地建造建筑 > mh_build <建筑ID> [near <玩家ID>|<玩家ID>] [wait] [loc <地点>]", BuildBuilding);
+        helper.ConsoleCommands.Add("mh_build", "自动在农场空地建造建筑 > mh_build <建筑ID> [near <玩家ID>|<玩家ID>] [wait]", BuildBuilding);
         helper.ConsoleCommands.Add("mh_buildat", "以玩家位置建造建筑 > mh_buildat <玩家ID> <偏移x> <偏移y> <建筑ID> [wait]", BuildBuildingAt);
-        helper.ConsoleCommands.Add("mh_upgrade", "升级已有建筑 > mh_upgrade <目标建筑类型> [near <玩家ID>|<玩家ID>] [wait] [loc <地点>]", UpgradeBuilding);
+        helper.ConsoleCommands.Add("mh_upgrade", "升级农场已有建筑 > mh_upgrade <目标建筑类型> [near <玩家ID>|<玩家ID>] [wait]", UpgradeBuilding);
 
         // 事件
         helper.Events.GameLoop.SaveLoaded += (_, _) => ApplyInfiniteGiftsToAllWhitelistedFarmers("存档加载");
@@ -942,8 +942,7 @@ public class ModEntry : Mod
         if (!RequireWorldReady() || !RequireHost()) return;
         if (args.Length == 0)
         {
-            Mon.Log("用法: mh_build <建筑ID> [near <玩家ID>|<玩家ID>] [wait] [loc <地点>]", LogLevel.Info);
-            Mon.Log("常见地点: Farm(农场) | IslandWest(姜岛农场)", LogLevel.Info);
+            Mon.Log("用法: mh_build <建筑ID> [near <玩家ID>|<玩家ID>] [wait]", LogLevel.Info);
             Mon.Log("玩家ID 可填: 数字ID | ~ (眷者) | admin (主机)", LogLevel.Info);
             Mon.Log("小屋风格: Stone Cabin | Log Cabin | Plank Cabin | Rustic Cabin | Trailer Cabin | Neighbor Cabin | Beach Cabin", LogLevel.Info);
             Mon.Log("示例:", LogLevel.Info);
@@ -953,17 +952,14 @@ public class ModEntry : Mod
             Mon.Log("  mh_build Silo 1145140               上方指令简写形式", LogLevel.Info);
             Mon.Log("  mh_build Silo near admin            在主机附近找空地", LogLevel.Info);
             Mon.Log("  mh_build Mill wait                  走正常工期(不即时)", LogLevel.Info);
-            Mon.Log("  mh_build Mill loc Farm              指定建造地点(默认 Farm)", LogLevel.Info);
-            Mon.Log("  mh_build \"Shipping Bin\" loc IslandWest  在姜岛农场建额外出货箱", LogLevel.Info);
             return;
         }
 
         string typeId = args[0];
 
         // 解析可选参数
-        bool instant = true;        // 默认即时
-        long nearPlayerId = 0;      // 0 = 不指定玩家
-        string locName = "Farm";    // 默认地点
+        bool instant = true;
+        long nearPlayerId = 0;
 
         for (int i = 1; i < args.Length; i++)
         {
@@ -981,13 +977,8 @@ public class ModEntry : Mod
                     return;
                 }
             }
-            else if (a.Equals("loc", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
-            {
-                locName = args[++i];
-            }
             else if (long.TryParse(a, out long pid) && pid > 0)
             {
-                // 简写: mh_build <id> <玩家ID>
                 nearPlayerId = pid;
             }
             else
@@ -1021,15 +1012,15 @@ public class ModEntry : Mod
         }
 
         // 取目标地点
-        GameLocation loc = Game1.getLocationFromName(locName);
+        GameLocation loc = Game1.getLocationFromName("Farm");
         if (loc == null)
         {
-            Mon.Log($"[错误] 找不到地点 '{locName}'", LogLevel.Warn);
+            Mon.Log("[错误] 找不到农场地点", LogLevel.Warn);
             return;
         }
         if (!loc.IsBuildableLocation())
         {
-            Mon.Log($"[错误] 地点 '{locName}' 不允许建造建筑", LogLevel.Warn);
+            Mon.Log("[错误] 农场不允许建造建筑", LogLevel.Warn);
             return;
         }
 
@@ -1043,7 +1034,6 @@ public class ModEntry : Mod
         {
             Farmer farmer = GetOnlinePlayer(nearPlayerId);
             if (farmer == null) return;
-            // 玩家若在农场内则用其位置；否则在农场可建区域内找近玩家位置
             if (farmer.currentLocation == loc)
                 center = new Vector2((int)farmer.Tile.X, (int)farmer.Tile.Y);
             else
@@ -1112,11 +1102,11 @@ public class ModEntry : Mod
 
         if (!foundSpot)
         {
-            Mon.Log($"[错误] 在 {locName} 范围内未找到可建造 {displayName} ({w}x{h}) 的空地", LogLevel.Warn);
+            Mon.Log($"[错误] 在农场范围内未找到可建造 {displayName} ({w}x{h}) 的空地", LogLevel.Warn);
             return;
         }
 
-        Mon.Log($"[成功] 已在 {locName} ({(int)found.X},{(int)found.Y}) 建造 {displayName}"
+        Mon.Log($"[成功] 已在农场 ({(int)found.X},{(int)found.Y}) 建造 {displayName}"
             + (forceSkinId != null ? $" [{forceSkinId}]" : "")
             + (instant ? " (即时)" : " (工期中)"), LogLevel.Info);
     }
@@ -1220,8 +1210,8 @@ public class ModEntry : Mod
         if (!RequireWorldReady() || !RequireHost()) return;
         if (args.Length < 2)
         {
-            Mon.Log("用法: mh_upgrade <目标建筑类型> [near <玩家ID>|<玩家ID>] [wait] [loc <地点>]", LogLevel.Info);
-            Mon.Log("说明: 把已有的升级前建筑升级为目标建筑", LogLevel.Info);
+            Mon.Log("用法: mh_upgrade <目标建筑类型> [near <玩家ID>|<玩家ID>] [wait]", LogLevel.Info);
+            Mon.Log("说明: 把已有的升级前建筑升级为目标建筑（仅限农场）", LogLevel.Info);
             Mon.Log("      目标建筑类型必须是升级类建筑（BuildingToUpgrade 不为空）", LogLevel.Info);
             Mon.Log("      若指定 near，会升级最近的同类建筑；否则升级找到的第一个", LogLevel.Info);
             Mon.Log("示例:", LogLevel.Info);
@@ -1235,7 +1225,6 @@ public class ModEntry : Mod
         string typeId = args[0];
         bool instant = true;
         long nearPlayerId = 0;
-        string locName = "Farm";
 
         for (int i = 1; i < args.Length; i++)
         {
@@ -1247,8 +1236,6 @@ public class ModEntry : Mod
                 nearPlayerId = ResolvePlayerId(args[++i], logError: false);
                 if (nearPlayerId == 0) return;
             }
-            else if (a.Equals("loc", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
-                locName = args[++i];
             else if (long.TryParse(a, out long pid) && pid > 0)
                 nearPlayerId = pid;
             else
@@ -1268,10 +1255,10 @@ public class ModEntry : Mod
             return;
         }
 
-        GameLocation loc = Game1.getLocationFromName(locName);
+        GameLocation loc = Game1.getLocationFromName("Farm");
         if (loc == null)
         {
-            Mon.Log($"[错误] 找不到地点 '{locName}'", LogLevel.Warn);
+            Mon.Log("[错误] 找不到农场地点", LogLevel.Warn);
             return;
         }
 
@@ -1294,7 +1281,7 @@ public class ModEntry : Mod
         }
         else
         {
-            Mon.Log($"[错误] 在 {locName} 中找不到可升级的 {data.BuildingToUpgrade}", LogLevel.Warn);
+            Mon.Log($"[错误] 在农场中找不到可升级的 {data.BuildingToUpgrade}", LogLevel.Warn);
         }
     }
 
