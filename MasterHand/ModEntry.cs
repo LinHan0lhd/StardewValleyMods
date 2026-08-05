@@ -390,17 +390,20 @@ public class ModEntry : Mod
 
     private static void ListPlayers()
     {
-        // 列出所有存档玩家（包括离线 farmhand），并标注在线状态
-        var all = Game1.getAllFarmers()?.Where(f => f != null).ToList();
+        // 列出所有存档玩家（包括离线 farmhand），排除主机自身，标注在线状态
+        long hostId = Game1.player?.UniqueMultiplayerID ?? long.MinValue;
+        var all = Game1.getAllFarmers()?
+            .Where(f => f != null && f.UniqueMultiplayerID != hostId)
+            .ToList();
         if (all == null || all.Count == 0)
         {
-            Mon.Log("[列表] 无玩家数据", LogLevel.Info);
+            Mon.Log("[列表] 无其他玩家（仅主机）", LogLevel.Info);
             return;
         }
         var onlineIds = new HashSet<long>(Game1.getOnlineFarmers()
             .Where(f => f != null)
             .Select(f => f.UniqueMultiplayerID));
-        Mon.Log($"[列表] 共 {all.Count} 名玩家（在线 {onlineIds.Count}）", LogLevel.Info);
+        Mon.Log($"[列表] 共 {all.Count} 名玩家（在线 {all.Count(f => onlineIds.Contains(f.UniqueMultiplayerID))}）", LogLevel.Info);
         foreach (var f in all)
         {
             bool online = onlineIds.Contains(f.UniqueMultiplayerID);
