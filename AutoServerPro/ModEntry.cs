@@ -92,11 +92,12 @@ namespace AutoServerPro
             if (args.Length < 1)
             {
                 Monitor.Log("用法: chat tell \"消息内容\"  或  chat <聊天指令> [参数]", LogLevel.Info);
-                Monitor.Log("示例: chat tell 大家好  |  chat color red  |  chat emote happy  |  chat list", LogLevel.Info);
+                Monitor.Log("示例: chat tell 大家好 | chat color red | chat e happy | chat h | chat list", LogLevel.Info);
+                Monitor.Log("可用指令: help(h) | clear | list(users,players) | color | color-list | emote(e) | mapScreenshot | pause | resume | message(dm,pm) | reply(r) | ping | moveBuildingPermission(mbp) | sleepAnnounceMode | unban | unlinkPlayer | debug", LogLevel.Info);
                 return;
             }
 
-            // chat tell "消息" — 向所有玩家广播聊天消息 (SMAPI 自动解析引号参数)
+            // chat tell "消息" — 向所有玩家广播聊天消息
             if (string.Equals(args[0], "tell", StringComparison.OrdinalIgnoreCase))
             {
                 if (args.Length < 2)
@@ -122,8 +123,30 @@ namespace AutoServerPro
                 Monitor.Log("聊天框未就绪", LogLevel.Warn);
                 return;
             }
-            if (!ChatCommands.TryHandle(args, Game1.chatBox))
+
+            // 记录执行前的消息数，用于提取新产生的输出
+            int msgBefore = Game1.chatBox.messages?.Count ?? 0;
+            bool handled = ChatCommands.TryHandle(args, Game1.chatBox);
+
+            if (!handled)
+            {
                 Monitor.Log($"未知的聊天指令: {args[0]}  (使用 chat tell \"消息\" 广播聊天)", LogLevel.Warn);
+                return;
+            }
+
+            // 将新产生的聊天消息输出到控制台（服务端模式下聊天框不可见）
+            if (Game1.chatBox.messages != null)
+            {
+                for (int i = msgBefore; i < Game1.chatBox.messages.Count; i++)
+                {
+                    var msg = Game1.chatBox.messages[i];
+                    string text = ChatMessage.makeMessagePlaintext(msg.message, false);
+                    if (!string.IsNullOrWhiteSpace(text))
+                    {
+                        Monitor.Log(text, LogLevel.Info);
+                    }
+                }
+            }
         }
 
         private void BindEvents()
