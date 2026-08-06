@@ -1211,7 +1211,7 @@ public class ModEntry : Mod
         if (args.Length < 2)
         {
             Mon.Log("用法: mh_upgrade <目标建筑类型> [near <玩家ID>|<玩家ID>] [wait]", LogLevel.Info);
-            Mon.Log("说明: 把已有的升级前建筑升级为目标建筑（仅限农场）", LogLevel.Info);
+            Mon.Log("说明: 把已有的升级前建筑升级为目标建筑", LogLevel.Info);
             Mon.Log("      目标建筑类型必须是升级类建筑", LogLevel.Info);
             Mon.Log("      若指定 near 会升级最近的同类建筑；否则升级找到的第一个", LogLevel.Info);
             Mon.Log("示例:", LogLevel.Info);
