@@ -66,7 +66,6 @@ namespace AutoServerPro
                 _saveManager.UpdateConfig(_config);
                 _sleepManager.UpdateConfig(_config);
                 _syncManager.UpdateConfig(_config);
-                ApplyMoveBuildingPermission();
                 Monitor.Log("配置文件已重新加载", LogLevel.Info);
             });
 
@@ -92,8 +91,7 @@ namespace AutoServerPro
             if (args.Length < 1)
             {
                 Monitor.Log("用法: chat tell \"消息内容\"  或  chat <聊天指令> [参数]", LogLevel.Info);
-                Monitor.Log("示例: chat tell 大家好 | chat color red | chat e happy | chat h | chat list", LogLevel.Info);
-                Monitor.Log("可用指令: help(h) | clear | list(users,players) | color | color-list | emote(e) | mapScreenshot | pause | resume | message(dm,pm) | reply(r) | ping | moveBuildingPermission(mbp) | sleepAnnounceMode | unban | unlinkPlayer | debug", LogLevel.Info);
+                Monitor.Log("示例: chat tell 你好 | chat h | chat list", LogLevel.Info);
                 return;
             }
 
@@ -130,11 +128,11 @@ namespace AutoServerPro
 
             if (!handled)
             {
-                Monitor.Log($"未知的聊天指令: {args[0]}  (使用 chat tell \"消息\" 广播聊天)", LogLevel.Warn);
+                Monitor.Log($"未知的聊天指令: {args[0]}", LogLevel.Warn);
                 return;
             }
 
-            // 将新产生的聊天消息输出到控制台（服务端模式下聊天框不可见）
+            // 将新产生的聊天消息输出到控制台
             if (Game1.chatBox.messages != null)
             {
                 for (int i = msgBefore; i < Game1.chatBox.messages.Count; i++)
@@ -168,7 +166,6 @@ namespace AutoServerPro
             {
                 AutoReadMail();
                 _saveManager.AutoBackupCheck();
-                ApplyMoveBuildingPermission();
             }
         }
 
@@ -302,32 +299,6 @@ namespace AutoServerPro
                 Monitor.Log($"设置 {lang} 作为游戏语言", LogLevel.Info);
             }
             else Monitor.Log($"语言 '{_config.Language}' 无效", LogLevel.Warn);
-        }
-
-        private void ApplyMoveBuildingPermission()
-        {
-            if (!Context.IsWorldReady || !Context.IsMainPlayer || !Context.IsMultiplayer) return;
-            if (string.IsNullOrWhiteSpace(_config.MoveBuildingPermission)) return;
-            if (!Enum.TryParse<FarmerTeam.RemoteBuildingPermissions>(_config.MoveBuildingPermission, true, out var perm))
-            {
-                Monitor.Log($"MoveBuildingPermission 配置值无效: '{_config.MoveBuildingPermission}'，仅支持 Off / OwnedBuildings / On", LogLevel.Warn);
-                return;
-            }
-            if (Game1.player?.team == null) return;
-            var current = Game1.player.team.farmhandsCanMoveBuildings.Value;
-            if (current == perm) return;
-            Game1.player.team.farmhandsCanMoveBuildings.Value = perm;
-            Monitor.Log($"已应用 farmhandsCanMoveBuildings = {perm}", LogLevel.Info);
-            if (Game1.IsMultiplayer)
-            {
-                string display = perm switch
-                {
-                    FarmerTeam.RemoteBuildingPermissions.Off => "off",
-                    FarmerTeam.RemoteBuildingPermissions.OwnedBuildings => "owned",
-                    _ => "on"
-                };
-                Game1.chatBox?.addMessage($"moveBuildingPermission {display}", Microsoft.Xna.Framework.Color.White);
-            }
         }
 
         private void AutoReadMail()

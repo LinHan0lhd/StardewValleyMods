@@ -36,9 +36,5 @@ namespace AutoServerPro.Models
         public int AutoBackupDayInterval { get; set; } = 7;
         public bool AutoCleanOldBackup { get; set; } = true;
         public int MaxBackupCount { get; set; } = 5;
-
-        // ===== 联机设置 =====
-        // moveBuildingPermission 玩家移动建筑权限: Off / OwnedBuildings / On
-        public string MoveBuildingPermission { get; set; } = "Off";
     }
 }
