@@ -584,17 +584,13 @@ public class ModEntry : Mod
         // 重置在线对象中的物品
         var onlineFarmer = Game1.GetPlayer(id, true);
         if (onlineFarmer != null)
-        {
             ResetMarkedItemsOnDisconnect(onlineFarmer, logOnReset: false);
-            ResetInfiniteGiftsOnDisconnect(onlineFarmer);
-        }
 
         // 重置 farmhandData 中的持久化数据
         var farmhandData = Game1.netWorldState?.Value?.farmhandData;
         if (farmhandData != null && farmhandData.FieldDict.TryGetValue(id, out var farmhandRef) && farmhandRef?.Value != null)
         {
             ResetMarkedItemsOnDisconnect(farmhandRef.Value, logOnReset: false);
-            ResetInfiniteGiftsOnDisconnect(farmhandRef.Value);
             farmhandRef.MarkDirty();
             farmhandData.MarkDirty();
             Game1.netWorldState.MarkDirty();
