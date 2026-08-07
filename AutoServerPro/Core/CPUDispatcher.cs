@@ -1,12 +1,12 @@
 #nullable disable
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using StardewModdingAPI;
 using StardewValley;
-using StardewValley.Audio;
 using AutoServerPro.Models;
 
 namespace AutoServerPro.Core
@@ -65,7 +65,7 @@ namespace AutoServerPro.Core
 
         private void InstallDrawPatch()
         {
-            var drawMethod = AccessTools.Method(typeof(Game1), nameof(Game1.Draw),
+            var drawMethod = AccessTools.Method(typeof(Game1), "Draw",
                 new[] { typeof(GameTime) });
             if (drawMethod == null)
             {
@@ -87,17 +87,21 @@ namespace AutoServerPro.Core
 
         private void InstallAudioPatch()
         {
-            var audioUpdate = AccessTools.Method(typeof(AudioEngineWrapper), "Update");
-            if (audioUpdate == null)
+            var audioType = AccessTools.TypeByName("StardewValley.Audio.AudioEngineWrapper");
+            if (audioType == null)
             {
-                _monitor.Log("无法找到 AudioEngineWrapper.Update 方法", LogLevel.Warn);
+                _monitor.Log("无法找到 AudioEngineWrapper 类型", LogLevel.Warn);
                 return;
             }
 
-            var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(AudioUpdatePrefix));
-            _harmony.Patch(audioUpdate, prefix: prefix);
+            var audioUpdate = AccessTools.Method(audioType, "Update");
+            if (audioUpdate != null)
+            {
+                var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(AudioUpdatePrefix));
+                _harmony.Patch(audioUpdate, prefix: prefix);
+            }
 
-            var updateMusic = AccessTools.Method(typeof(Game1), nameof(Game1.updateMusic));
+            var updateMusic = AccessTools.Method(typeof(Game1), "updateMusic");
             if (updateMusic != null)
             {
                 var musicPrefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(UpdateMusicPrefix));
@@ -112,15 +116,16 @@ namespace AutoServerPro.Core
 
         private void InstallWeatherPatch()
         {
-            var rainMethod = AccessTools.Method(typeof(Game1), nameof(Game1.updateRaindropPosition));
+            var rainMethod = AccessTools.Method(typeof(Game1), "updateRaindropPosition");
             if (rainMethod != null)
             {
                 var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(UpdateRaindropPrefix));
                 _harmony.Patch(rainMethod, prefix: prefix);
             }
 
+            var weatherDebrisType = AccessTools.TypeByName("StardewValley.WeatherDebris");
             var weatherDebris = AccessTools.Method(typeof(Game1), "updateDebrisWeatherForMovement",
-                new[] { typeof(List<WeatherDebris>) });
+                new[] { typeof(List<>).MakeGenericType(weatherDebrisType) });
             if (weatherDebris != null)
             {
                 var prefix2 = new HarmonyMethod(typeof(CPUDispatcher), nameof(UpdateDebrisWeatherPrefix));
@@ -137,7 +142,7 @@ namespace AutoServerPro.Core
         {
             if (_config.DisableKeyboardInput)
             {
-                var kbMethod = AccessTools.Method(typeof(InputState), nameof(InputState.GetKeyboardState));
+                var kbMethod = AccessTools.Method(typeof(InputState), "GetKeyboardState");
                 if (kbMethod != null)
                 {
                     var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(GetKeyboardStatePrefix));
@@ -152,7 +157,7 @@ namespace AutoServerPro.Core
 
             if (_config.DisableMouseInput)
             {
-                var mouseMethod = AccessTools.Method(typeof(InputState), nameof(InputState.GetMouseState));
+                var mouseMethod = AccessTools.Method(typeof(InputState), "GetMouseState");
                 if (mouseMethod != null)
                 {
                     var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(GetMouseStatePrefix));
@@ -167,7 +172,7 @@ namespace AutoServerPro.Core
 
             if (_config.DisableGamepadInput)
             {
-                var padMethod = AccessTools.Method(typeof(InputState), nameof(InputState.GetGamePadState));
+                var padMethod = AccessTools.Method(typeof(InputState), "GetGamePadState");
                 if (padMethod != null)
                 {
                     var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(GetGamePadStatePrefix));
