@@ -31,7 +31,7 @@ public static class LevelSkipState
 }
 
 /// <summary>
-/// 初始生命数（关卡模式）
+/// 初始生命数（关卡模式 gameMode == 3）
 /// </summary>
 [HarmonyPatch(typeof(MineCart), "restartLevel")]
 public static class MineCart_restartLevel_Patch
@@ -41,7 +41,7 @@ public static class MineCart_restartLevel_Patch
         var tr = Traverse.Create(__instance);
         int gameMode = tr.Field("gameMode").GetValue<int>();
 
-        if (gameMode == 3) return;
+        if (gameMode != 3) return;
 
         if (new_game)
         {
@@ -51,7 +51,7 @@ public static class MineCart_restartLevel_Patch
 }
 
 /// <summary>
-/// 金币换命（关卡模式）
+/// 金币换命（关卡模式 gameMode == 3）
 /// </summary>
 [HarmonyPatch(typeof(MineCart), "CollectCoin")]
 public static class MineCart_CollectCoin_Patch
@@ -61,7 +61,7 @@ public static class MineCart_CollectCoin_Patch
         var tr = Traverse.Create(__instance);
         int gameMode = tr.Field("gameMode").GetValue<int>();
 
-        if (gameMode == 3) return true;
+        if (gameMode != 3) return true;
 
         __instance.coinCount += amount;
         int threshold = ModEntry.Config.CoinsPerLife;
@@ -79,23 +79,23 @@ public static class MineCart_CollectCoin_Patch
 }
 
 /// <summary>
-/// 跳关逻辑 + 通关动画（关卡模式）
+/// 跳关逻辑 + 通关动画（关卡模式 gameMode == 3）
 /// </summary>
-[HarmonyPatch(typeof(MineCart), "Update")]
-public static class MineCart_Update_Patch
+[HarmonyPatch(typeof(MineCart), "tick")]
+public static class MineCart_tick_Patch
 {
-    static bool Prefix(MineCart __instance, GameTime gameTime)
+    static bool Prefix(MineCart __instance, GameTime time)
     {
         var tr = Traverse.Create(__instance);
         int gameMode = tr.Field("gameMode").GetValue<int>();
 
-        if (gameMode == 3) return true;
+        if (gameMode != 3) return true;
 
         if (LevelSkipState.IsSkipping)
         {
-            LevelSkipState.CompletionText?.Update(gameTime);
+            LevelSkipState.CompletionText?.update(time);
 
-            float deltaTime = (float)gameTime.ElapsedGameTime.TotalSeconds;
+            float deltaTime = (float)time.ElapsedGameTime.TotalSeconds;
             LevelSkipState.AnimationTimer -= deltaTime;
 
             if (LevelSkipState.AnimationTimer <= 0f)
@@ -111,20 +111,22 @@ public static class MineCart_Update_Patch
         return true;
     }
 
-    static void Postfix(MineCart __instance, GameTime gameTime)
+    static void Postfix(MineCart __instance, GameTime time)
     {
         var tr = Traverse.Create(__instance);
         int gameMode = tr.Field("gameMode").GetValue<int>();
 
-        if (gameMode == 3) return;
+        if (gameMode != 3) return;
 
         if (LevelSkipState.IsSkipping)
             return;
 
         int livesLeft = tr.Field("livesLeft").GetValue<int>();
-        if (livesLeft < 0)
+        if (livesLeft < 0 && IsIngame(tr))
         {
             tr.Field("livesLeft").SetValue(0);
+            tr.Field("gameOver").SetValue(false);
+            tr.Field("fadeDelta").SetValue(0f);
 
             LevelSkipState.IsSkipping = true;
             LevelSkipState.AnimationTimer = 2.5f;
@@ -138,5 +140,11 @@ public static class MineCart_Update_Patch
 
             Game1.playSound("yoba", null);
         }
+    }
+
+    static bool IsIngame(Traverse tr)
+    {
+        var gameState = tr.Field("gameState").GetValue<MineCart.GameStates>();
+        return gameState == MineCart.GameStates.Ingame;
     }
 }
