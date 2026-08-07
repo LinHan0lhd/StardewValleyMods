@@ -28,6 +28,8 @@ public static class LevelSkipState
     public static bool IsSkipping = false;
     public static float AnimationTimer = 0f;
     public static SparklingText? CompletionText = null;
+    public static int DeathCount = 0;
+    public static int LastLivesLeft = -1;
 }
 
 /// <summary>
@@ -42,6 +44,10 @@ public static class MineCart_restartLevel_Patch
         int gameMode = tr.Field("gameMode").GetValue<int>();
 
         if (gameMode != 3) return;
+
+        LevelSkipState.DeathCount = 0;
+        LevelSkipState.LastLivesLeft = -1;
+        LevelSkipState.IsSkipping = false;
 
         if (new_game)
         {
@@ -79,7 +85,7 @@ public static class MineCart_CollectCoin_Patch
 }
 
 /// <summary>
-/// 跳关逻辑 + 通关动画（关卡模式 gameMode == 3）
+/// 跳关逻辑：连续死亡3次后触发跳关+通关动画（关卡模式 gameMode == 3）
 /// </summary>
 [HarmonyPatch(typeof(MineCart), "tick")]
 public static class MineCart_tick_Patch
@@ -121,25 +127,50 @@ public static class MineCart_tick_Patch
         if (LevelSkipState.IsSkipping)
             return;
 
-        int livesLeft = tr.Field("livesLeft").GetValue<int>();
-        if (livesLeft < 0 && IsIngame(tr))
+        if (!IsIngame(tr))
         {
-            tr.Field("livesLeft").SetValue(0);
-            tr.Field("gameOver").SetValue(false);
-            tr.Field("fadeDelta").SetValue(0f);
-
-            LevelSkipState.IsSkipping = true;
-            LevelSkipState.AnimationTimer = 2.5f;
-
-            var completionText = new SparklingText(
-                Game1.dialogueFont,
-                "LEVEL COMPLETE!",
-                Color.Gold, Color.White, true, 0.1, 2500, -1, 500, 0f);
-            LevelSkipState.CompletionText = completionText;
-            tr.Field("perfectText").SetValue(completionText);
-
-            Game1.playSound("yoba", null);
+            LevelSkipState.LastLivesLeft = -1;
+            return;
         }
+
+        int currentLives = tr.Field("livesLeft").GetValue<int>();
+
+        if (LevelSkipState.LastLivesLeft < 0)
+        {
+            LevelSkipState.LastLivesLeft = currentLives;
+            return;
+        }
+
+        if (currentLives < LevelSkipState.LastLivesLeft)
+        {
+            LevelSkipState.DeathCount++;
+            LevelSkipState.LastLivesLeft = currentLives;
+
+            if (LevelSkipState.DeathCount >= 3)
+            {
+                DoLevelSkip(tr);
+            }
+        }
+    }
+
+    static void DoLevelSkip(Traverse tr)
+    {
+        tr.Field("livesLeft").SetValue(0);
+        tr.Field("gameOver").SetValue(false);
+        tr.Field("fadeDelta").SetValue(0f);
+        tr.Field("gameState").SetValue(MineCart.GameStates.Ingame);
+
+        LevelSkipState.IsSkipping = true;
+        LevelSkipState.AnimationTimer = 2.5f;
+
+        var completionText = new SparklingText(
+            Game1.dialogueFont,
+            "LEVEL COMPLETE!",
+            Color.Gold, Color.White, true, 0.1, 2500, -1, 500, 0f);
+        LevelSkipState.CompletionText = completionText;
+        tr.Field("perfectText").SetValue(completionText);
+
+        Game1.playSound("yoba", null);
     }
 
     static bool IsIngame(Traverse tr)
