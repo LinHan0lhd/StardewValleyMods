@@ -662,7 +662,7 @@ public class ModEntry : Mod
             }
         }
         if (resetCount > 0)
-            Mon.Log($"[无限送礼] 保存前重置 {farmer.displayName} 的 {resetCount} 位NPC送礼数据", LogLevel.Debug);
+            Mon.Log($"[无限送礼] 保存前重置 {farmer.displayName} 的 {resetCount} 位 NPC 送礼数据", LogLevel.Debug);
     }
 
     private static int ResetMarkedItemsOnDisconnect(Farmer farmer, bool logOnReset = false)
