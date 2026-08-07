@@ -562,7 +562,7 @@ public class ModEntry : Mod
             Game1.gameTimeInterval = 0;
     }
 
-    // 下线重置特殊物品
+    // 下线重置特殊物品 & 无限送礼
 
     public static void Prefix_PlayerDisconnected(long id)
     {
@@ -641,7 +641,7 @@ public class ModEntry : Mod
         }
 
         if (resetCount > 0 && logOnReset)
-            Mon.Log($"[无限送礼] 已重置 {farmer.displayName} 的 {resetCount} 位NPC送礼数据为无限", LogLevel.Info);
+            Mon.Log($"[无限送礼] 已重置 {farmer.displayName} 的 {resetCount} 位 NPC 送礼数据", LogLevel.Info);
 
         return resetCount;
     }
