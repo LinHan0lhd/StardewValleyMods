@@ -94,6 +94,7 @@ public class ModEntry : Mod
         // 事件
         helper.Events.GameLoop.SaveLoaded += (_, _) => ApplyInfiniteGiftsToAllWhitelistedFarmers("存档加载");
         helper.Events.GameLoop.DayStarted += (_, _) => ApplyInfiniteGiftsToAllWhitelistedFarmers("新一天");
+        helper.Events.GameLoop.Saving += (_, _) => ResetInfiniteGiftsBeforeSave();
         helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
 
         // 物品池
