@@ -32,6 +32,12 @@ namespace AutoServerPro.Models
         public bool? SpawnMonstersAtNight { get; set; } = null;
         public int StartingCabins { get; set; } = 1;
 
+        // ===== CPU优化（无头服务器） =====
+        public bool EnableCPUOptimization { get; set; } = true;
+        public int TargetFPS { get; set; } = 50;
+        public bool SkipDrawing { get; set; } = true;
+        public bool SkipGamepadInput { get; set; } = true;
+
         // ===== 备份 =====
         public int AutoBackupDayInterval { get; set; } = 7;
         public bool AutoCleanOldBackup { get; set; } = true;

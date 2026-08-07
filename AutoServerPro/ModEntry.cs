@@ -22,6 +22,7 @@ namespace AutoServerPro
         private AutoSleepManager _sleepManager;
         private SceneSyncManager _syncManager;
         private ChatLogger _chatLogger;
+        private CPUDispatcher _cpuDispatcher;
 
         private bool _hasAutoLoaded = false;
         private bool _hasAutoCreated = false;
@@ -37,8 +38,12 @@ namespace AutoServerPro
             _sleepManager = new AutoSleepManager(Monitor, _config, helper);
             _syncManager = new SceneSyncManager(Monitor, _config);
             _chatLogger = new ChatLogger(Monitor, ModManifest.UniqueID);
+            _cpuDispatcher = new CPUDispatcher(Monitor, _config);
 
             _chatLogger.Install();
+
+            if (_config.EnableCPUOptimization)
+                _cpuDispatcher.Install();
 
             RegisterCommands();
             BindEvents();
@@ -66,6 +71,8 @@ namespace AutoServerPro
                 _saveManager.UpdateConfig(_config);
                 _sleepManager.UpdateConfig(_config);
                 _syncManager.UpdateConfig(_config);
+                _cpuDispatcher.UpdateConfig(_config);
+                _cpuDispatcher.ReapplySettings();
                 Monitor.Log("配置文件已重新加载", LogLevel.Info);
             });
 
@@ -149,6 +156,7 @@ namespace AutoServerPro
 
         private void BindEvents()
         {
+            Helper.Events.GameLoop.GameLaunched += OnGameLaunched;
             Helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
             Helper.Events.GameLoop.TimeChanged += OnTimeChanged;
             Helper.Events.GameLoop.OneSecondUpdateTicked += OnOneSecondUpdate;
@@ -156,6 +164,12 @@ namespace AutoServerPro
             Helper.Events.Multiplayer.PeerConnected += OnPeerConnected;
             Helper.Events.Multiplayer.PeerDisconnected += OnPeerDisconnected;
             Helper.Events.GameLoop.DayStarted += OnDayStarted;
+        }
+
+        private void OnGameLaunched(object _, GameLaunchedEventArgs __)
+        {
+            if (_config.EnableCPUOptimization)
+                _cpuDispatcher.ReapplySettings();
         }
 
         private void OnDayStarted(object _, DayStartedEventArgs __)
