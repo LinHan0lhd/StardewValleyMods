@@ -597,7 +597,21 @@ public class ModEntry : Mod
         }
     }
 
-    private static void ResetInfiniteGiftsOnDisconnect(Farmer farmer)
+    private static void ResetInfiniteGiftsBeforeSave()
+    {
+        if (!Context.IsMainPlayer) return;
+
+        ResetFriendshipData(Game1.player);
+
+        var farmhandData = Game1.netWorldState?.Value?.farmhandData;
+        if (farmhandData != null)
+        {
+            foreach (var kvp in farmhandData.FieldDict)
+                ResetFriendshipData(kvp.Value?.Value);
+        }
+    }
+
+    private static void ResetFriendshipData(Farmer farmer)
     {
         if (farmer?.friendshipData == null) return;
 
@@ -614,27 +628,7 @@ public class ModEntry : Mod
             }
         }
         if (resetCount > 0)
-            Mon.Log($"[无限送礼] 玩家 {farmer.displayName} 下线，已重置 {resetCount} 位NPC送礼数据", LogLevel.Debug);
-    }
-
-    private static void ResetInfiniteGiftsBeforeSave()
-    {
-        if (!Context.IsMainPlayer) return;
-
-        // 保存前重置主机的送礼数据（防止 -999 写入存档）
-        if (Game1.player != null)
-            ResetInfiniteGiftsOnDisconnect(Game1.player);
-
-        // 保存前重置所有 farmhand 的送礼数据
-        var farmhandData = Game1.netWorldState?.Value?.farmhandData;
-        if (farmhandData != null)
-        {
-            foreach (var kvp in farmhandData.FieldDict)
-            {
-                if (kvp.Value?.Value != null)
-                    ResetInfiniteGiftsOnDisconnect(kvp.Value.Value);
-            }
-        }
+            Mon.Log($"[无限送礼] 保存前重置 {farmer.displayName} 的 {resetCount} 位NPC送礼数据", LogLevel.Debug);
     }
 
     private static int ResetMarkedItemsOnDisconnect(Farmer farmer, bool logOnReset = false)
