@@ -1,7 +1,7 @@
 {
   "Name": "MasterHand",
   "Author": "LinHan",
-  "Version": "1.8.0",
+  "Version": "2.0.0",
   "Description": "GM tools for Stardew Valley servers.",
   "UniqueID": "LinHan.MasterHand",
   "EntryDll": "MasterHand.dll",

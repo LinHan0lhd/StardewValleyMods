@@ -562,7 +562,7 @@ public class ModEntry : Mod
             Game1.gameTimeInterval = 0;
     }
 
-    // 下线重置特殊物品
+    // 下线重置特殊物品 & 无限送礼
 
     public static void Prefix_PlayerDisconnected(long id)
     {
@@ -581,16 +581,20 @@ public class ModEntry : Mod
         if (disconnectingList == null || !disconnectingList.Contains(id))
             return;
 
-        // 重置在线对象中的物品
+        // 重置在线对象中的物品和无限送礼数据
         var onlineFarmer = Game1.GetPlayer(id, true);
         if (onlineFarmer != null)
+        {
             ResetMarkedItemsOnDisconnect(onlineFarmer, logOnReset: false);
+            ResetFriendshipForInfiniteGifts(onlineFarmer, logOnReset: false);
+        }
 
-        // 重置 farmhandData 中的持久化数据
+        // 重置 farmhandData 中的持久化数据（物品 + 无限送礼）
         var farmhandData = Game1.netWorldState?.Value?.farmhandData;
         if (farmhandData != null && farmhandData.FieldDict.TryGetValue(id, out var farmhandRef) && farmhandRef?.Value != null)
         {
             ResetMarkedItemsOnDisconnect(farmhandRef.Value, logOnReset: false);
+            ResetFriendshipForInfiniteGifts(farmhandRef.Value, logOnReset: false);
             farmhandRef.MarkDirty();
             farmhandData.MarkDirty();
             Game1.netWorldState.MarkDirty();
@@ -611,6 +615,37 @@ public class ModEntry : Mod
         }
     }
 
+    /// <summary>
+    /// 将白名单玩家的 friendshipData 重置为无限送礼状态（GiftsToday = -999）
+    /// </summary>
+    private static int ResetFriendshipForInfiniteGifts(Farmer farmer, bool logOnReset = false)
+    {
+        if (!IsInfiniteGiftsEnabled(farmer)) return 0;
+
+        int resetCount = 0;
+        if (farmer?.friendshipData == null || Game1.NPCGiftTastes == null)
+            return 0;
+
+        foreach (var npcName in Game1.NPCGiftTastes.Keys)
+        {
+            if (!farmer.friendshipData.TryGetValue(npcName, out var friendship))
+            {
+                friendship = new Friendship(0);
+                farmer.friendshipData[npcName] = friendship;
+            }
+
+            friendship.GiftsToday = -999;
+            friendship.GiftsThisWeek = -999;
+            friendship.LastGiftDate = new WorldDate(Game1.Date);
+            resetCount++;
+        }
+
+        if (resetCount > 0 && logOnReset)
+            Mon.Log($"[无限送礼] 已重置 {farmer.displayName} 的 {resetCount} 位 NPC 送礼数据", LogLevel.Info);
+
+        return resetCount;
+    }
+
     private static void ResetFriendshipData(Farmer farmer)
     {
         if (farmer?.friendshipData == null) return;
@@ -627,7 +662,7 @@ public class ModEntry : Mod
             }
         }
         if (resetCount > 0)
-            Mon.Log($"[无限送礼] 保存前重置 {farmer.displayName} 的 {resetCount} 位NPC送礼数据", LogLevel.Debug);
+            Mon.Log($"[无限送礼] 保存前重置 {farmer.displayName} 的 {resetCount} 位 NPC 送礼数据", LogLevel.Debug);
     }
 
     private static int ResetMarkedItemsOnDisconnect(Farmer farmer, bool logOnReset = false)
@@ -1645,7 +1680,12 @@ public class ModEntry : Mod
         if (farmhandData?.FieldDict.TryGetValue(id, out var farmhandRef) != true || farmhandRef?.Value == null)
             return;
 
+        // 重置物品
         ResetMarkedItemsOnDisconnect(farmhandRef.Value, logOnReset: true);
+        
+        // 重置无限送礼数据
+        ResetFriendshipForInfiniteGifts(farmhandRef.Value, logOnReset: true);
+        
         farmhandRef.MarkDirty();
         farmhandData.MarkDirty();
     }
