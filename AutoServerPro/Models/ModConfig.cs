@@ -34,9 +34,12 @@ namespace AutoServerPro.Models
 
         // ===== CPU优化（无头服务器） =====
         public bool EnableCPUOptimization { get; set; } = true;
-        public int TargetFPS { get; set; } = 50;
         public bool SkipDrawing { get; set; } = true;
-        public bool SkipGamepadInput { get; set; } = true;
+        public bool DisableAudio { get; set; } = true;
+        public bool DisableViewportUpdate { get; set; } = true;
+        public bool DisableWeatherParticles { get; set; } = true;
+        public bool DisableGamepadInput { get; set; } = true;
+        public bool DisableAllInputProcessing { get; set; } = false;
 
         // ===== 备份 =====
         public int AutoBackupDayInterval { get; set; } = 7;
