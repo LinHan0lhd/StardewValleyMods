@@ -616,9 +616,8 @@ public class ModEntry : Mod
         if (farmer?.friendshipData == null) return;
 
         int resetCount = 0;
-        foreach (var kvp in farmer.friendshipData)
+        foreach (Friendship f in farmer.friendshipData.Values)
         {
-            var f = kvp.Value;
             if (f.GiftsToday == -999 || f.GiftsThisWeek == -999)
             {
                 f.GiftsToday = 0;
