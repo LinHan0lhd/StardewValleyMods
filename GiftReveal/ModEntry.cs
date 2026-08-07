@@ -2,10 +2,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.RegularExpressions;
 using StardewModdingAPI;
 using StardewValley;
 using StardewValley.GameData.Objects;
+using StardewValley.ItemTypeDefinitions;
 
 namespace GiftReveal
 {
@@ -93,7 +93,9 @@ namespace GiftReveal
 
         private List<string> ResolveItemOrCategoryOrTag(string token)
         {
-            // 1. 负数：类别ID
+            if (string.IsNullOrWhiteSpace(token)) return new List<string>();
+
+            // 1. 负数：类别 ID
             if (int.TryParse(token, out int num) && num < 0)
             {
                 if (_categoryItems.TryGetValue(num, out var items))
@@ -101,23 +103,18 @@ namespace GiftReveal
                 return new List<string>();
             }
 
-            // 2. 纯数字ID：直接返回
-            if (int.TryParse(token, out _))
+            // 2. 物品 ID（数字、字符串 ID 或限定 ID 如 (O)24）
+            ParsedItemData data = ItemRegistry.GetData(token);
+            if (data != null)
             {
-                return new List<string> { token };
+                return new List<string> { data.ItemId };
             }
 
-            // 3. 非数字：尝试作为标签
+            // 3. 上下文标签
             if (_tagItems.TryGetValue(token, out var taggedItems))
                 return taggedItems;
 
-            // 4. 标签未命中：直接返回
-            if (ItemRegistry.Create(token, 1, 0) != null)
-            {
-                return new List<string> { token };
-            }
-
-            // 5. 完全无法识别：忽略
+            // 4. 无法识别：忽略
             return new List<string>();
         }
 
@@ -190,7 +187,18 @@ namespace GiftReveal
         {
             foreach (string token in text.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries))
             {
-                if (int.TryParse(token, out _) || Regex.IsMatch(token, @"^[a-zA-Z_][a-zA-Z0-9_]*$"))
+                if (string.IsNullOrWhiteSpace(token)) continue;
+
+                // 类别
+                if (int.TryParse(token, out int num) && num < 0)
+                    return true;
+
+                // 物品 ID（支持数字、字符串 ID、限定 ID 如 (O)24）
+                if (ItemRegistry.Exists(token))
+                    return true;
+
+                // 上下文标签
+                if (_tagItems.ContainsKey(token))
                     return true;
             }
             return false;
