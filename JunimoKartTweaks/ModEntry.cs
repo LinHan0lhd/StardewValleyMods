@@ -20,9 +20,6 @@ public class ModEntry : Mod
     }
 }
 
-/// <summary>
-/// 跳关状态跟踪
-/// </summary>
 public static class LevelSkipState
 {
     public static bool IsSkipping = false;
@@ -32,9 +29,6 @@ public static class LevelSkipState
     public static int LastLivesLeft = -1;
 }
 
-/// <summary>
-/// 初始生命数（关卡模式 gameMode == 3）
-/// </summary>
 [HarmonyPatch(typeof(MineCart), "restartLevel")]
 public static class MineCart_restartLevel_Patch
 {
@@ -56,9 +50,6 @@ public static class MineCart_restartLevel_Patch
     }
 }
 
-/// <summary>
-/// 金币换命（关卡模式 gameMode == 3）
-/// </summary>
 [HarmonyPatch(typeof(MineCart), "CollectCoin")]
 public static class MineCart_CollectCoin_Patch
 {
@@ -84,9 +75,6 @@ public static class MineCart_CollectCoin_Patch
     }
 }
 
-/// <summary>
-/// 跳关逻辑：连续死亡3次后触发跳关+通关动画（关卡模式 gameMode == 3）
-/// </summary>
 [HarmonyPatch(typeof(MineCart), "tick")]
 public static class MineCart_tick_Patch
 {
