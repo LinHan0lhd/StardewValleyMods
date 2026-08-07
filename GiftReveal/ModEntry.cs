@@ -17,6 +17,9 @@ namespace GiftReveal
         private Dictionary<int, List<string>> _universalPositiveGifts = new();
         private bool _initialized = false;
 
+        // 等待第二天确认后再写入配置的揭示玩家 ID
+        private HashSet<long> _pendingRevealedPlayerIDs = new();
+
         // 缓存：类别 -> 物品ID列表
         private Dictionary<int, List<string>> _categoryItems = new();
         // 缓存：标签 -> 物品ID列表
@@ -36,6 +39,10 @@ namespace GiftReveal
             helper.Events.GameLoop.DayStarted += (_, _) =>
             {
                 if (!Context.IsMainPlayer) return;
+
+                // 先确认前一天的揭示结果（确保已存档）
+                CommitPendingReveals();
+
                 if (!_initialized)
                 {
                     BuildItemCaches();
@@ -244,17 +251,37 @@ namespace GiftReveal
             foreach (Farmer farmer in Game1.getAllFarmers())
             {
                 long uid = farmer.UniqueMultiplayerID;
-                if (Config.RevealedPlayerIDs.Contains(uid))
+                if (Config.RevealedPlayerIDs.Contains(uid) || _pendingRevealedPlayerIDs.Contains(uid))
                     continue;
 
                 totalAdded += WriteGiftsForPlayer(farmer);
-                Config.RevealedPlayerIDs.Add(uid);
+                _pendingRevealedPlayerIDs.Add(uid);
             }
-
-            Helper.WriteConfig(Config);
 
             if (totalAdded > 0)
                 Monitor.Log($"本轮新增 {totalAdded} 个礼物标记", LogLevel.Info);
+        }
+
+        private void CommitPendingReveals()
+        {
+            if (_pendingRevealedPlayerIDs.Count == 0) return;
+
+            bool changed = false;
+            foreach (long id in _pendingRevealedPlayerIDs)
+            {
+                if (!Config.RevealedPlayerIDs.Contains(id))
+                {
+                    Config.RevealedPlayerIDs.Add(id);
+                    changed = true;
+                }
+            }
+            _pendingRevealedPlayerIDs.Clear();
+
+            if (changed)
+            {
+                Helper.WriteConfig(Config);
+                Monitor.Log($"已确认 {Config.RevealedPlayerIDs.Count} 名玩家的礼物揭示", LogLevel.Info);
+            }
         }
 
         private int WriteGiftsForPlayer(Farmer player)
