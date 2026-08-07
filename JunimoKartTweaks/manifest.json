@@ -1,0 +1,10 @@
+{
+  "Name": "Junimo Kart Tweaks",
+  "Author": "Custom",
+  "Version": "1.1.0",
+  "Description": "Highly configurable tweaks for Junimo Kart endless mode: initial lives, level-clear bonus, fruit rewards, and coin-to-life ratio.",
+  "UniqueID": "Custom.JunimoKartTweaks",
+  "EntryDll": "JunimoKartTweaks.dll",
+  "MinimumApiVersion": "3.0.0",
+  "UpdateKeys": []
+}
