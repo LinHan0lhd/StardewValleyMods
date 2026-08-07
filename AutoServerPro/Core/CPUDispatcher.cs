@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Input;
 using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Audio;
@@ -42,8 +43,7 @@ namespace AutoServerPro.Core
                 if (_config.DisableWeatherParticles)
                     InstallWeatherPatch();
 
-                if (_config.DisableGamepadInput)
-                    DisableGamepadControls();
+                InstallInputPatches();
 
                 _installed = true;
 
@@ -51,6 +51,8 @@ namespace AutoServerPro.Core
                 if (_config.SkipDrawing) features.Add("跳过绘制");
                 if (_config.DisableAudio) features.Add("禁用音频");
                 if (_config.DisableWeatherParticles) features.Add("禁用天气粒子");
+                if (_config.DisableKeyboardInput) features.Add("禁键盘");
+                if (_config.DisableMouseInput) features.Add("禁鼠标");
                 if (_config.DisableGamepadInput) features.Add("禁手柄");
                 if (features.Count > 0)
                     _monitor.Log($"CPU优化已启用: {string.Join(", ", features)}", LogLevel.Info);
@@ -131,27 +133,75 @@ namespace AutoServerPro.Core
         private static bool UpdateRaindropPrefix() => false;
         private static bool UpdateDebrisWeatherPrefix() => false;
 
-        private void DisableGamepadControls()
+        private void InstallInputPatches()
         {
-            try
+            if (_config.DisableKeyboardInput)
             {
-                if (Game1.options != null)
+                var kbMethod = AccessTools.Method(typeof(InputState), nameof(InputState.GetKeyboardState));
+                if (kbMethod != null)
                 {
-                    Game1.options.gamepadControls = false;
-                    _monitor.Log("手柄控制已禁用", LogLevel.Debug);
+                    var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(GetKeyboardStatePrefix));
+                    _harmony.Patch(kbMethod, prefix: prefix);
+                    _monitor.Log("键盘输入补丁已安装", LogLevel.Debug);
+                }
+                else
+                {
+                    _monitor.Log("无法找到 InputState.GetKeyboardState 方法", LogLevel.Warn);
                 }
             }
-            catch { }
+
+            if (_config.DisableMouseInput)
+            {
+                var mouseMethod = AccessTools.Method(typeof(InputState), nameof(InputState.GetMouseState));
+                if (mouseMethod != null)
+                {
+                    var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(GetMouseStatePrefix));
+                    _harmony.Patch(mouseMethod, prefix: prefix);
+                    _monitor.Log("鼠标输入补丁已安装", LogLevel.Debug);
+                }
+                else
+                {
+                    _monitor.Log("无法找到 InputState.GetMouseState 方法", LogLevel.Warn);
+                }
+            }
+
+            if (_config.DisableGamepadInput)
+            {
+                var padMethod = AccessTools.Method(typeof(InputState), nameof(InputState.GetGamePadState));
+                if (padMethod != null)
+                {
+                    var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(GetGamePadStatePrefix));
+                    _harmony.Patch(padMethod, prefix: prefix);
+                    _monitor.Log("手柄输入补丁已安装", LogLevel.Debug);
+                }
+                else
+                {
+                    _monitor.Log("无法找到 InputState.GetGamePadState 方法", LogLevel.Warn);
+                }
+            }
+        }
+
+        private static bool GetKeyboardStatePrefix(ref KeyboardState __result)
+        {
+            __result = default(KeyboardState);
+            return false;
+        }
+
+        private static bool GetMouseStatePrefix(ref MouseState __result)
+        {
+            __result = new MouseState(0, 0, 0, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released, ButtonState.Released);
+            return false;
+        }
+
+        private static bool GetGamePadStatePrefix(ref GamePadState __result)
+        {
+            __result = default(GamePadState);
+            return false;
         }
 
         public void ReapplySettings()
         {
             if (!_installed) return;
-
-            if (_config.DisableGamepadInput && Game1.options != null)
-            {
-                Game1.options.gamepadControls = false;
-            }
         }
     }
 }

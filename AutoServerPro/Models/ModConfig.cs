@@ -37,6 +37,10 @@ namespace AutoServerPro.Models
         public bool SkipDrawing { get; set; } = true;
         public bool DisableAudio { get; set; } = true;
         public bool DisableWeatherParticles { get; set; } = true;
+
+        // ===== 输入控制（各开关独立） =====
+        public bool DisableKeyboardInput { get; set; } = false;
+        public bool DisableMouseInput { get; set; } = false;
         public bool DisableGamepadInput { get; set; } = true;
 
         // ===== 备份 =====
