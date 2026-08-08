@@ -1,9 +1,11 @@
 #nullable disable
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.Json;
+using System.Xml.Serialization;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
@@ -17,13 +19,17 @@ using AutoServerPro.Models;
 
 namespace AutoServerPro.Core
 {
+    [XmlRoot("Items")]
+    public class ItemsWrapper
+    {
+        [XmlElement("Item")]
+        public Item[] Items { get; set; }
+    }
+
     public class DebrisItemState
     {
         public string LocationName { get; set; }
-        public string ItemId { get; set; }
-        public string ItemName { get; set; }
-        public int Stack { get; set; }
-        public int Quality { get; set; }
+        public string ItemXml { get; set; }
         public float X { get; set; }
         public float Y { get; set; }
     }
@@ -59,6 +65,19 @@ namespace AutoServerPro.Core
         private bool _isSaving;
         private bool _saveNeedExtraData;
         private GameStateSnapshot _pendingSnapshot;
+
+        // XML 序列化器（用于保存完整物品数据）
+        private static readonly XmlSerializer ItemSerializer;
+        private static readonly Type[] ItemDerivedTypes;
+
+        static SaveManager()
+        {
+            ItemDerivedTypes = Assembly.GetAssembly(typeof(Item))
+                .GetTypes()
+                .Where(t => t.IsSubclassOf(typeof(Item)) && !t.IsAbstract)
+                .ToArray();
+            ItemSerializer = new XmlSerializer(typeof(ItemsWrapper), ItemDerivedTypes);
+        }
 
         public bool IsSaving => _isSaving;
 
@@ -382,20 +401,15 @@ namespace AutoServerPro.Core
                     var location = Game1.locations.FirstOrDefault(l => l.NameOrUniqueName == debrisState.LocationName);
                     if (location == null) continue;
 
-                    string itemId = !string.IsNullOrEmpty(debrisState.ItemId)
-                        ? debrisState.ItemId
-                        : debrisState.ItemName;
-
-                    if (string.IsNullOrEmpty(itemId)) continue;
-
-                    var debris = new Debris(itemId, new Vector2(debrisState.X, debrisState.Y), new Vector2(debrisState.X, debrisState.Y));
-                    if (debris.item != null)
+                    Item item = null;
+                    if (!string.IsNullOrEmpty(debrisState.ItemXml))
                     {
-                        debris.item.Stack = debrisState.Stack;
-                        debris.item.Quality = debrisState.Quality;
-                        debris.item.FixStackSize();
-                        debris.item.FixQuality();
+                        item = DeserializeItem(debrisState.ItemXml);
                     }
+
+                    if (item == null) continue;
+
+                    var debris = new Debris(item, new Vector2(debrisState.X, debrisState.Y), new Vector2(debrisState.X, debrisState.Y));
                     location.debris.Add(debris);
                     restored++;
                 }
@@ -404,6 +418,43 @@ namespace AutoServerPro.Core
 
             if (restored > 0)
                 _monitor.Log($"成功恢复 {restored} 个掉落物", LogLevel.Debug);
+        }
+
+        private string SerializeItem(Item item)
+        {
+            try
+            {
+                var wrapper = new ItemsWrapper { Items = new[] { item } };
+                using (var ms = new MemoryStream())
+                {
+                    ItemSerializer.Serialize(ms, wrapper);
+                    ms.Position = 0;
+                    using (var sr = new StreamReader(ms))
+                        return sr.ReadToEnd();
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private Item DeserializeItem(string xml)
+        {
+            try
+            {
+                // 移除 xsi 命名空间（参考 MasterHand）
+                xml = System.Text.RegularExpressions.Regex.Replace(xml, @"\s+xmlns:xsi\s*=\s*[""'][^""']*[""']", "");
+
+                var wrapper = (ItemsWrapper)ItemSerializer.Deserialize(new StringReader(xml));
+                if (wrapper?.Items != null && wrapper.Items.Length > 0)
+                    return wrapper.Items[0];
+                return null;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private void RestorePlayerPositions(GameStateSnapshot snapshot)
@@ -563,6 +614,7 @@ namespace AutoServerPro.Core
             }
 
             int debrisCount = 0;
+            int failedCount = 0;
             foreach (var location in Game1.locations)
             {
                 if (location == null || location.debris == null) continue;
@@ -571,9 +623,9 @@ namespace AutoServerPro.Core
                 {
                     try
                     {
-                        // 获取物品ID（优先用 itemId.Value，其次用 item.ItemId）
-                        string itemId = debris.itemId?.Value ?? debris.item?.ItemId;
-                        if (string.IsNullOrEmpty(itemId)) continue;
+                        // 获取物品
+                        Item item = debris.item;
+                        if (item == null) continue;
 
                         // 获取位置
                         float x = 0, y = 0;
@@ -584,27 +636,33 @@ namespace AutoServerPro.Core
                             y = chunk.position.Y;
                         }
 
-                        // 获取堆叠和质量
-                        int stack = debris.item?.Stack ?? 1;
-                        int quality = debris.item?.Quality ?? debris.itemQuality;
+                        // 序列化物品为 XML
+                        string itemXml = SerializeItem(item);
+                        if (string.IsNullOrEmpty(itemXml))
+                        {
+                            failedCount++;
+                            continue;
+                        }
 
                         snapshot.DebrisItems.Add(new DebrisItemState
                         {
                             LocationName = location.NameOrUniqueName,
-                            ItemId = itemId,
-                            ItemName = debris.item?.Name ?? "",
-                            Stack = stack,
-                            Quality = quality,
+                            ItemXml = itemXml,
                             X = x,
                             Y = y
                         });
                         debrisCount++;
                     }
-                    catch { }
+                    catch
+                    {
+                        failedCount++;
+                    }
                 }
             }
 
             _monitor.Log($"快照创建完成: {snapshot.PlayerPositions.Count}玩家, {debrisCount}掉落物", LogLevel.Debug);
+            if (failedCount > 0)
+                _monitor.Log($"物品序列化失败: {failedCount} 个", LogLevel.Warn);
 
             return snapshot;
         }
