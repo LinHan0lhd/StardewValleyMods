@@ -422,12 +422,12 @@ namespace AutoServerPro.Core
             {
                 try
                 {
-                    npc.ClearSchedule();
+                    npc.ClearSchedule();  // 清除当前行程
+                    npc.followSchedule = true;  // 重新启用行程跟随
                     npc.ignoreScheduleToday = false;
                     npc.lastAttemptedSchedule = -1;
                     npc.currentScheduleDelay = 0f;
                     npc.scheduleDelaySeconds = 0f;
-                    npc.followSchedule = true;
                     npc.DirectionsToNewLocation = null;
 
                     if (npc.temporaryController != null)
@@ -764,6 +764,49 @@ namespace AutoServerPro.Core
         public void SetCurrentSaveName(string saveName)
         {
             _currentSaveName = saveName;
+        }
+
+        public void CreateNewWorld(string saveName, string hostName = null)
+        {
+            hostName ??= _config.DefaultHostName;
+
+            string targetPath = Path.Combine(CurrentSavesPath, saveName);
+            if (Directory.Exists(targetPath))
+            {
+                _monitor.Log($"存档 {saveName} 已存在", LogLevel.Error);
+                return;
+            }
+
+            try
+            {
+                // 使用反射调用游戏内部的新游戏创建流程
+                var loadForNewGame = AccessTools.Method(typeof(Game1), "loadForNewGame");
+                if (loadForNewGame != null)
+                {
+                    // 设置存档名
+                    Game1.SetSaveName(saveName);
+
+                    // 创建新游戏
+                    loadForNewGame.Invoke(Game1.game1, new object[] { false });
+
+                    // 设置主机名
+                    if (!string.IsNullOrEmpty(hostName) && Game1.player != null)
+                    {
+                        Game1.player.Name = hostName;
+                    }
+
+                    _currentSaveName = saveName;
+                    _monitor.Log($"已创建新存档：{saveName}，主机：{hostName}", LogLevel.Info);
+                }
+                else
+                {
+                    _monitor.Log("无法找到新游戏创建方法", LogLevel.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                _monitor.Log($"创建存档失败：{ex.Message}", LogLevel.Error);
+            }
         }
     }
 }
