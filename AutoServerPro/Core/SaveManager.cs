@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Text.Json;
 using System.Xml.Serialization;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
@@ -26,29 +25,65 @@ namespace AutoServerPro.Core
         public Item[] Items { get; set; }
     }
 
+    [XmlRoot("DebrisItem")]
     public class DebrisItemState
     {
+        [XmlElement("LocationName")]
         public string LocationName { get; set; }
+
+        [XmlElement("ItemXml")]
         public string ItemXml { get; set; }
+
+        [XmlElement("X")]
         public float X { get; set; }
+
+        [XmlElement("Y")]
         public float Y { get; set; }
     }
 
+    [XmlRoot("GameStateSnapshot")]
     public class GameStateSnapshot
     {
+        [XmlElement("TimeOfDay")]
         public int TimeOfDay { get; set; }
+
+        [XmlElement("Season")]
+        public string Season { get; set; }
+
+        [XmlElement("DayOfMonth")]
+        public int DayOfMonth { get; set; }
+
+        [XmlElement("MineLowestLevelReached")]
         public int MineLowestLevelReached { get; set; }
+
+        [XmlArray("PlayerPositions")]
+        [XmlArrayItem("PlayerPosition")]
         public List<PlayerPosition> PlayerPositions { get; set; } = new();
+
+        [XmlArray("DebrisItems")]
+        [XmlArrayItem("DebrisItem")]
         public List<DebrisItemState> DebrisItems { get; set; } = new();
     }
 
+    [XmlRoot("PlayerPosition")]
     public class PlayerPosition
     {
+        [XmlElement("Name")]
         public string Name { get; set; }
+
+        [XmlElement("UniqueId")]
         public long UniqueId { get; set; }
+
+        [XmlElement("LocationName")]
         public string LocationName { get; set; }
+
+        [XmlElement("X")]
         public float X { get; set; }
+
+        [XmlElement("Y")]
         public float Y { get; set; }
+
+        [XmlElement("FacingDirection")]
         public int FacingDirection { get; set; }
     }
 
@@ -66,8 +101,9 @@ namespace AutoServerPro.Core
         private bool _saveNeedExtraData;
         private GameStateSnapshot _pendingSnapshot;
 
-        // XML 序列化器（用于保存完整物品数据）
+        // XML 序列化器
         private static readonly XmlSerializer ItemSerializer;
+        private static readonly XmlSerializer SnapshotSerializer;
         private static readonly Type[] ItemDerivedTypes;
 
         static SaveManager()
@@ -77,6 +113,7 @@ namespace AutoServerPro.Core
                 .Where(t => t.IsSubclassOf(typeof(Item)) && !t.IsAbstract)
                 .ToArray();
             ItemSerializer = new XmlSerializer(typeof(ItemsWrapper), ItemDerivedTypes);
+            SnapshotSerializer = new XmlSerializer(typeof(GameStateSnapshot));
         }
 
         public bool IsSaving => _isSaving;
@@ -105,7 +142,7 @@ namespace AutoServerPro.Core
             ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "StardewValley", "TempSaves")
             : _config.CustomTempSavesPath;
 
-        private string ExtraDataPath(string saveName) => Path.Combine(TempSavesRootPath, saveName, ".extradata.json");
+        private string ExtraDataPath(string saveName) => Path.Combine(TempSavesRootPath, saveName, ".extradata.xml");
 
         private string GetBackupRootPath()
         {
@@ -283,15 +320,17 @@ namespace AutoServerPro.Core
 
             try
             {
-                string json = File.ReadAllText(extraPath);
-                var snapshot = JsonSerializer.Deserialize<GameStateSnapshot>(json);
-                if (snapshot == null) return;
+                using (var fs = new FileStream(extraPath, FileMode.Open))
+                {
+                    var snapshot = (GameStateSnapshot)SnapshotSerializer.Deserialize(fs);
+                    if (snapshot == null) return;
 
-                _monitor.Log($"恢复存档数据 - 时间: {snapshot.Season} {snapshot.DayOfMonth}日 {snapshot.TimeOfDay}:00, 掉落物: {snapshot.DebrisItems.Count}", LogLevel.Info);
+                    _monitor.Log($"恢复存档数据 - 时间: {snapshot.Season} {snapshot.DayOfMonth}日 {snapshot.TimeOfDay}:00, 掉落物: {snapshot.DebrisItems.Count}", LogLevel.Info);
 
-                RestoreSnapshot(snapshot);
-                ResetNpcSchedules();
-                _monitor.Log("存档数据恢复完成", LogLevel.Info);
+                    RestoreSnapshot(snapshot);
+                    ResetNpcSchedules();
+                    _monitor.Log("存档数据恢复完成", LogLevel.Info);
+                }
             }
             catch (Exception ex)
             {
@@ -587,6 +626,8 @@ namespace AutoServerPro.Core
             var snapshot = new GameStateSnapshot
             {
                 TimeOfDay = Game1.timeOfDay,
+                Season = Game1.currentSeason,
+                DayOfMonth = Game1.dayOfMonth,
                 MineLowestLevelReached = MineShaft.lowestLevelReached
             };
 
@@ -677,10 +718,12 @@ namespace AutoServerPro.Core
                 if (!Directory.Exists(tempSaveDir))
                     Directory.CreateDirectory(tempSaveDir);
 
-                string json = JsonSerializer.Serialize(snapshot, new JsonSerializerOptions { WriteIndented = true });
                 string path = ExtraDataPath(_currentSaveName);
-                File.WriteAllText(path, json);
-                _monitor.Log($"额外数据已保存: {snapshot.PlayerPositions.Count}玩家位置, {snapshot.DebrisItems.Count}掉落物", LogLevel.Info);
+                using (var fs = new FileStream(path, FileMode.Create))
+                {
+                    SnapshotSerializer.Serialize(fs, snapshot);
+                }
+                _monitor.Log($"额外数据已保存(XML): {snapshot.PlayerPositions.Count}玩家位置, {snapshot.DebrisItems.Count}掉落物", LogLevel.Info);
             }
             catch (Exception ex)
             {
