@@ -1,4 +1,6 @@
 #nullable disable
+using System;
+using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewValley;
@@ -14,6 +16,11 @@ namespace AutoServerPro.Core
         private ModConfig _config;
         private readonly IModHelper _helper;
         private string _currentSaveName = "";
+
+        private IEnumerator<int> _saveCoroutine;
+        private bool _isSaving;
+
+        public bool IsSaving => _isSaving;
 
         public SaveManager(IMonitor monitor, ModConfig config, IModHelper helper)
         {
