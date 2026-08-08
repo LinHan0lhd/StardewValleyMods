@@ -15,6 +15,17 @@ using AutoServerPro.Models;
 
 namespace AutoServerPro.Core
 {
+    public class DebrisItemState
+    {
+        public string LocationName { get; set; }
+        public string ItemId { get; set; }
+        public string ItemName { get; set; }
+        public int StackSize { get; set; }
+        public int Quality { get; set; }
+        public float X { get; set; }
+        public float Y { get; set; }
+    }
+
     public class GameStateSnapshot
     {
         public int TimeOfDay { get; set; }
@@ -22,14 +33,12 @@ namespace AutoServerPro.Core
         public string Season { get; set; }
         public int Year { get; set; }
         public int DayOfWeek { get; set; }
-        public string Weather { get; set; }
         public bool IsRaining { get; set; }
         public bool IsSnowing { get; set; }
         public bool IsLightning { get; set; }
         public int MineLowestLevelReached { get; set; }
         public List<PlayerPosition> PlayerPositions { get; set; } = new();
-        public List<MapObjectState> MapObjects { get; set; } = new();
-        public List<NpcState> NpcStates { get; set; } = new();
+        public List<DebrisItemState> DebrisItems { get; set; } = new();
     }
 
     public class PlayerPosition
@@ -40,34 +49,6 @@ namespace AutoServerPro.Core
         public float X { get; set; }
         public float Y { get; set; }
         public int FacingDirection { get; set; }
-        public int Health { get; set; }
-        public int MaxHealth { get; set; }
-        public int Stamina { get; set; }
-        public int MaxStamina { get; set; }
-        public bool IsFrozen { get; set; }
-    }
-
-    public class MapObjectState
-    {
-        public string LocationName { get; set; }
-        public string ObjectType { get; set; }
-        public int X { get; set; }
-        public int Y { get; set; }
-        public int StackSize { get; set; }
-        public int Quality { get; set; }
-        public int MinutesUntilReady { get; set; }
-    }
-
-    public class NpcState
-    {
-        public string Name { get; set; }
-        public string CurrentLocation { get; set; }
-        public float X { get; set; }
-        public float Y { get; set; }
-        public int FacingDirection { get; set; }
-        public bool IsInBuilding { get; set; }
-        public bool IsWalking { get; set; }
-        public bool IsEmoting { get; set; }
     }
 
     public class SaveManager
@@ -184,9 +165,10 @@ namespace AutoServerPro.Core
                 var snapshot = JsonSerializer.Deserialize<GameStateSnapshot>(json);
                 if (snapshot == null) return;
 
-                _monitor.Log($"恢复额外数据 - 时间: {snapshot.Season} {snapshot.DayOfMonth}日 {snapshot.TimeOfDay}:00", LogLevel.Info);
+                _monitor.Log($"恢复额外数据 - 时间: {snapshot.Season} {snapshot.DayOfMonth}日 {snapshot.TimeOfDay}:00, 掉落物: {snapshot.DebrisItems.Count}", LogLevel.Info);
 
                 RestoreSnapshot(snapshot);
+                ResetNpcSchedules();
                 _monitor.Log("额外数据恢复完成", LogLevel.Info);
             }
             catch (Exception ex)
@@ -222,12 +204,58 @@ namespace AutoServerPro.Core
 
             try
             {
+                RestoreDebrisItems(snapshot);
+            }
+            catch (Exception ex)
+            {
+                _monitor.Log($"恢复掉落物失败: {ex.Message}", LogLevel.Warn);
+            }
+
+            try
+            {
                 RestorePlayerPositions(snapshot);
             }
             catch (Exception ex)
             {
                 _monitor.Log($"恢复玩家位置失败: {ex.Message}", LogLevel.Warn);
             }
+        }
+
+        private void RestoreDebrisItems(GameStateSnapshot snapshot)
+        {
+            if (snapshot.DebrisItems == null || snapshot.DebrisItems.Count == 0) return;
+
+            _monitor.Log($"恢复 {snapshot.DebrisItems.Count} 个掉落物", LogLevel.Debug);
+
+            int restored = 0;
+            foreach (var debrisState in snapshot.DebrisItems)
+            {
+                try
+                {
+                    var location = Game1.locations.FirstOrDefault(l => l.NameOrUniqueName == debrisState.LocationName);
+                    if (location == null) continue;
+
+                    Item item = null;
+                    if (!string.IsNullOrEmpty(debrisState.ItemId))
+                    {
+                        item = ItemRegistry.Create(debrisState.ItemId, debrisState.StackSize, debrisState.Quality);
+                    }
+                    else if (!string.IsNullOrEmpty(debrisState.ItemName))
+                    {
+                        item = ItemRegistry.Create(debrisState.ItemName, debrisState.StackSize, debrisState.Quality);
+                    }
+
+                    if (item == null) continue;
+
+                    var debris = new Debris(item, new Vector2(debrisState.X, debrisState.Y), new Vector2(debrisState.X, debrisState.Y));
+                    location.debris.Add(debris);
+                    restored++;
+                }
+                catch { }
+            }
+
+            if (restored > 0)
+                _monitor.Log($"成功恢复 {restored} 个掉落物", LogLevel.Debug);
         }
 
         private void RestorePlayerPositions(GameStateSnapshot snapshot)
@@ -238,9 +266,7 @@ namespace AutoServerPro.Core
 
             foreach (var pos in snapshot.PlayerPositions)
             {
-                if (pos.IsFrozen) continue;
-
-                if (pos.Name == Game1.player.Name && pos.LocationName == Game1.player.currentLocation.NameOrUniqueName)
+                if (pos.Name == Game1.player.Name && pos.LocationName == Game1.player.currentLocation?.NameOrUniqueName)
                 {
                     Game1.player.position.Set(pos.X, pos.Y);
                     Game1.player.facingDirection = pos.FacingDirection;
@@ -258,6 +284,56 @@ namespace AutoServerPro.Core
                     _monitor.Log($"  玩家 {farmer.Name} 位置: ({saved.X}, {saved.Y})", LogLevel.Debug);
                 }
             }
+        }
+
+        private void ResetNpcSchedules()
+        {
+            _monitor.Log("重置 NPC 行程状态，防止卡死...", LogLevel.Debug);
+
+            int resetCount = 0;
+            int scheduleCount = 0;
+            foreach (var npc in Utility.getAllCharacters())
+            {
+                try
+                {
+                    npc.Schedule = null;
+                    npc.ignoreScheduleToday = false;
+                    npc.lastAttemptedSchedule = -1;
+                    npc.currentScheduleDelay = 0f;
+                    npc.scheduleDelaySeconds = 0f;
+                    npc.returningToEndPoint = false;
+                    npc.queuedSchedulePaths.Clear();
+                    npc.followSchedule = true;
+                    npc.directionsToNewLocation = null;
+                    npc.previousEndPoint = new Point((int)npc.defaultPosition.X / 64, (int)npc.defaultPosition.Y / 64);
+
+                    if (npc.controller != null)
+                    {
+                        npc.controller = null;
+                    }
+                    if (npc.temporaryController != null)
+                    {
+                        npc.temporaryController = null;
+                    }
+
+                    npc.Halt();
+                    resetCount++;
+
+                    if (npc.IsVillager)
+                    {
+                        try
+                        {
+                            if (npc.TryLoadSchedule())
+                                scheduleCount++;
+                        }
+                        catch { }
+                    }
+                }
+                catch { }
+            }
+
+            if (resetCount > 0)
+                _monitor.Log($"已重置 {resetCount} 个 NPC 行程状态，{scheduleCount} 个已重新加载日程", LogLevel.Debug);
         }
 
         // ========== 备份系统 ==========
@@ -328,7 +404,7 @@ namespace AutoServerPro.Core
                 IsRaining = Game1.isRaining,
                 IsSnowing = Game1.isSnowing,
                 IsLightning = Game1.isLightning,
-                MineLowestLevelReached = Game1.mineLowestLevelReached
+                MineLowestLevelReached = MineShaft.lowestLevelReached
             };
 
             snapshot.PlayerPositions.Add(new PlayerPosition
@@ -338,12 +414,7 @@ namespace AutoServerPro.Core
                 LocationName = Game1.player.currentLocation?.NameOrUniqueName ?? "",
                 X = Game1.player.position.X,
                 Y = Game1.player.position.Y,
-                FacingDirection = Game1.player.facingDirection,
-                Health = Game1.player.health,
-                MaxHealth = Game1.player.maxHealth,
-                Stamina = Game1.player.Stamina,
-                MaxStamina = Game1.player.MaxStamina,
-                IsFrozen = Game1.player.freezePause > 0
+                FacingDirection = Game1.player.facingDirection
             });
 
             foreach (var farmer in Game1.otherFarmers)
@@ -355,86 +426,33 @@ namespace AutoServerPro.Core
                     LocationName = farmer.currentLocation?.NameOrUniqueName ?? "",
                     X = farmer.position.X,
                     Y = farmer.position.Y,
-                    FacingDirection = farmer.facingDirection,
-                    Health = farmer.health,
-                    MaxHealth = farmer.maxHealth,
-                    Stamina = farmer.Stamina,
-                    MaxStamina = farmer.MaxStamina,
-                    IsFrozen = farmer.freezePause > 0
+                    FacingDirection = farmer.facingDirection
                 });
             }
 
             foreach (var location in Game1.locations)
             {
-                if (location == null) continue;
+                if (location == null || location.debris == null) continue;
 
-                if (location.Objects != null)
+                foreach (var debris in location.debris)
                 {
-                    foreach (var kvp in location.Objects.Pairs)
+                    try
                     {
-                        var obj = kvp.Value;
-                        if (obj == null) continue;
-                        if (obj is CrabPot || obj is IndoorPot || obj is ItemPedestal) continue;
+                        if (debris.item == null) continue;
 
-                        try
+                        snapshot.DebrisItems.Add(new DebrisItemState
                         {
-                            snapshot.MapObjects.Add(new MapObjectState
-                            {
-                                LocationName = location.NameOrUniqueName,
-                                ObjectType = obj.GetType().Name,
-                                X = (int)kvp.Key.X,
-                                Y = (int)kvp.Key.Y,
-                                StackSize = obj.StackSize,
-                                Quality = obj.Quality,
-                                MinutesUntilReady = obj.MinutesUntilReady,
-                                HoldsObjCount = obj.heldObject != null ? 1 : 0
-                            });
-                        }
-                        catch { }
+                            LocationName = location.NameOrUniqueName,
+                            ItemId = debris.item.ItemId,
+                            ItemName = debris.item.Name,
+                            StackSize = debris.item.StackSize,
+                            Quality = debris.item.Quality,
+                            X = debris.position.X,
+                            Y = debris.position.Y
+                        });
                     }
+                    catch { }
                 }
-
-                if (location is Farm farm && farm.debris != null)
-                {
-                    foreach (var debris in farm.debris)
-                    {
-                        if (debris.item != null)
-                        {
-                            try
-                            {
-                                snapshot.MapObjects.Add(new MapObjectState
-                                {
-                                    LocationName = location.NameOrUniqueName,
-                                    ObjectType = "Debris",
-                                    X = (int)debris.position.X,
-                                    Y = (int)debris.position.Y,
-                                    StackSize = debris.item.StackSize,
-                                    Quality = debris.item.Quality
-                                });
-                            }
-                            catch { }
-                        }
-                    }
-                }
-            }
-
-            foreach (var npc in Utility.getAllCharacters())
-            {
-                try
-                {
-                    snapshot.NpcStates.Add(new NpcState
-                    {
-                        Name = npc.Name,
-                        CurrentLocation = npc.currentLocation?.NameOrUniqueName ?? "",
-                        X = npc.position.X,
-                        Y = npc.position.Y,
-                        FacingDirection = npc.facingDirection,
-                        IsInBuilding = npc.currentLocation is Building,
-                        IsWalking = npc.Schedule != null,
-                        IsEmoting = npc.IsEmoting
-                    });
-                }
-                catch { }
             }
 
             return snapshot;
@@ -449,7 +467,7 @@ namespace AutoServerPro.Core
                 string json = JsonSerializer.Serialize(snapshot, new JsonSerializerOptions { WriteIndented = true });
                 string path = ExtraDataPath(_currentSaveName);
                 File.WriteAllText(path, json);
-                _monitor.Log($"额外数据已保存: {snapshot.PlayerPositions.Count}玩家, {snapshot.MapObjects.Count}物品, {snapshot.NpcStates.Count}NPC", LogLevel.Info);
+                _monitor.Log($"额外数据已保存: {snapshot.PlayerPositions.Count}玩家位置, {snapshot.DebrisItems.Count}掉落物", LogLevel.Info);
             }
             catch (Exception ex)
             {
@@ -478,8 +496,6 @@ namespace AutoServerPro.Core
 
             try
             {
-                _monitor.Log($"保存状态检查 - SaveFolder: {Constants.SaveFolderName}, IsProcessing: {SaveGame.IsProcessing}", LogLevel.Debug);
-
                 _pendingSnapshot = CreateSnapshot();
                 _saveNeedExtraData = true;
 
@@ -496,7 +512,7 @@ namespace AutoServerPro.Core
 
                 _saveCoroutine = (System.Collections.Generic.IEnumerator<int>)getSaveEnumerator.Invoke(null, null);
                 _isSaving = true;
-                _monitor.Log($"开始即时保存... (时间: {Game1.currentSeason} {Game1.dayOfMonth}日 {Game1.timeOfDay}:00)", LogLevel.Info);
+                _monitor.Log($"开始即时保存... (时间: {Game1.currentSeason} {Game1.dayOfMonth}日 {Game1.timeOfDay}:00, 掉落物: {_pendingSnapshot.DebrisItems.Count})", LogLevel.Info);
             }
             catch (Exception ex)
             {
