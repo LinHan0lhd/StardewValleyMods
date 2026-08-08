@@ -7,6 +7,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using StardewModdingAPI;
 using StardewValley;
+using StardewValley.Menus;
 using AutoServerPro.Models;
 
 namespace AutoServerPro.Core
@@ -17,6 +18,8 @@ namespace AutoServerPro.Core
         private ModConfig _config;
         private Harmony _harmony;
         private bool _installed;
+        private Harmony _saveGameMenuHarmony;
+        private Harmony _newDaySyncHarmony;
 
         public CPUDispatcher(IMonitor monitor, ModConfig config)
         {
@@ -44,6 +47,7 @@ namespace AutoServerPro.Core
                     InstallWeatherPatch();
 
                 InstallInputPatches();
+                InstallDayEndPatches();
 
                 _installed = true;
 
@@ -54,6 +58,7 @@ namespace AutoServerPro.Core
                 if (_config.DisableKeyboardInput) features.Add("禁键盘");
                 if (_config.DisableMouseInput) features.Add("禁鼠标");
                 if (_config.DisableGamepadInput) features.Add("禁手柄");
+                features.Add("日结修复");
                 if (features.Count > 0)
                     _monitor.Log($"CPU优化已启用: {string.Join(", ", features)}", LogLevel.Info);
             }
@@ -201,6 +206,66 @@ namespace AutoServerPro.Core
         private static bool GetGamePadStatePrefix(ref GamePadState __result)
         {
             __result = default(GamePadState);
+            return false;
+        }
+
+        private void InstallDayEndPatches()
+        {
+            _saveGameMenuHarmony = new Harmony("LinHan.AutoServerPro.SaveGameMenu");
+            var updateMethod = AccessTools.Method(typeof(SaveGameMenu), "update");
+            if (updateMethod != null)
+            {
+                var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(SaveGameMenuUpdatePrefix));
+                _saveGameMenuHarmony.Patch(updateMethod, prefix: prefix);
+                _monitor.Log("日结补丁已安装: SaveGameMenu.update → hasDrawn=true", LogLevel.Debug);
+            }
+            else
+            {
+                _monitor.Log("无法找到 SaveGameMenu.update 方法", LogLevel.Warn);
+            }
+
+            _newDaySyncHarmony = new Harmony("LinHan.AutoServerPro.NewDaySync");
+
+            var readyForSaveMethod = AccessTools.Method(typeof(NewDaySynchronizer), "readyForSave");
+            if (readyForSaveMethod != null)
+            {
+                var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(ReadyForSavePrefix));
+                _newDaySyncHarmony.Patch(readyForSaveMethod, prefix: prefix);
+                _monitor.Log("日结补丁已安装: readyForSave → true", LogLevel.Debug);
+            }
+            else
+            {
+                _monitor.Log("无法找到 NewDaySynchronizer.readyForSave 方法", LogLevel.Warn);
+            }
+
+            var readyForFinishMethod = AccessTools.Method(typeof(NewDaySynchronizer), "readyForFinish");
+            if (readyForFinishMethod != null)
+            {
+                var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(ReadyForFinishPrefix));
+                _newDaySyncHarmony.Patch(readyForFinishMethod, prefix: prefix);
+                _monitor.Log("日结补丁已安装: readyForFinish → true", LogLevel.Debug);
+            }
+            else
+            {
+                _monitor.Log("无法找到 NewDaySynchronizer.readyForFinish 方法", LogLevel.Warn);
+            }
+        }
+
+        private static void SaveGameMenuUpdatePrefix(SaveGameMenu __instance)
+        {
+            if (!__instance.hasDrawn)
+                __instance.hasDrawn = true;
+        }
+
+        private static bool ReadyForSavePrefix(ref bool __result)
+        {
+            __result = true;
+            return false;
+        }
+
+        private static bool ReadyForFinishPrefix(ref bool __result)
+        {
+            __result = true;
             return false;
         }
 
