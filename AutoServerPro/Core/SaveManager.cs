@@ -33,9 +33,6 @@ namespace AutoServerPro.Core
         public string Season { get; set; }
         public int Year { get; set; }
         public int DayOfWeek { get; set; }
-        public bool IsRaining { get; set; }
-        public bool IsSnowing { get; set; }
-        public bool IsLightning { get; set; }
         public int MineLowestLevelReached { get; set; }
         public List<PlayerPosition> PlayerPositions { get; set; } = new();
         public List<DebrisItemState> DebrisItems { get; set; } = new();
@@ -82,7 +79,11 @@ namespace AutoServerPro.Core
             ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "StardewValley", "AutoServerBackups")
             : _config.BackupPath;
 
-        private string ExtraDataPath(string saveName) => Path.Combine(SavesRootPath, saveName, ".extradata.json");
+        public string TempSavesRootPath => string.IsNullOrWhiteSpace(_config.CustomTempSavesPath)
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "StardewValley", "TempSaves")
+            : _config.CustomTempSavesPath;
+
+        private string ExtraDataPath(string saveName) => Path.Combine(TempSavesRootPath, saveName, ".extradata.json");
 
         private string GetBackupRootPath()
         {
@@ -155,7 +156,7 @@ namespace AutoServerPro.Core
             string extraPath = ExtraDataPath(_currentSaveName);
             if (!File.Exists(extraPath))
             {
-                _monitor.Log("无额外存档数据，跳过恢复", LogLevel.Debug);
+                _monitor.Log("无临时存档数据，跳过恢复", LogLevel.Debug);
                 return;
             }
 
@@ -165,15 +166,15 @@ namespace AutoServerPro.Core
                 var snapshot = JsonSerializer.Deserialize<GameStateSnapshot>(json);
                 if (snapshot == null) return;
 
-                _monitor.Log($"恢复额外数据 - 时间: {snapshot.Season} {snapshot.DayOfMonth}日 {snapshot.TimeOfDay}:00, 掉落物: {snapshot.DebrisItems.Count}", LogLevel.Info);
+                _monitor.Log($"恢复临时存档 - 时间: {snapshot.Season} {snapshot.DayOfMonth}日 {snapshot.TimeOfDay}:00, 掉落物: {snapshot.DebrisItems.Count}", LogLevel.Info);
 
                 RestoreSnapshot(snapshot);
                 ResetNpcSchedules();
-                _monitor.Log("额外数据恢复完成", LogLevel.Info);
+                _monitor.Log("临时存档恢复完成", LogLevel.Info);
             }
             catch (Exception ex)
             {
-                _monitor.Log($"恢复额外数据失败: {ex.Message}", LogLevel.Warn);
+                _monitor.Log($"恢复临时存档失败: {ex.Message}", LogLevel.Warn);
             }
         }
 
@@ -186,9 +187,6 @@ namespace AutoServerPro.Core
                 Game1.currentSeason = snapshot.Season;
                 Game1.year = snapshot.Year;
                 Game1.dayOfWeek = snapshot.DayOfWeek;
-                Game1.isRaining = snapshot.IsRaining;
-                Game1.isSnowing = snapshot.IsSnowing;
-                Game1.isLightning = snapshot.IsLightning;
 
                 if (snapshot.MineLowestLevelReached > 0)
                 {
@@ -401,9 +399,6 @@ namespace AutoServerPro.Core
                 Season = Game1.currentSeason,
                 Year = Game1.year,
                 DayOfWeek = Game1.dayOfWeek,
-                IsRaining = Game1.isRaining,
-                IsSnowing = Game1.isSnowing,
-                IsLightning = Game1.isLightning,
                 MineLowestLevelReached = MineShaft.lowestLevelReached
             };
 
@@ -464,14 +459,18 @@ namespace AutoServerPro.Core
 
             try
             {
+                string tempSaveDir = Path.Combine(TempSavesRootPath, _currentSaveName);
+                if (!Directory.Exists(tempSaveDir))
+                    Directory.CreateDirectory(tempSaveDir);
+
                 string json = JsonSerializer.Serialize(snapshot, new JsonSerializerOptions { WriteIndented = true });
                 string path = ExtraDataPath(_currentSaveName);
                 File.WriteAllText(path, json);
-                _monitor.Log($"额外数据已保存: {snapshot.PlayerPositions.Count}玩家位置, {snapshot.DebrisItems.Count}掉落物", LogLevel.Info);
+                _monitor.Log($"临时保存已保存: {snapshot.PlayerPositions.Count}玩家位置, {snapshot.DebrisItems.Count}掉落物", LogLevel.Info);
             }
             catch (Exception ex)
             {
-                _monitor.Log($"保存额外数据失败: {ex.Message}", LogLevel.Warn);
+                _monitor.Log($"保存临时数据失败: {ex.Message}", LogLevel.Warn);
             }
         }
 

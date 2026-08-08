@@ -11,6 +11,7 @@ namespace AutoServerPro.Models
         // ===== 存档路径 =====
         public string CustomSavesPath { get; set; } = "";
         public string BackupPath { get; set; } = "";
+        public string CustomTempSavesPath { get; set; } = "";
         public string NewSaveName { get; set; } = "";
 
         // ===== 自动创建默认值 =====
