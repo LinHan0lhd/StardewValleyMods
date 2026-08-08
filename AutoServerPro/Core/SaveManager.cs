@@ -157,6 +157,71 @@ namespace AutoServerPro.Core
             DoSaveBackup(_currentSaveName);
         }
 
+        // ========== 即时保存 ==========
+        public void ForceSaveNow()
+        {
+            if (!Context.IsWorldReady)
+            {
+                _monitor.Log("世界未加载，无法保存", LogLevel.Warn);
+                return;
+            }
+            if (_isSaving)
+            {
+                _monitor.Log("正在保存中，请稍候...", LogLevel.Warn);
+                return;
+            }
+            if (SaveGame.IsProcessing)
+            {
+                _monitor.Log("游戏正在处理保存，请稍候...", LogLevel.Warn);
+                return;
+            }
+
+            _isSaving = true;
+            _saveCoroutine = SaveGame.Save();
+            _monitor.Log("开始即时保存...", LogLevel.Info);
+        }
+
+        public void UpdateSave()
+        {
+            if (!_isSaving || _saveCoroutine == null) return;
+
+            try
+            {
+                if (_saveCoroutine.MoveNext())
+                {
+                    int progress = _saveCoroutine.Current;
+                    if (progress == 100)
+                    {
+                        _monitor.Log("即时保存完成！", LogLevel.Info);
+                        _isSaving = false;
+                        _saveCoroutine = null;
+
+                        // 保存完成后自动备份
+                        if (!string.IsNullOrEmpty(_currentSaveName))
+                        {
+                            try
+                            {
+                                DoSaveBackup(_currentSaveName);
+                            }
+                            catch { }
+                        }
+                    }
+                }
+                else
+                {
+                    _monitor.Log($"即时保存完成！", LogLevel.Info);
+                    _isSaving = false;
+                    _saveCoroutine = null;
+                }
+            }
+            catch (Exception ex)
+            {
+                _monitor.Log($"保存失败: {ex.Message}", LogLevel.Error);
+                _isSaving = false;
+                _saveCoroutine = null;
+            }
+        }
+
         // ========== 创建存档 ==========
         public void CreateNewWorld(string saveName, string hostName = null)
         {
