@@ -82,6 +82,12 @@ namespace AutoServerPro
             // 手动备份
             Helper.ConsoleCommands.Add("save_backup", "手动备份当前存档", _saveManager.ManualBackupCommand);
 
+            // 即时保存（不触发日结）
+            Helper.ConsoleCommands.Add("save_now", "即时保存当前进度", (_, __) =>
+            {
+                _saveManager.ForceSaveNow();
+            });
+
             // 聊天指令: chat tell "消息" 或 chat <聊天指令> [参数]
             Helper.ConsoleCommands.Add("chat",
                 "聊天: chat tell \"消息\" 广播聊天 | chat <聊天指令> [参数] 执行聊天指令",
@@ -213,6 +219,9 @@ namespace AutoServerPro
             }
 
             if (!Context.IsWorldReady) return;
+
+            _saveManager.UpdateSave();
+
             if (Game1.ticks % 60 != 0) return;
 
             _sleepManager.FixPetName();
