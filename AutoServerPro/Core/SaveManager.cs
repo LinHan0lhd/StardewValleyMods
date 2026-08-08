@@ -100,6 +100,8 @@ namespace AutoServerPro.Core
                 string dir = Path.Combine(SavesRootPath, _config.NewSaveName);
                 if (Directory.Exists(dir))
                 {
+                    // 在加载前检查是否需要从TempSaves恢复
+                    RestoreTempSavesIfNewer(_config.NewSaveName);
                     _monitor.Log($"加载指定存档：{_config.NewSaveName}", LogLevel.Info);
                     LoadSave(_config.NewSaveName);
                     Game1.multiplayerMode = 2;
@@ -113,10 +115,40 @@ namespace AutoServerPro.Core
                 _monitor.Log("未找到存档", LogLevel.Info);
                 return false;
             }
+            // 在加载前检查是否需要从TempSaves恢复
+            RestoreTempSavesIfNewer(latest);
             _monitor.Log($"加载最新存档：{latest}", LogLevel.Info);
             LoadSave(latest);
             Game1.multiplayerMode = 2;
             return true;
+        }
+
+        private void RestoreTempSavesIfNewer(string saveName)
+        {
+            string tempSaveDir = Path.Combine(TempSavesRootPath, saveName);
+            if (!Directory.Exists(tempSaveDir)) return;
+
+            DateTime? nativeSaveTime = GetDirectoryLatestTime(Path.Combine(SavesRootPath, saveName));
+            DateTime? tempSaveTime = GetDirectoryLatestTime(tempSaveDir);
+
+            if (!tempSaveTime.HasValue) return;
+
+            if (nativeSaveTime.HasValue && nativeSaveTime.Value >= tempSaveTime.Value)
+            {
+                _monitor.Log($"原生存档({nativeSaveTime.Value:HH:mm:ss})不早于临时存档({tempSaveTime.Value:HH:mm:ss})，跳过临时恢复", LogLevel.Info);
+                return;
+            }
+
+            _monitor.Log($"原生存档({nativeSaveTime?.ToString("HH:mm:ss") ?? "无"})早于临时存档({tempSaveTime.Value:HH:mm:ss})，从TempSaves恢复", LogLevel.Info);
+
+            try
+            {
+                RestoreSaveFromTemp(saveName);
+            }
+            catch (Exception ex)
+            {
+                _monitor.Log($"从TempSaves恢复存档失败: {ex.Message}", LogLevel.Warn);
+            }
         }
 
         private string GetLatestSave()
@@ -580,6 +612,12 @@ namespace AutoServerPro.Core
 
             try
             {
+                // 先备份当前Saves到TempSaves（保存保存前的状态）
+                if (!string.IsNullOrEmpty(_currentSaveName))
+                {
+                    CopySaveToTemp(_currentSaveName);
+                }
+
                 _pendingSnapshot = CreateSnapshot();
                 _saveNeedExtraData = true;
 
@@ -694,6 +732,20 @@ namespace AutoServerPro.Core
                 SaveExtraData(_pendingSnapshot);
                 _pendingSnapshot = null;
                 _saveNeedExtraData = false;
+            }
+
+            // 保存完成后再次复制Saves到TempSaves，确保包含保存后的完整状态
+            if (!string.IsNullOrEmpty(_currentSaveName))
+            {
+                try
+                {
+                    CopySaveToTemp(_currentSaveName);
+                    _monitor.Log("临时存档已更新到TempSaves", LogLevel.Debug);
+                }
+                catch (Exception ex)
+                {
+                    _monitor.Log($"更新临时存档失败: {ex.Message}", LogLevel.Warn);
+                }
             }
 
             if (!string.IsNullOrEmpty(_currentSaveName))
