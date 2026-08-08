@@ -657,11 +657,13 @@ namespace AutoServerPro.Core
                 _saveNeedExtraData = true;
 
                 SaveGame.IsProcessing = true;
-                var getSaveEnumerator = typeof(SaveGame).GetMethod("getSaveEnumerator",
-                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                var getSaveEnumerator = AccessTools.Method(typeof(SaveGame), "getSaveEnumerator");
                 if (getSaveEnumerator == null)
                 {
-                    _monitor.Log("找不到 getSaveEnumerator 方法", LogLevel.Error);
+                    // 尝试列出所有静态方法用于调试
+                    var allMethods = typeof(SaveGame).GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                    var methodNames = string.Join(", ", allMethods.Select(m => m.Name));
+                    _monitor.Log($"找不到 getSaveEnumerator 方法。可用方法: {methodNames}", LogLevel.Error);
                     SaveGame.IsProcessing = false;
                     _pendingSnapshot = null;
                     return;
