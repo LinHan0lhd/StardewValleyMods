@@ -160,6 +160,20 @@ namespace AutoServerPro.Core
                 return;
             }
 
+            DateTime tempSaveTime = File.GetLastWriteTime(extraPath);
+            DateTime? nativeSaveTime = GetNativeSaveTimestamp(_currentSaveName);
+
+            if (nativeSaveTime.HasValue && nativeSaveTime.Value >= tempSaveTime)
+            {
+                _monitor.Log($"原生存档({nativeSaveTime.Value:HH:mm:ss})不早于临时存档({tempSaveTime:HH:mm:ss})，跳过临时恢复", LogLevel.Info);
+                return;
+            }
+
+            if (nativeSaveTime.HasValue)
+            {
+                _monitor.Log($"原生存档({nativeSaveTime.Value:HH:mm:ss})早于临时存档({tempSaveTime:HH:mm:ss})，执行临时恢复", LogLevel.Info);
+            }
+
             try
             {
                 string json = File.ReadAllText(extraPath);
@@ -175,6 +189,30 @@ namespace AutoServerPro.Core
             catch (Exception ex)
             {
                 _monitor.Log($"恢复临时存档失败: {ex.Message}", LogLevel.Warn);
+            }
+        }
+
+        private DateTime? GetNativeSaveTimestamp(string saveName)
+        {
+            string saveDir = Path.Combine(SavesRootPath, saveName);
+            if (!Directory.Exists(saveDir)) return null;
+
+            try
+            {
+                var files = Directory.GetFiles(saveDir, "*", SearchOption.AllDirectories);
+                if (files.Length == 0) return null;
+
+                DateTime latest = DateTime.MinValue;
+                foreach (var file in files)
+                {
+                    var time = File.GetLastWriteTime(file);
+                    if (time > latest) latest = time;
+                }
+                return latest;
+            }
+            catch
+            {
+                return null;
             }
         }
 
@@ -521,6 +559,37 @@ namespace AutoServerPro.Core
             }
         }
 
+        public bool IsSavingComplete { get; private set; }
+
+        public void ForceSaveAndQuit()
+        {
+            if (!Context.IsWorldReady)
+            {
+                _monitor.Log("世界未加载，直接退出", LogLevel.Info);
+                Game1.quit = true;
+                return;
+            }
+
+            if (_isSaving)
+            {
+                _monitor.Log("已有保存进行中，等待完成...", LogLevel.Info);
+                _quitAfterSave = true;
+                return;
+            }
+
+            IsSavingComplete = false;
+            _quitAfterSave = true;
+            ForceSaveNow();
+
+            if (!_isSaving)
+            {
+                _monitor.Log("保存未启动，直接退出", LogLevel.Info);
+                Game1.quit = true;
+            }
+        }
+
+        private bool _quitAfterSave;
+
         public void UpdateSave()
         {
             if (!_isSaving || _saveCoroutine == null) return;
@@ -532,29 +601,7 @@ namespace AutoServerPro.Core
 
                 if (moved && progress == 100)
                 {
-                    _monitor.Log($"原生保存完成！进度: {progress}", LogLevel.Info);
-                    _isSaving = false;
-                    _saveCoroutine = null;
-                    SaveGame.IsProcessing = false;
-
-                    if (_saveNeedExtraData && _pendingSnapshot != null)
-                    {
-                        SaveExtraData(_pendingSnapshot);
-                        _pendingSnapshot = null;
-                        _saveNeedExtraData = false;
-                    }
-
-                    if (!string.IsNullOrEmpty(_currentSaveName))
-                    {
-                        try
-                        {
-                            DoSaveBackup(_currentSaveName);
-                        }
-                        catch (Exception ex)
-                        {
-                            _monitor.Log($"自动备份失败: {ex.Message}", LogLevel.Warn);
-                        }
-                    }
+                    FinishSave();
                 }
                 else if (moved)
                 {
@@ -565,17 +612,7 @@ namespace AutoServerPro.Core
                 }
                 else if (!moved)
                 {
-                    _monitor.Log($"原生保存完成！(MoveNext返回false)", LogLevel.Info);
-                    _isSaving = false;
-                    _saveCoroutine = null;
-                    SaveGame.IsProcessing = false;
-
-                    if (_saveNeedExtraData && _pendingSnapshot != null)
-                    {
-                        SaveExtraData(_pendingSnapshot);
-                        _pendingSnapshot = null;
-                        _saveNeedExtraData = false;
-                    }
+                    FinishSave();
                 }
             }
             catch (Exception ex)
@@ -586,6 +623,49 @@ namespace AutoServerPro.Core
                 SaveGame.IsProcessing = false;
                 _pendingSnapshot = null;
                 _saveNeedExtraData = false;
+
+                if (_quitAfterSave)
+                {
+                    _monitor.Log("保存失败，强制退出", LogLevel.Warn);
+                    Game1.quit = true;
+                    _quitAfterSave = false;
+                }
+            }
+        }
+
+        private void FinishSave()
+        {
+            _monitor.Log($"原生保存完成！", LogLevel.Info);
+            _isSaving = false;
+            _saveCoroutine = null;
+            SaveGame.IsProcessing = false;
+
+            IsSavingComplete = true;
+
+            if (_saveNeedExtraData && _pendingSnapshot != null)
+            {
+                SaveExtraData(_pendingSnapshot);
+                _pendingSnapshot = null;
+                _saveNeedExtraData = false;
+            }
+
+            if (!string.IsNullOrEmpty(_currentSaveName))
+            {
+                try
+                {
+                    DoSaveBackup(_currentSaveName);
+                }
+                catch (Exception ex)
+                {
+                    _monitor.Log($"自动备份失败: {ex.Message}", LogLevel.Warn);
+                }
+            }
+
+            if (_quitAfterSave)
+            {
+                _monitor.Log("保存完成，正在退出...", LogLevel.Info);
+                _quitAfterSave = false;
+                Game1.quit = true;
             }
         }
 

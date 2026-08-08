@@ -77,7 +77,10 @@ namespace AutoServerPro
             });
 
             // 停止服务器
-            Helper.ConsoleCommands.Add("stop", "停止服务器", (_, __) => Game1.quit = true);
+            Helper.ConsoleCommands.Add("stop", "停止服务器（先保存临时存档）", (_, __) =>
+            {
+                _saveManager.ForceSaveAndQuit();
+            });
 
             // 手动备份
             Helper.ConsoleCommands.Add("save_backup", "手动备份当前存档", _saveManager.ManualBackupCommand);
