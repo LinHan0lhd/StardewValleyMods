@@ -350,32 +350,30 @@ namespace AutoServerPro.Core
         }
 
         /// <summary>
-        /// 通过推进游戏时间的方式到达目标时间，触发完整的游戏逻辑
+        /// 通过推进游戏时间的方式到达目标时间，触发完整的游戏逻辑（与 MasterHand mh_time 一致）
         /// </summary>
         private void RestoreTimeByTick(int targetTime)
         {
-            int currentTime = Game1.timeOfDay;
-            int maxIterations = 300; // 防止无限循环（最多推进 3000 分钟 = 50 小时）
-            int iterations = 0;
-
-            _monitor.Log($"时间推进: {currentTime} → {targetTime}", LogLevel.Debug);
-
-            while (currentTime < targetTime && iterations < maxIterations)
+            int intervals = Utility.CalculateMinutesBetweenTimes(Game1.timeOfDay, targetTime) / 10;
+            if (intervals > 0)
             {
-                // 重置时间间隔，确保立即触发下一次推进
-                Game1.gameTimeInterval = Game1.realMilliSecondsPerGameTenMinutes;
-
-                // 推进 10 分钟（这会触发所有游戏逻辑：NPC行程、事件、音乐等）
-                Game1.performTenMinuteClockUpdate();
-
-                currentTime = Game1.timeOfDay;
-                iterations++;
+                for (int i = 0; i < intervals; i++)
+                    Game1.performTenMinuteClockUpdate();
             }
-
-            if (iterations > 0)
+            else
             {
-                _monitor.Log($"时间推进完成: {iterations} 步 ({iterations * 10} 分钟)", LogLevel.Debug);
+                for (int i = 0; i < -intervals; i++)
+                {
+                    Game1.timeOfDay = Utility.ModifyTime(Game1.timeOfDay, -20);
+                    Game1.performTenMinuteClockUpdate();
+                }
             }
+            Game1.outdoorLight = Color.White;
+            Game1.ambientLight = Color.White;
+            Game1.gameTimeInterval = 0;
+            Game1.UpdateGameClock(Game1.currentGameTime);
+
+            _monitor.Log($"时间推进完成: {Game1.timeOfDay / 100:D2}:{Game1.timeOfDay % 100:D2}", LogLevel.Debug);
         }
 
         private void RestoreDebrisItems(GameStateSnapshot snapshot)
