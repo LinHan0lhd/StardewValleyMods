@@ -22,7 +22,7 @@ namespace AutoServerPro.Core
         public string LocationName { get; set; }
         public string ItemId { get; set; }
         public string ItemName { get; set; }
-        public int StackSize { get; set; }
+        public int Stack { get; set; }
         public int Quality { get; set; }
         public float X { get; set; }
         public float Y { get; set; }
@@ -34,7 +34,6 @@ namespace AutoServerPro.Core
         public int DayOfMonth { get; set; }
         public string Season { get; set; }
         public int Year { get; set; }
-        public int DayOfWeek { get; set; }
         public int MineLowestLevelReached { get; set; }
         public List<PlayerPosition> PlayerPositions { get; set; } = new();
         public List<DebrisItemState> DebrisItems { get; set; } = new();
@@ -43,7 +42,7 @@ namespace AutoServerPro.Core
     public class PlayerPosition
     {
         public string Name { get; set; }
-        public string UniqueId { get; set; }
+        public long UniqueId { get; set; }
         public string LocationName { get; set; }
         public float X { get; set; }
         public float Y { get; set; }
@@ -66,7 +65,6 @@ namespace AutoServerPro.Core
 
         public bool IsSaving => _isSaving;
 
-        // 当前游戏使用的存档根路径（可能是 Saves 或 TempSaves）
         public string CurrentSavesPath { get; private set; }
 
         public SaveManager(IMonitor monitor, ModConfig config, IModHelper helper)
@@ -100,7 +98,6 @@ namespace AutoServerPro.Core
             return path;
         }
 
-        // ========== 存档路径重定向 ==========
         public void RedirectSavesToTemp()
         {
             if (!_savePathRedirected)
@@ -142,15 +139,14 @@ namespace AutoServerPro.Core
             return false;
         }
 
-        // ========== 自动加载 ==========
         public bool AutoLoadSave()
         {
             if (!string.IsNullOrWhiteSpace(_config.NewSaveName))
             {
                 string saveName = _config.NewSaveName;
-                string source = DetermineLoadSource(saveName);
-                RedirectSavesTo(source);
-                _monitor.Log($"加载存档：{saveName}（来源：{source}）", LogLevel.Info);
+                string loadSource = DetermineLoadSource(saveName);
+                RedirectSavesTo(loadSource);
+                _monitor.Log($"加载存档：{saveName}（来源：{loadSource}）", LogLevel.Info);
                 LoadSave(saveName);
                 Game1.multiplayerMode = 2;
                 return true;
@@ -162,9 +158,9 @@ namespace AutoServerPro.Core
                 _monitor.Log("未找到存档", LogLevel.Info);
                 return false;
             }
-            string source = DetermineLoadSource(latest);
-            RedirectSavesTo(source);
-            _monitor.Log($"加载存档：{latest}（来源：{source}）", LogLevel.Info);
+            string loadSource2 = DetermineLoadSource(latest);
+            RedirectSavesTo(loadSource2);
+            _monitor.Log($"加载存档：{latest}（来源：{loadSource2}）", LogLevel.Info);
             LoadSave(latest);
             Game1.multiplayerMode = 2;
             return true;
@@ -207,7 +203,6 @@ namespace AutoServerPro.Core
 
         private string GetLatestSave()
         {
-            // 检查 Saves 目录
             if (Directory.Exists(SavesRootPath))
             {
                 var dirs = Directory.GetDirectories(SavesRootPath);
@@ -216,7 +211,6 @@ namespace AutoServerPro.Core
                     var latestSaves = dirs.OrderByDescending(d => Directory.GetLastWriteTime(d)).First();
                     string saveName = Path.GetFileName(latestSaves);
 
-                    // 检查 TempSaves 是否有更新的版本
                     string tempDir = Path.Combine(TempSavesRootPath, saveName);
                     if (Directory.Exists(tempDir))
                     {
@@ -229,7 +223,6 @@ namespace AutoServerPro.Core
                 }
             }
 
-            // 如果 Saves 没有，检查 TempSaves
             if (Directory.Exists(TempSavesRootPath))
             {
                 var dirs = Directory.GetDirectories(TempSavesRootPath);
@@ -261,7 +254,6 @@ namespace AutoServerPro.Core
             }
         }
 
-        // ========== 额外数据恢复 ==========
         public void RestoreExtraDataAfterLoad()
         {
             if (string.IsNullOrEmpty(_currentSaveName)) return;
@@ -322,7 +314,6 @@ namespace AutoServerPro.Core
                 Game1.dayOfMonth = snapshot.DayOfMonth;
                 Game1.currentSeason = snapshot.Season;
                 Game1.year = snapshot.Year;
-                Game1.dayOfWeek = snapshot.DayOfWeek;
 
                 if (snapshot.MineLowestLevelReached > 0)
                 {
@@ -369,19 +360,20 @@ namespace AutoServerPro.Core
                     var location = Game1.locations.FirstOrDefault(l => l.NameOrUniqueName == debrisState.LocationName);
                     if (location == null) continue;
 
-                    Item item = null;
-                    if (!string.IsNullOrEmpty(debrisState.ItemId))
-                    {
-                        item = ItemRegistry.Create(debrisState.ItemId, debrisState.StackSize, debrisState.Quality);
-                    }
-                    else if (!string.IsNullOrEmpty(debrisState.ItemName))
-                    {
-                        item = ItemRegistry.Create(debrisState.ItemName, debrisState.StackSize, debrisState.Quality);
-                    }
+                    string itemId = !string.IsNullOrEmpty(debrisState.ItemId)
+                        ? debrisState.ItemId
+                        : debrisState.ItemName;
 
-                    if (item == null) continue;
+                    if (string.IsNullOrEmpty(itemId)) continue;
 
-                    var debris = new Debris(item, new Vector2(debrisState.X, debrisState.Y), new Vector2(debrisState.X, debrisState.Y));
+                    var debris = new Debris(itemId, new Vector2(debrisState.X, debrisState.Y), new Vector2(debrisState.X, debrisState.Y));
+                    if (debris.item != null)
+                    {
+                        debris.item.Stack = debrisState.Stack;
+                        debris.item.Quality = debrisState.Quality;
+                        debris.item.FixStackSize();
+                        debris.item.FixQuality();
+                    }
                     location.debris.Add(debris);
                     restored++;
                 }
@@ -402,19 +394,19 @@ namespace AutoServerPro.Core
             {
                 if (pos.Name == Game1.player.Name && pos.LocationName == Game1.player.currentLocation?.NameOrUniqueName)
                 {
-                    Game1.player.position.Set(pos.X, pos.Y);
-                    Game1.player.facingDirection = pos.FacingDirection;
+                    Game1.player.position.Value = new Vector2(pos.X, pos.Y);
+                    Game1.player.FacingDirection = pos.FacingDirection;
                     _monitor.Log($"  主机 {pos.Name} 位置: ({pos.X}, {pos.Y})", LogLevel.Debug);
                 }
             }
 
-            foreach (var farmer in Game1.otherFarmers)
+            foreach (var farmer in Game1.otherFarmers.Values)
             {
                 var saved = snapshot.PlayerPositions.FirstOrDefault(p => p.UniqueId == farmer.UniqueMultiplayerID);
                 if (saved != null && saved.LocationName == farmer.currentLocation?.NameOrUniqueName)
                 {
-                    farmer.position.Set(saved.X, saved.Y);
-                    farmer.facingDirection = saved.FacingDirection;
+                    farmer.position.Value = new Vector2(saved.X, saved.Y);
+                    farmer.FacingDirection = saved.FacingDirection;
                     _monitor.Log($"  玩家 {farmer.Name} 位置: ({saved.X}, {saved.Y})", LogLevel.Debug);
                 }
             }
@@ -430,21 +422,14 @@ namespace AutoServerPro.Core
             {
                 try
                 {
-                    npc.Schedule = null;
+                    npc.ClearSchedule();
                     npc.ignoreScheduleToday = false;
                     npc.lastAttemptedSchedule = -1;
                     npc.currentScheduleDelay = 0f;
                     npc.scheduleDelaySeconds = 0f;
-                    npc.returningToEndPoint = false;
-                    npc.queuedSchedulePaths.Clear();
                     npc.followSchedule = true;
-                    npc.directionsToNewLocation = null;
-                    npc.previousEndPoint = new Point((int)npc.defaultPosition.X / 64, (int)npc.defaultPosition.Y / 64);
+                    npc.DirectionsToNewLocation = null;
 
-                    if (npc.controller != null)
-                    {
-                        npc.controller = null;
-                    }
                     if (npc.temporaryController != null)
                     {
                         npc.temporaryController = null;
@@ -470,7 +455,6 @@ namespace AutoServerPro.Core
                 _monitor.Log($"已重置 {resetCount} 个 NPC 行程状态，{scheduleCount} 个已重新加载日程", LogLevel.Debug);
         }
 
-        // ========== 备份系统 ==========
         public void AutoBackupCheck()
         {
             if (!Context.IsWorldReady || string.IsNullOrEmpty(_currentSaveName)) return;
@@ -525,7 +509,6 @@ namespace AutoServerPro.Core
             DoSaveBackup(_currentSaveName);
         }
 
-        // ========== 游戏状态快照 ==========
         private GameStateSnapshot CreateSnapshot()
         {
             var snapshot = new GameStateSnapshot
@@ -534,7 +517,6 @@ namespace AutoServerPro.Core
                 DayOfMonth = Game1.dayOfMonth,
                 Season = Game1.currentSeason,
                 Year = Game1.year,
-                DayOfWeek = Game1.dayOfWeek,
                 MineLowestLevelReached = MineShaft.lowestLevelReached
             };
 
@@ -545,10 +527,10 @@ namespace AutoServerPro.Core
                 LocationName = Game1.player.currentLocation?.NameOrUniqueName ?? "",
                 X = Game1.player.position.X,
                 Y = Game1.player.position.Y,
-                FacingDirection = Game1.player.facingDirection
+                FacingDirection = Game1.player.FacingDirection
             });
 
-            foreach (var farmer in Game1.otherFarmers)
+            foreach (var farmer in Game1.otherFarmers.Values)
             {
                 snapshot.PlayerPositions.Add(new PlayerPosition
                 {
@@ -557,7 +539,7 @@ namespace AutoServerPro.Core
                     LocationName = farmer.currentLocation?.NameOrUniqueName ?? "",
                     X = farmer.position.X,
                     Y = farmer.position.Y,
-                    FacingDirection = farmer.facingDirection
+                    FacingDirection = farmer.FacingDirection
                 });
             }
 
@@ -571,15 +553,24 @@ namespace AutoServerPro.Core
                     {
                         if (debris.item == null) continue;
 
+                        // 尝试从第一个 chunk 获取位置
+                        float x = 0, y = 0;
+                        if (debris.Chunks != null && debris.Chunks.Count > 0)
+                        {
+                            var chunk = debris.Chunks[0];
+                            x = chunk.position.X;
+                            y = chunk.position.Y;
+                        }
+
                         snapshot.DebrisItems.Add(new DebrisItemState
                         {
                             LocationName = location.NameOrUniqueName,
                             ItemId = debris.item.ItemId,
                             ItemName = debris.item.Name,
-                            StackSize = debris.item.StackSize,
+                            Stack = debris.item.Stack,
                             Quality = debris.item.Quality,
-                            X = debris.position.X,
-                            Y = debris.position.Y
+                            X = x,
+                            Y = y
                         });
                     }
                     catch { }
@@ -610,7 +601,6 @@ namespace AutoServerPro.Core
             }
         }
 
-        // ========== 即时保存 ==========
         public void ForceSaveNow()
         {
             if (!Context.IsWorldReady)
@@ -631,7 +621,6 @@ namespace AutoServerPro.Core
 
             try
             {
-                // 确保存档路径重定向到TempSaves
                 RedirectSavesToTemp();
 
                 _pendingSnapshot = CreateSnapshot();
@@ -743,7 +732,6 @@ namespace AutoServerPro.Core
 
             IsSavingComplete = true;
 
-            // 保存额外数据到TempSaves
             if (_saveNeedExtraData && _pendingSnapshot != null)
             {
                 SaveExtraData(_pendingSnapshot);
@@ -751,10 +739,8 @@ namespace AutoServerPro.Core
                 _saveNeedExtraData = false;
             }
 
-            // 恢复存档路径到原始Saves
             RedirectSavesToOriginal();
 
-            // 自动备份
             if (!string.IsNullOrEmpty(_currentSaveName))
             {
                 try
@@ -772,31 +758,6 @@ namespace AutoServerPro.Core
                 _monitor.Log("保存完成，正在退出...", LogLevel.Info);
                 _quitAfterSave = false;
                 Game1.quit = true;
-            }
-        }
-
-        // ========== 创建存档 ==========
-        public void CreateNewWorld(string saveName, string hostName = null)
-        {
-            hostName ??= _config.DefaultHostName;
-
-            string targetPath = Path.Combine(CurrentSavesPath, saveName);
-            if (Directory.Exists(targetPath))
-            {
-                _monitor.Log($"存档 {saveName} 已存在", LogLevel.Error);
-                return;
-            }
-
-            try
-            {
-                Game1.CreateNewGame(saveName);
-                Game1.activeClickableMenu = new SaveGameMenu(saveName, true);
-                _currentSaveName = saveName;
-                _monitor.Log($"已创建新存档：{saveName}", LogLevel.Info);
-            }
-            catch (Exception ex)
-            {
-                _monitor.Log($"创建存档失败：{ex.Message}", LogLevel.Error);
             }
         }
 
