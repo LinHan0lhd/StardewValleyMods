@@ -59,6 +59,7 @@ namespace AutoServerPro.Core
         private bool _isSaving;
         private bool _saveNeedExtraData;
         private GameStateSnapshot _pendingSnapshot;
+        private string _savesBackupPath;  // 保存前的Saves备份路径
 
         public bool IsSaving => _isSaving;
 
@@ -98,15 +99,12 @@ namespace AutoServerPro.Core
             if (!string.IsNullOrWhiteSpace(_config.NewSaveName))
             {
                 string dir = Path.Combine(SavesRootPath, _config.NewSaveName);
-                if (Directory.Exists(dir))
-                {
-                    // 在加载前检查是否需要从TempSaves恢复
-                    RestoreTempSavesIfNewer(_config.NewSaveName);
-                    _monitor.Log($"加载指定存档：{_config.NewSaveName}", LogLevel.Info);
-                    LoadSave(_config.NewSaveName);
-                    Game1.multiplayerMode = 2;
-                    return true;
-                }
+                // 步骤1: 先判断哪个存档最新，决定从TempSaves还是Saves加载
+                string saveToLoad = DetermineLoadSource(_config.NewSaveName);
+                _monitor.Log($"加载存档：{saveToLoad}", LogLevel.Info);
+                LoadSave(saveToLoad);
+                Game1.multiplayerMode = 2;
+                return true;
             }
 
             string latest = GetLatestSave();
@@ -115,40 +113,61 @@ namespace AutoServerPro.Core
                 _monitor.Log("未找到存档", LogLevel.Info);
                 return false;
             }
-            // 在加载前检查是否需要从TempSaves恢复
-            RestoreTempSavesIfNewer(latest);
-            _monitor.Log($"加载最新存档：{latest}", LogLevel.Info);
-            LoadSave(latest);
+            // 步骤1: 先判断哪个存档最新
+            string saveToLoad = DetermineLoadSource(latest);
+            _monitor.Log($"加载存档：{saveToLoad}", LogLevel.Info);
+            LoadSave(saveToLoad);
             Game1.multiplayerMode = 2;
             return true;
         }
 
-        private void RestoreTempSavesIfNewer(string saveName)
+        private string DetermineLoadSource(string saveName)
         {
-            string tempSaveDir = Path.Combine(TempSavesRootPath, saveName);
-            if (!Directory.Exists(tempSaveDir)) return;
+            string savesDir = Path.Combine(SavesRootPath, saveName);
+            string tempDir = Path.Combine(TempSavesRootPath, saveName);
 
-            DateTime? nativeSaveTime = GetDirectoryLatestTime(Path.Combine(SavesRootPath, saveName));
-            DateTime? tempSaveTime = GetDirectoryLatestTime(tempSaveDir);
+            bool hasSaves = Directory.Exists(savesDir);
+            bool hasTemp = Directory.Exists(tempDir);
 
-            if (!tempSaveTime.HasValue) return;
-
-            if (nativeSaveTime.HasValue && nativeSaveTime.Value >= tempSaveTime.Value)
+            if (!hasTemp)
             {
-                _monitor.Log($"原生存档({nativeSaveTime.Value:HH:mm:ss})不早于临时存档({tempSaveTime.Value:HH:mm:ss})，跳过临时恢复", LogLevel.Info);
-                return;
+                _monitor.Log("无TempSaves，从Saves加载", LogLevel.Debug);
+                return saveName;  // 从Saves加载
             }
 
-            _monitor.Log($"原生存档({nativeSaveTime?.ToString("HH:mm:ss") ?? "无"})早于临时存档({tempSaveTime.Value:HH:mm:ss})，从TempSaves恢复", LogLevel.Info);
-
-            try
+            if (!hasSaves)
             {
+                _monitor.Log("无Saves，从TempSaves复制到Saves后加载", LogLevel.Debug);
                 RestoreSaveFromTemp(saveName);
+                return saveName;
             }
-            catch (Exception ex)
+
+            // 都存在，对比时间戳
+            DateTime? savesTime = GetDirectoryLatestTime(savesDir);
+            DateTime? tempTime = GetDirectoryLatestTime(tempDir);
+
+            if (!savesTime.HasValue && tempTime.HasValue)
             {
-                _monitor.Log($"从TempSaves恢复存档失败: {ex.Message}", LogLevel.Warn);
+                _monitor.Log($"Saves为空，从TempSaves恢复", LogLevel.Info);
+                RestoreSaveFromTemp(saveName);
+                return saveName;
             }
+
+            if (!tempTime.HasValue)
+            {
+                _monitor.Log($"TempSaves为空，从Saves加载", LogLevel.Debug);
+                return saveName;
+            }
+
+            if (savesTime.Value >= tempTime.Value)
+            {
+                _monitor.Log($"原生存档({savesTime.Value:HH:mm:ss})不早于临时存档({tempTime.Value:HH:mm:ss})，从Saves加载", LogLevel.Info);
+                return saveName;
+            }
+
+            _monitor.Log($"原生存档({savesTime.Value:HH:mm:ss})早于临时存档({tempTime.Value:HH:mm:ss})，从TempSaves恢复", LogLevel.Info);
+            RestoreSaveFromTemp(saveName);
+            return saveName;
         }
 
         private string GetLatestSave()
@@ -612,15 +631,16 @@ namespace AutoServerPro.Core
 
             try
             {
-                // 先备份当前Saves到TempSaves（保存保存前的状态）
+                // 步骤1: 先备份Saves到临时备份目录（用于保存后恢复）
                 if (!string.IsNullOrEmpty(_currentSaveName))
                 {
-                    CopySaveToTemp(_currentSaveName);
+                    _savesBackupPath = BackupSavesBeforeSave(_currentSaveName);
                 }
 
                 _pendingSnapshot = CreateSnapshot();
                 _saveNeedExtraData = true;
 
+                // 步骤2: 保存游戏进度到Saves（原生保存）
                 SaveGame.IsProcessing = true;
                 var getSaveEnumerator = typeof(SaveGame).GetMethod("getSaveEnumerator",
                     System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
@@ -629,6 +649,7 @@ namespace AutoServerPro.Core
                     _monitor.Log("找不到 getSaveEnumerator 方法", LogLevel.Error);
                     SaveGame.IsProcessing = false;
                     _pendingSnapshot = null;
+                    RestoreSavesAfterSave();  // 恢复Saves
                     return;
                 }
 
@@ -641,6 +662,58 @@ namespace AutoServerPro.Core
                 _monitor.Log($"启动保存失败: {ex.Message}\n{ex.StackTrace}", LogLevel.Error);
                 SaveGame.IsProcessing = false;
                 _pendingSnapshot = null;
+                RestoreSavesAfterSave();  // 恢复Saves
+            }
+        }
+
+        private string BackupSavesBeforeSave(string saveName)
+        {
+            string savesDir = Path.Combine(SavesRootPath, saveName);
+            if (!Directory.Exists(savesDir)) return null;
+
+            string backupPath = Path.Combine(TempSavesRootPath, "_backup", saveName);
+            try
+            {
+                if (Directory.Exists(backupPath))
+                    Directory.Delete(backupPath, true);
+                DirectoryHelper.CopyDirectory(savesDir, backupPath, true);
+                _monitor.Log($"已备份Saves到临时目录", LogLevel.Debug);
+                return backupPath;
+            }
+            catch (Exception ex)
+            {
+                _monitor.Log($"备份Saves失败: {ex.Message}", LogLevel.Warn);
+                return null;
+            }
+        }
+
+        private void RestoreSavesAfterSave()
+        {
+            if (string.IsNullOrEmpty(_savesBackupPath) || !Directory.Exists(_savesBackupPath)) return;
+            if (string.IsNullOrEmpty(_currentSaveName)) return;
+
+            string savesDir = Path.Combine(SavesRootPath, _currentSaveName);
+            try
+            {
+                if (Directory.Exists(savesDir))
+                    Directory.Delete(savesDir, true);
+                DirectoryHelper.CopyDirectory(_savesBackupPath, savesDir, true);
+                _monitor.Log($"已恢复Saves到原始状态", LogLevel.Debug);
+            }
+            catch (Exception ex)
+            {
+                _monitor.Log($"恢复Saves失败: {ex.Message}", LogLevel.Warn);
+            }
+            finally
+            {
+                // 清理临时备份
+                try
+                {
+                    if (Directory.Exists(_savesBackupPath))
+                        Directory.Delete(_savesBackupPath, true);
+                }
+                catch { }
+                _savesBackupPath = null;
             }
         }
 
@@ -727,6 +800,7 @@ namespace AutoServerPro.Core
 
             IsSavingComplete = true;
 
+            // 步骤3: 保存额外数据到TempSaves
             if (_saveNeedExtraData && _pendingSnapshot != null)
             {
                 SaveExtraData(_pendingSnapshot);
@@ -734,7 +808,7 @@ namespace AutoServerPro.Core
                 _saveNeedExtraData = false;
             }
 
-            // 保存完成后再次复制Saves到TempSaves，确保包含保存后的完整状态
+            // 步骤4: 复制Saves到TempSaves（保存更新后的完整存档）
             if (!string.IsNullOrEmpty(_currentSaveName))
             {
                 try
@@ -748,6 +822,10 @@ namespace AutoServerPro.Core
                 }
             }
 
+            // 步骤5: 恢复Saves到原始状态（保持Saves干净）
+            RestoreSavesAfterSave();
+
+            // 自动备份到BackupRootPath
             if (!string.IsNullOrEmpty(_currentSaveName))
             {
                 try
