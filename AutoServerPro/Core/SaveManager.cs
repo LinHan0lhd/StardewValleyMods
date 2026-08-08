@@ -172,13 +172,33 @@ namespace AutoServerPro.Core
             }
             if (SaveGame.IsProcessing)
             {
-                _monitor.Log("游戏正在处理保存，请稍候...", LogLevel.Warn);
-                return;
+                _monitor.Log("游戏正在处理保存，强制重置状态...", LogLevel.Warn);
+                SaveGame.IsProcessing = false;
             }
 
-            _isSaving = true;
-            _saveCoroutine = SaveGame.Save();
-            _monitor.Log("开始即时保存...", LogLevel.Info);
+            try
+            {
+                _monitor.Log($"保存状态检查 - SaveName: {Game1.saveName}, UniqueID: {Game1.uniqueIDForThisGame}, IsProcessing: {SaveGame.IsProcessing}", LogLevel.Debug);
+
+                SaveGame.IsProcessing = true;
+                var getSaveEnumerator = typeof(SaveGame).GetMethod("getSaveEnumerator",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                if (getSaveEnumerator == null)
+                {
+                    _monitor.Log("找不到 getSaveEnumerator 方法", LogLevel.Error);
+                    SaveGame.IsProcessing = false;
+                    return;
+                }
+
+                _saveCoroutine = (System.Collections.Generic.IEnumerator<int>)getSaveEnumerator.Invoke(null, null);
+                _isSaving = true;
+                _monitor.Log("开始即时保存...", LogLevel.Info);
+            }
+            catch (Exception ex)
+            {
+                _monitor.Log($"启动保存失败: {ex.Message}\n{ex.StackTrace}", LogLevel.Error);
+                SaveGame.IsProcessing = false;
+            }
         }
 
         public void UpdateSave()
@@ -187,38 +207,49 @@ namespace AutoServerPro.Core
 
             try
             {
-                if (_saveCoroutine.MoveNext())
-                {
-                    int progress = _saveCoroutine.Current;
-                    if (progress == 100)
-                    {
-                        _monitor.Log("即时保存完成！", LogLevel.Info);
-                        _isSaving = false;
-                        _saveCoroutine = null;
+                bool moved = _saveCoroutine.MoveNext();
+                int progress = moved ? _saveCoroutine.Current : -1;
 
-                        // 保存完成后自动备份
-                        if (!string.IsNullOrEmpty(_currentSaveName))
+                if (moved && progress == 100)
+                {
+                    _monitor.Log($"即时保存完成！进度: {progress}", LogLevel.Info);
+                    _isSaving = false;
+                    _saveCoroutine = null;
+                    SaveGame.IsProcessing = false;
+
+                    if (!string.IsNullOrEmpty(_currentSaveName))
+                    {
+                        try
                         {
-                            try
-                            {
-                                DoSaveBackup(_currentSaveName);
-                            }
-                            catch { }
+                            DoSaveBackup(_currentSaveName);
+                        }
+                        catch (Exception ex)
+                        {
+                            _monitor.Log($"自动备份失败: {ex.Message}", LogLevel.Warn);
                         }
                     }
                 }
-                else
+                else if (moved)
                 {
-                    _monitor.Log($"即时保存完成！", LogLevel.Info);
+                    if (progress % 20 == 0)
+                    {
+                        _monitor.Log($"保存进度: {progress}%", LogLevel.Debug);
+                    }
+                }
+                else if (!moved)
+                {
+                    _monitor.Log($"即时保存完成！(MoveNext返回false)", LogLevel.Info);
                     _isSaving = false;
                     _saveCoroutine = null;
+                    SaveGame.IsProcessing = false;
                 }
             }
             catch (Exception ex)
             {
-                _monitor.Log($"保存失败: {ex.Message}", LogLevel.Error);
+                _monitor.Log($"保存失败: {ex.Message}\n{ex.StackTrace}", LogLevel.Error);
                 _isSaving = false;
                 _saveCoroutine = null;
+                SaveGame.IsProcessing = false;
             }
         }
 
