@@ -170,6 +170,12 @@ namespace AutoServerPro
             Helper.Events.Multiplayer.PeerConnected += OnPeerConnected;
             Helper.Events.Multiplayer.PeerDisconnected += OnPeerDisconnected;
             Helper.Events.GameLoop.DayStarted += OnDayStarted;
+            Helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
+        }
+
+        private void OnSaveLoaded(object _, SaveLoadedEventArgs __)
+        {
+            _saveManager.RestoreExtraDataAfterLoad();
         }
 
         private void OnGameLaunched(object _, GameLaunchedEventArgs __)

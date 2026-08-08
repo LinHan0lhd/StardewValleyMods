@@ -1,15 +1,75 @@
 #nullable disable
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewValley;
+using StardewValley.Buildings;
+using StardewValley.Locations;
 using StardewValley.Menus;
+using StardewValley.Objects;
 using AutoServerPro.Utils;
 using AutoServerPro.Models;
 
 namespace AutoServerPro.Core
 {
+    public class GameStateSnapshot
+    {
+        public int TimeOfDay { get; set; }
+        public int DayOfMonth { get; set; }
+        public string Season { get; set; }
+        public int Year { get; set; }
+        public int DayOfWeek { get; set; }
+        public string Weather { get; set; }
+        public bool IsRaining { get; set; }
+        public bool IsSnowing { get; set; }
+        public bool IsLightning { get; set; }
+        public int MineLowestLevelReached { get; set; }
+        public List<PlayerPosition> PlayerPositions { get; set; } = new();
+        public List<MapObjectState> MapObjects { get; set; } = new();
+        public List<NpcState> NpcStates { get; set; } = new();
+    }
+
+    public class PlayerPosition
+    {
+        public string Name { get; set; }
+        public string UniqueId { get; set; }
+        public string LocationName { get; set; }
+        public float X { get; set; }
+        public float Y { get; set; }
+        public int FacingDirection { get; set; }
+        public int Health { get; set; }
+        public int MaxHealth { get; set; }
+        public int Stamina { get; set; }
+        public int MaxStamina { get; set; }
+        public bool IsFrozen { get; set; }
+    }
+
+    public class MapObjectState
+    {
+        public string LocationName { get; set; }
+        public string ObjectType { get; set; }
+        public int X { get; set; }
+        public int Y { get; set; }
+        public int StackSize { get; set; }
+        public int Quality { get; set; }
+        public int MinutesUntilReady { get; set; }
+    }
+
+    public class NpcState
+    {
+        public string Name { get; set; }
+        public string CurrentLocation { get; set; }
+        public float X { get; set; }
+        public float Y { get; set; }
+        public int FacingDirection { get; set; }
+        public bool IsInBuilding { get; set; }
+        public bool IsWalking { get; set; }
+        public bool IsEmoting { get; set; }
+    }
+
     public class SaveManager
     {
         private readonly IMonitor _monitor;
@@ -19,6 +79,8 @@ namespace AutoServerPro.Core
 
         private IEnumerator<int> _saveCoroutine;
         private bool _isSaving;
+        private bool _saveNeedExtraData;
+        private GameStateSnapshot _pendingSnapshot;
 
         public bool IsSaving => _isSaving;
 
@@ -38,6 +100,8 @@ namespace AutoServerPro.Core
         public string BackupRootPath => string.IsNullOrWhiteSpace(_config.BackupPath)
             ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "StardewValley", "AutoServerBackups")
             : _config.BackupPath;
+
+        private string ExtraDataPath(string saveName) => Path.Combine(SavesRootPath, saveName, ".extradata.json");
 
         private string GetBackupRootPath()
         {
@@ -102,6 +166,100 @@ namespace AutoServerPro.Core
             }
         }
 
+        // ========== 额外数据恢复 ==========
+        public void RestoreExtraDataAfterLoad()
+        {
+            if (string.IsNullOrEmpty(_currentSaveName)) return;
+
+            string extraPath = ExtraDataPath(_currentSaveName);
+            if (!File.Exists(extraPath))
+            {
+                _monitor.Log("无额外存档数据，跳过恢复", LogLevel.Debug);
+                return;
+            }
+
+            try
+            {
+                string json = File.ReadAllText(extraPath);
+                var snapshot = JsonSerializer.Deserialize<GameStateSnapshot>(json);
+                if (snapshot == null) return;
+
+                _monitor.Log($"恢复额外数据 - 时间: {snapshot.Season} {snapshot.DayOfMonth}日 {snapshot.TimeOfDay}:00", LogLevel.Info);
+
+                RestoreSnapshot(snapshot);
+                _monitor.Log("额外数据恢复完成", LogLevel.Info);
+            }
+            catch (Exception ex)
+            {
+                _monitor.Log($"恢复额外数据失败: {ex.Message}", LogLevel.Warn);
+            }
+        }
+
+        private void RestoreSnapshot(GameStateSnapshot snapshot)
+        {
+            try
+            {
+                Game1.timeOfDay = snapshot.TimeOfDay;
+                Game1.dayOfMonth = snapshot.DayOfMonth;
+                Game1.currentSeason = snapshot.Season;
+                Game1.year = snapshot.Year;
+                Game1.dayOfWeek = snapshot.DayOfWeek;
+                Game1.isRaining = snapshot.IsRaining;
+                Game1.isSnowing = snapshot.IsSnowing;
+                Game1.isLightning = snapshot.IsLightning;
+
+                if (snapshot.MineLowestLevelReached > 0)
+                {
+                    MineShaft.lowestLevelReached = snapshot.MineLowestLevelReached;
+                }
+
+                _monitor.Log($"时间已恢复: {snapshot.Season} {snapshot.DayOfMonth}日 {snapshot.TimeOfDay}:00", LogLevel.Debug);
+            }
+            catch (Exception ex)
+            {
+                _monitor.Log($"恢复时间数据失败: {ex.Message}", LogLevel.Warn);
+            }
+
+            try
+            {
+                RestorePlayerPositions(snapshot);
+            }
+            catch (Exception ex)
+            {
+                _monitor.Log($"恢复玩家位置失败: {ex.Message}", LogLevel.Warn);
+            }
+        }
+
+        private void RestorePlayerPositions(GameStateSnapshot snapshot)
+        {
+            if (snapshot.PlayerPositions == null || snapshot.PlayerPositions.Count == 0) return;
+
+            _monitor.Log($"恢复 {snapshot.PlayerPositions.Count} 个玩家位置", LogLevel.Debug);
+
+            foreach (var pos in snapshot.PlayerPositions)
+            {
+                if (pos.IsFrozen) continue;
+
+                if (pos.Name == Game1.player.Name && pos.LocationName == Game1.player.currentLocation.NameOrUniqueName)
+                {
+                    Game1.player.position.Set(pos.X, pos.Y);
+                    Game1.player.facingDirection = pos.FacingDirection;
+                    _monitor.Log($"  主机 {pos.Name} 位置: ({pos.X}, {pos.Y})", LogLevel.Debug);
+                }
+            }
+
+            foreach (var farmer in Game1.otherFarmers)
+            {
+                var saved = snapshot.PlayerPositions.FirstOrDefault(p => p.UniqueId == farmer.UniqueMultiplayerID);
+                if (saved != null && saved.LocationName == farmer.currentLocation?.NameOrUniqueName)
+                {
+                    farmer.position.Set(saved.X, saved.Y);
+                    farmer.facingDirection = saved.FacingDirection;
+                    _monitor.Log($"  玩家 {farmer.Name} 位置: ({saved.X}, {saved.Y})", LogLevel.Debug);
+                }
+            }
+        }
+
         // ========== 备份系统 ==========
         public void AutoBackupCheck()
         {
@@ -157,6 +315,148 @@ namespace AutoServerPro.Core
             DoSaveBackup(_currentSaveName);
         }
 
+        // ========== 游戏状态快照 ==========
+        private GameStateSnapshot CreateSnapshot()
+        {
+            var snapshot = new GameStateSnapshot
+            {
+                TimeOfDay = Game1.timeOfDay,
+                DayOfMonth = Game1.dayOfMonth,
+                Season = Game1.currentSeason,
+                Year = Game1.year,
+                DayOfWeek = Game1.dayOfWeek,
+                IsRaining = Game1.isRaining,
+                IsSnowing = Game1.isSnowing,
+                IsLightning = Game1.isLightning,
+                MineLowestLevelReached = Game1.mineLowestLevelReached
+            };
+
+            snapshot.PlayerPositions.Add(new PlayerPosition
+            {
+                Name = Game1.player.Name,
+                UniqueId = Game1.player.UniqueMultiplayerID,
+                LocationName = Game1.player.currentLocation?.NameOrUniqueName ?? "",
+                X = Game1.player.position.X,
+                Y = Game1.player.position.Y,
+                FacingDirection = Game1.player.facingDirection,
+                Health = Game1.player.health,
+                MaxHealth = Game1.player.maxHealth,
+                Stamina = Game1.player.Stamina,
+                MaxStamina = Game1.player.MaxStamina,
+                IsFrozen = Game1.player.freezePause > 0
+            });
+
+            foreach (var farmer in Game1.otherFarmers)
+            {
+                snapshot.PlayerPositions.Add(new PlayerPosition
+                {
+                    Name = farmer.Name,
+                    UniqueId = farmer.UniqueMultiplayerID,
+                    LocationName = farmer.currentLocation?.NameOrUniqueName ?? "",
+                    X = farmer.position.X,
+                    Y = farmer.position.Y,
+                    FacingDirection = farmer.facingDirection,
+                    Health = farmer.health,
+                    MaxHealth = farmer.maxHealth,
+                    Stamina = farmer.Stamina,
+                    MaxStamina = farmer.MaxStamina,
+                    IsFrozen = farmer.freezePause > 0
+                });
+            }
+
+            foreach (var location in Game1.locations)
+            {
+                if (location == null) continue;
+
+                if (location.Objects != null)
+                {
+                    foreach (var kvp in location.Objects.Pairs)
+                    {
+                        var obj = kvp.Value;
+                        if (obj == null) continue;
+                        if (obj is CrabPot || obj is IndoorPot || obj is ItemPedestal) continue;
+
+                        try
+                        {
+                            snapshot.MapObjects.Add(new MapObjectState
+                            {
+                                LocationName = location.NameOrUniqueName,
+                                ObjectType = obj.GetType().Name,
+                                X = (int)kvp.Key.X,
+                                Y = (int)kvp.Key.Y,
+                                StackSize = obj.StackSize,
+                                Quality = obj.Quality,
+                                MinutesUntilReady = obj.MinutesUntilReady,
+                                HoldsObjCount = obj.heldObject != null ? 1 : 0
+                            });
+                        }
+                        catch { }
+                    }
+                }
+
+                if (location is Farm farm && farm.debris != null)
+                {
+                    foreach (var debris in farm.debris)
+                    {
+                        if (debris.item != null)
+                        {
+                            try
+                            {
+                                snapshot.MapObjects.Add(new MapObjectState
+                                {
+                                    LocationName = location.NameOrUniqueName,
+                                    ObjectType = "Debris",
+                                    X = (int)debris.position.X,
+                                    Y = (int)debris.position.Y,
+                                    StackSize = debris.item.StackSize,
+                                    Quality = debris.item.Quality
+                                });
+                            }
+                            catch { }
+                        }
+                    }
+                }
+            }
+
+            foreach (var npc in Utility.getAllCharacters())
+            {
+                try
+                {
+                    snapshot.NpcStates.Add(new NpcState
+                    {
+                        Name = npc.Name,
+                        CurrentLocation = npc.currentLocation?.NameOrUniqueName ?? "",
+                        X = npc.position.X,
+                        Y = npc.position.Y,
+                        FacingDirection = npc.facingDirection,
+                        IsInBuilding = npc.currentLocation is Building,
+                        IsWalking = npc.Schedule != null,
+                        IsEmoting = npc.IsEmoting
+                    });
+                }
+                catch { }
+            }
+
+            return snapshot;
+        }
+
+        private void SaveExtraData(GameStateSnapshot snapshot)
+        {
+            if (string.IsNullOrEmpty(_currentSaveName)) return;
+
+            try
+            {
+                string json = JsonSerializer.Serialize(snapshot, new JsonSerializerOptions { WriteIndented = true });
+                string path = ExtraDataPath(_currentSaveName);
+                File.WriteAllText(path, json);
+                _monitor.Log($"额外数据已保存: {snapshot.PlayerPositions.Count}玩家, {snapshot.MapObjects.Count}物品, {snapshot.NpcStates.Count}NPC", LogLevel.Info);
+            }
+            catch (Exception ex)
+            {
+                _monitor.Log($"保存额外数据失败: {ex.Message}", LogLevel.Warn);
+            }
+        }
+
         // ========== 即时保存 ==========
         public void ForceSaveNow()
         {
@@ -178,7 +478,10 @@ namespace AutoServerPro.Core
 
             try
             {
-                _monitor.Log($"保存状态检查 - SaveName: {Game1.saveName}, UniqueID: {Game1.uniqueIDForThisGame}, IsProcessing: {SaveGame.IsProcessing}", LogLevel.Debug);
+                _monitor.Log($"保存状态检查 - SaveFolder: {Constants.SaveFolderName}, IsProcessing: {SaveGame.IsProcessing}", LogLevel.Debug);
+
+                _pendingSnapshot = CreateSnapshot();
+                _saveNeedExtraData = true;
 
                 SaveGame.IsProcessing = true;
                 var getSaveEnumerator = typeof(SaveGame).GetMethod("getSaveEnumerator",
@@ -187,17 +490,19 @@ namespace AutoServerPro.Core
                 {
                     _monitor.Log("找不到 getSaveEnumerator 方法", LogLevel.Error);
                     SaveGame.IsProcessing = false;
+                    _pendingSnapshot = null;
                     return;
                 }
 
                 _saveCoroutine = (System.Collections.Generic.IEnumerator<int>)getSaveEnumerator.Invoke(null, null);
                 _isSaving = true;
-                _monitor.Log("开始即时保存...", LogLevel.Info);
+                _monitor.Log($"开始即时保存... (时间: {Game1.currentSeason} {Game1.dayOfMonth}日 {Game1.timeOfDay}:00)", LogLevel.Info);
             }
             catch (Exception ex)
             {
                 _monitor.Log($"启动保存失败: {ex.Message}\n{ex.StackTrace}", LogLevel.Error);
                 SaveGame.IsProcessing = false;
+                _pendingSnapshot = null;
             }
         }
 
@@ -212,10 +517,17 @@ namespace AutoServerPro.Core
 
                 if (moved && progress == 100)
                 {
-                    _monitor.Log($"即时保存完成！进度: {progress}", LogLevel.Info);
+                    _monitor.Log($"原生保存完成！进度: {progress}", LogLevel.Info);
                     _isSaving = false;
                     _saveCoroutine = null;
                     SaveGame.IsProcessing = false;
+
+                    if (_saveNeedExtraData && _pendingSnapshot != null)
+                    {
+                        SaveExtraData(_pendingSnapshot);
+                        _pendingSnapshot = null;
+                        _saveNeedExtraData = false;
+                    }
 
                     if (!string.IsNullOrEmpty(_currentSaveName))
                     {
@@ -238,10 +550,17 @@ namespace AutoServerPro.Core
                 }
                 else if (!moved)
                 {
-                    _monitor.Log($"即时保存完成！(MoveNext返回false)", LogLevel.Info);
+                    _monitor.Log($"原生保存完成！(MoveNext返回false)", LogLevel.Info);
                     _isSaving = false;
                     _saveCoroutine = null;
                     SaveGame.IsProcessing = false;
+
+                    if (_saveNeedExtraData && _pendingSnapshot != null)
+                    {
+                        SaveExtraData(_pendingSnapshot);
+                        _pendingSnapshot = null;
+                        _saveNeedExtraData = false;
+                    }
                 }
             }
             catch (Exception ex)
@@ -250,6 +569,8 @@ namespace AutoServerPro.Core
                 _isSaving = false;
                 _saveCoroutine = null;
                 SaveGame.IsProcessing = false;
+                _pendingSnapshot = null;
+                _saveNeedExtraData = false;
             }
         }
 
@@ -265,120 +586,22 @@ namespace AutoServerPro.Core
                 return;
             }
 
-            _monitor.Log($"创建存档：{saveName} ; 农场类型：{_config.FarmType}", LogLevel.Info);
-
             try
             {
-                // ─── 农场类型 ───
-                int whichFarm = _config.FarmType;
-                if (whichFarm < 0 || whichFarm > 7)
-                {
-                    _monitor.Log($"无效农场类型 {whichFarm} 使用标准农场", LogLevel.Warn);
-                    whichFarm = 0;
-                }
-                Game1.whichFarm = whichFarm;
-                Game1.whichModFarm = null;
-
-                // ─── 玩家身份 ───
-                Game1.player.Name = hostName;
-                Game1.player.displayName = hostName;
-                Game1.player.favoriteThing.Value = "Stardrop";
-                Game1.player.farmName.Value = saveName;
-                Game1.player.isCustomized.Value = true;
-                Game1.player.ConvertClothingOverrideToClothesItems();
-
-                // ─── 宠物品种（支持10种：0-4猫，5-9狗） ───
-                const int dogIndex = 5;
-                int petBreed = _config.PetBreed;
-                if (petBreed >= 0 && petBreed <= 9)
-                {
-                    if (petBreed < dogIndex)
-                    {
-                        Game1.player.whichPetType = "Cat";
-                        Game1.player.whichPetBreed = petBreed.ToString();
-                    }
-                    else
-                    {
-                        Game1.player.whichPetType = "Dog";
-                        Game1.player.whichPetBreed = (petBreed - dogIndex).ToString();
-                    }
-                }
-
-                // ─── 游戏全局选项 ───
-                Game1.player.team.useSeparateWallets.Value = _config.UseSeparateWallets;
-                Game1.cabinsSeparate = !_config.CabinLayoutNearby;
-                Game1.bundleType = _config.BundlesRemix ? Game1.BundleType.Remixed : Game1.BundleType.Default;
-
-                // ─── 设置存档选项 ───
-                try
-                {
-                    var optionsDict = _helper.Reflection.GetField<Dictionary<string, object>>(Game1.game1, "newGameSetupOptions")?.GetValue();
-                    if (optionsDict != null)
-                    {
-                        optionsDict["YearOneCompletable"] = _config.CommunityCenterYear1;
-
-                        var mineChestType = typeof(Game1).GetNestedType("MineChestType",
-                            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-                        if (mineChestType != null)
-                        {
-                            object mineChestValue = _config.MinesRemix
-                                ? Enum.Parse(mineChestType, "Remixed")
-                                : Enum.Parse(mineChestType, "Default");
-                            optionsDict["MineChests"] = mineChestValue;
-                        }
-                        else
-                        {
-                            optionsDict["MineChests"] = _config.MinesRemix ? "Remixed" : "Default";
-                            _monitor.Log("MineChestType 枚举未找到", LogLevel.Warn);
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _monitor.Log($"设置 newGameSetupOptions 失败：{ex.Message}", LogLevel.Warn);
-                }
-
-                Game1.UseLegacyRandom = _config.UseLegacyRandom;
-                if (_config.RandomSeed.HasValue)
-                {
-                    Game1.startingGameSeed = _config.RandomSeed.Value;
-                }
-
-                Game1.startingCabins = Math.Max(1, _config.StartingCabins);
-
-                if (_config.SpawnMonstersAtNight.HasValue)
-                    Game1.spawnMonstersAtNight = _config.SpawnMonstersAtNight.Value;
-                else if (whichFarm == 4)
-                    Game1.spawnMonstersAtNight = true;
-
-                // ─── 服务器模式 ───
-                Game1.multiplayerMode = 2;
-
-                // ─── 核心创建 ───
-                Game1.game1.loadForNewGame(false);
-
-                // 利润设置
-                Game1.player.difficultyModifier = _config.ProfitMargin;
-
-                // ─── 首日模拟 ───
-                Game1.saveOnNewDay = true;
-                Game1.player.eventsSeen.Add("60367");
-                Game1.player.currentLocation = Utility.getHomeOfFarmer(Game1.player);
-                Game1.player.Position = new Vector2(9f, 9f) * 64f;
-                Game1.player.isInBed.Value = true;
-                Game1.NewDay(0f);
-
-                Game1.exitActiveMenu();
-                Game1.setGameMode(3);
-
+                Game1.CreateNewGame(saveName);
+                Game1.activeClickableMenu = new SaveGameMenu(saveName, true);
                 _currentSaveName = saveName;
-                _monitor.Log($"存档 {saveName} 创建成功", LogLevel.Info);
+                _monitor.Log($"已创建新存档：{saveName}", LogLevel.Info);
             }
             catch (Exception ex)
             {
-                _monitor.Log($"创建失败：{ex.Message}\n{ex.StackTrace}", LogLevel.Error);
-                Game1.activeClickableMenu = new TitleMenu();
+                _monitor.Log($"创建存档失败：{ex.Message}", LogLevel.Error);
             }
+        }
+
+        public void SetCurrentSaveName(string saveName)
+        {
+            _currentSaveName = saveName;
         }
     }
 }
