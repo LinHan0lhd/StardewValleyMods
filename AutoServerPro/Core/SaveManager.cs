@@ -31,9 +31,6 @@ namespace AutoServerPro.Core
     public class GameStateSnapshot
     {
         public int TimeOfDay { get; set; }
-        public int DayOfMonth { get; set; }
-        public string Season { get; set; }
-        public int Year { get; set; }
         public int MineLowestLevelReached { get; set; }
         public List<PlayerPosition> PlayerPositions { get; set; } = new();
         public List<DebrisItemState> DebrisItems { get; set; } = new();
@@ -310,12 +307,7 @@ namespace AutoServerPro.Core
         {
             try
             {
-                // 设置基础时间（日期/季节/年份）
-                Game1.dayOfMonth = snapshot.DayOfMonth;
-                Game1.currentSeason = snapshot.Season;
-                Game1.year = snapshot.Year;
-
-                // 通过推进方式设置时间，而不是直接赋值
+                // 通过推进方式设置时间（日期/季节/年份由原生存档恢复）
                 RestoreTimeByTick(snapshot.TimeOfDay);
 
                 if (snapshot.MineLowestLevelReached > 0)
@@ -323,7 +315,7 @@ namespace AutoServerPro.Core
                     MineShaft.lowestLevelReached = snapshot.MineLowestLevelReached;
                 }
 
-                _monitor.Log($"时间已恢复: {snapshot.Season} {snapshot.DayOfMonth}日 {Game1.timeOfDay}:00", LogLevel.Debug);
+                _monitor.Log($"时间已恢复: {Game1.currentSeason} {Game1.dayOfMonth}日 {Game1.timeOfDay}:00", LogLevel.Debug);
             }
             catch (Exception ex)
             {
@@ -544,9 +536,6 @@ namespace AutoServerPro.Core
             var snapshot = new GameStateSnapshot
             {
                 TimeOfDay = Game1.timeOfDay,
-                DayOfMonth = Game1.dayOfMonth,
-                Season = Game1.currentSeason,
-                Year = Game1.year,
                 MineLowestLevelReached = MineShaft.lowestLevelReached
             };
 
@@ -573,6 +562,7 @@ namespace AutoServerPro.Core
                 });
             }
 
+            int debrisCount = 0;
             foreach (var location in Game1.locations)
             {
                 if (location == null || location.debris == null) continue;
@@ -581,9 +571,11 @@ namespace AutoServerPro.Core
                 {
                     try
                     {
-                        if (debris.item == null) continue;
+                        // 获取物品ID（优先用 itemId.Value，其次用 item.ItemId）
+                        string itemId = debris.itemId?.Value ?? debris.item?.ItemId;
+                        if (string.IsNullOrEmpty(itemId)) continue;
 
-                        // 尝试从第一个 chunk 获取位置
+                        // 获取位置
                         float x = 0, y = 0;
                         if (debris.Chunks != null && debris.Chunks.Count > 0)
                         {
@@ -592,20 +584,27 @@ namespace AutoServerPro.Core
                             y = chunk.position.Y;
                         }
 
+                        // 获取堆叠和质量
+                        int stack = debris.item?.Stack ?? 1;
+                        int quality = debris.item?.Quality ?? debris.itemQuality;
+
                         snapshot.DebrisItems.Add(new DebrisItemState
                         {
                             LocationName = location.NameOrUniqueName,
-                            ItemId = debris.item.ItemId,
-                            ItemName = debris.item.Name,
-                            Stack = debris.item.Stack,
-                            Quality = debris.item.Quality,
+                            ItemId = itemId,
+                            ItemName = debris.item?.Name ?? "",
+                            Stack = stack,
+                            Quality = quality,
                             X = x,
                             Y = y
                         });
+                        debrisCount++;
                     }
                     catch { }
                 }
             }
+
+            _monitor.Log($"快照创建完成: {snapshot.PlayerPositions.Count}玩家, {debrisCount}掉落物", LogLevel.Debug);
 
             return snapshot;
         }
