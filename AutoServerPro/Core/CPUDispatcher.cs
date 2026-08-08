@@ -20,6 +20,7 @@ namespace AutoServerPro.Core
         private bool _installed;
         private Harmony _saveGameMenuHarmony;
         private Harmony _newDaySyncHarmony;
+        private Harmony _localMultiplayerHarmony;
 
         public CPUDispatcher(IMonitor monitor, ModConfig config)
         {
@@ -211,6 +212,19 @@ namespace AutoServerPro.Core
 
         private void InstallDayEndPatches()
         {
+            _localMultiplayerHarmony = new Harmony("LinHan.AutoServerPro.LocalMultiplayer");
+            var isLocalMethod = AccessTools.Method(typeof(LocalMultiplayer), "IsLocalMultiplayer");
+            if (isLocalMethod != null)
+            {
+                var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(IsLocalMultiplayerPrefix));
+                _localMultiplayerHarmony.Patch(isLocalMethod, prefix: prefix);
+                _monitor.Log("日结补丁已安装: IsLocalMultiplayer → true (强制同步保存)", LogLevel.Debug);
+            }
+            else
+            {
+                _monitor.Log("无法找到 LocalMultiplayer.IsLocalMultiplayer 方法", LogLevel.Warn);
+            }
+
             _saveGameMenuHarmony = new Harmony("LinHan.AutoServerPro.SaveGameMenu");
             var updateMethod = AccessTools.Method(typeof(SaveGameMenu), "update");
             if (updateMethod != null)
@@ -249,6 +263,12 @@ namespace AutoServerPro.Core
             {
                 _monitor.Log("无法找到 NewDaySynchronizer.readyForFinish 方法", LogLevel.Warn);
             }
+        }
+
+        private static bool IsLocalMultiplayerPrefix(ref bool __result)
+        {
+            __result = true;
+            return false;
         }
 
         private static void SaveGameMenuUpdatePrefix(SaveGameMenu __instance)
