@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Reflection.Emit;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
@@ -15,16 +16,17 @@ namespace AutoServerPro.Core
     public class CPUDispatcher
     {
         private readonly IMonitor _monitor;
+        private static IMonitor _staticMonitor;
         private ModConfig _config;
         private Harmony _harmony;
         private bool _installed;
         private Harmony _saveGameMenuHarmony;
-        private Harmony _newDaySyncHarmony;
-        private Harmony _localMultiplayerHarmony;
+        private Harmony _saveGameHarmony;
 
         public CPUDispatcher(IMonitor monitor, ModConfig config)
         {
             _monitor = monitor;
+            _staticMonitor = monitor;
             _config = config;
         }
 
@@ -212,19 +214,6 @@ namespace AutoServerPro.Core
 
         private void InstallDayEndPatches()
         {
-            _localMultiplayerHarmony = new Harmony("LinHan.AutoServerPro.LocalMultiplayer");
-            var isLocalMethod = AccessTools.Method(typeof(LocalMultiplayer), "IsLocalMultiplayer");
-            if (isLocalMethod != null)
-            {
-                var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(IsLocalMultiplayerPrefix));
-                _localMultiplayerHarmony.Patch(isLocalMethod, prefix: prefix);
-                _monitor.Log("日结补丁已安装: IsLocalMultiplayer → true (强制同步保存)", LogLevel.Debug);
-            }
-            else
-            {
-                _monitor.Log("无法找到 LocalMultiplayer.IsLocalMultiplayer 方法", LogLevel.Warn);
-            }
-
             _saveGameMenuHarmony = new Harmony("LinHan.AutoServerPro.SaveGameMenu");
             var updateMethod = AccessTools.Method(typeof(SaveGameMenu), "update");
             if (updateMethod != null)
@@ -238,55 +227,67 @@ namespace AutoServerPro.Core
                 _monitor.Log("无法找到 SaveGameMenu.update 方法", LogLevel.Warn);
             }
 
-            _newDaySyncHarmony = new Harmony("LinHan.AutoServerPro.NewDaySync");
-
-            var readyForSaveMethod = AccessTools.Method(typeof(NewDaySynchronizer), "readyForSave");
-            if (readyForSaveMethod != null)
+            _saveGameHarmony = new Harmony("LinHan.AutoServerPro.SaveGame");
+            var saveMethod = AccessTools.Method(typeof(SaveGame), "Save");
+            if (saveMethod != null)
             {
-                var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(ReadyForSavePrefix));
-                _newDaySyncHarmony.Patch(readyForSaveMethod, prefix: prefix);
-                _monitor.Log("日结补丁已安装: readyForSave → true", LogLevel.Debug);
+                var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(SaveGamePrefix));
+                _saveGameHarmony.Patch(saveMethod, prefix: prefix);
+                _monitor.Log("日结补丁已安装: SaveGame.Save → 强制同步保存", LogLevel.Debug);
             }
             else
             {
-                _monitor.Log("无法找到 NewDaySynchronizer.readyForSave 方法", LogLevel.Warn);
-            }
-
-            var readyForFinishMethod = AccessTools.Method(typeof(NewDaySynchronizer), "readyForFinish");
-            if (readyForFinishMethod != null)
-            {
-                var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(ReadyForFinishPrefix));
-                _newDaySyncHarmony.Patch(readyForFinishMethod, prefix: prefix);
-                _monitor.Log("日结补丁已安装: readyForFinish → true", LogLevel.Debug);
-            }
-            else
-            {
-                _monitor.Log("无法找到 NewDaySynchronizer.readyForFinish 方法", LogLevel.Warn);
+                _monitor.Log("无法找到 SaveGame.Save 方法", LogLevel.Warn);
             }
         }
 
-        private static bool IsLocalMultiplayerPrefix(ref bool __result)
-        {
-            __result = true;
-            return false;
-        }
-
-        private static void SaveGameMenuUpdatePrefix(SaveGameMenu __instance)
+        private static bool SaveGameMenuUpdatePrefix(SaveGameMenu __instance)
         {
             if (!__instance.hasDrawn)
                 __instance.hasDrawn = true;
+            return true;
         }
 
-        private static bool ReadyForSavePrefix(ref bool __result)
+        private static bool SaveGamePrefix(ref IEnumerator<int> __result)
         {
-            __result = true;
+            SaveGame.IsProcessing = true;
+            var getSaveEnumerator = AccessTools.Method(typeof(SaveGame), "getSaveEnumerator");
+            if (getSaveEnumerator == null)
+            {
+                _staticMonitor?.Log("无法找到 getSaveEnumerator，回退到原始保存方法", LogLevel.Warn);
+                return true;
+            }
+            var original = (IEnumerator<int>)getSaveEnumerator.Invoke(null, null);
+            __result = new SyncSaveWrapper(original);
             return false;
         }
 
-        private static bool ReadyForFinishPrefix(ref bool __result)
+        private class SyncSaveWrapper : IEnumerator<int>
         {
-            __result = true;
-            return false;
+            private IEnumerator<int> _inner;
+            private bool _finished;
+
+            public SyncSaveWrapper(IEnumerator<int> inner)
+            {
+                _inner = inner;
+                _finished = false;
+            }
+
+            public int Current => _finished ? 100 : _inner.Current;
+
+            object System.Collections.IEnumerator.Current => Current;
+
+            public bool MoveNext()
+            {
+                if (_finished) return false;
+                if (_inner.MoveNext()) return true;
+                _finished = true;
+                SaveGame.IsProcessing = false;
+                return false;
+            }
+
+            public void Reset() { }
+            public void Dispose() { _inner?.Dispose(); }
         }
 
         public void ReapplySettings()
