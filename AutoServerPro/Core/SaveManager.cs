@@ -153,37 +153,45 @@ namespace AutoServerPro.Core
         {
             if (string.IsNullOrEmpty(_currentSaveName)) return;
 
-            string extraPath = ExtraDataPath(_currentSaveName);
-            if (!File.Exists(extraPath))
+            string tempSaveDir = Path.Combine(TempSavesRootPath, _currentSaveName);
+            if (!Directory.Exists(tempSaveDir))
             {
-                _monitor.Log("无临时存档数据，跳过恢复", LogLevel.Debug);
+                _monitor.Log("无临时存档目录，跳过恢复", LogLevel.Debug);
                 return;
             }
 
-            DateTime tempSaveTime = File.GetLastWriteTime(extraPath);
-            DateTime? nativeSaveTime = GetNativeSaveTimestamp(_currentSaveName);
+            DateTime? nativeSaveTime = GetDirectoryLatestTime(Path.Combine(SavesRootPath, _currentSaveName));
+            DateTime? tempSaveTime = GetDirectoryLatestTime(tempSaveDir);
 
-            if (nativeSaveTime.HasValue && nativeSaveTime.Value >= tempSaveTime)
+            if (!tempSaveTime.HasValue)
             {
-                _monitor.Log($"原生存档({nativeSaveTime.Value:HH:mm:ss})不早于临时存档({tempSaveTime:HH:mm:ss})，跳过临时恢复", LogLevel.Info);
+                _monitor.Log("临时存档为空，跳过恢复", LogLevel.Debug);
                 return;
             }
 
-            if (nativeSaveTime.HasValue)
+            if (nativeSaveTime.HasValue && nativeSaveTime.Value >= tempSaveTime.Value)
             {
-                _monitor.Log($"原生存档({nativeSaveTime.Value:HH:mm:ss})早于临时存档({tempSaveTime:HH:mm:ss})，执行临时恢复", LogLevel.Info);
+                _monitor.Log($"原生存档({nativeSaveTime.Value:HH:mm:ss})不早于临时存档({tempSaveTime.Value:HH:mm:ss})，跳过临时恢复", LogLevel.Info);
+                return;
             }
+
+            _monitor.Log($"原生存档({nativeSaveTime?.ToString("HH:mm:ss") ?? "无"})早于临时存档({tempSaveTime.Value:HH:mm:ss})，从TempSaves恢复", LogLevel.Info);
 
             try
             {
-                string json = File.ReadAllText(extraPath);
-                var snapshot = JsonSerializer.Deserialize<GameStateSnapshot>(json);
-                if (snapshot == null) return;
-
-                _monitor.Log($"恢复临时存档 - 时间: {snapshot.Season} {snapshot.DayOfMonth}日 {snapshot.TimeOfDay}:00, 掉落物: {snapshot.DebrisItems.Count}", LogLevel.Info);
-
-                RestoreSnapshot(snapshot);
-                ResetNpcSchedules();
+                RestoreSaveFromTemp(_currentSaveName);
+                string extraPath = ExtraDataPath(_currentSaveName);
+                if (File.Exists(extraPath))
+                {
+                    string json = File.ReadAllText(extraPath);
+                    var snapshot = JsonSerializer.Deserialize<GameStateSnapshot>(json);
+                    if (snapshot != null)
+                    {
+                        _monitor.Log($"恢复临时存档数据 - 时间: {snapshot.Season} {snapshot.DayOfMonth}日 {snapshot.TimeOfDay}:00, 掉落物: {snapshot.DebrisItems.Count}", LogLevel.Info);
+                        RestoreSnapshot(snapshot);
+                        ResetNpcSchedules();
+                    }
+                }
                 _monitor.Log("临时存档恢复完成", LogLevel.Info);
             }
             catch (Exception ex)
@@ -192,14 +200,13 @@ namespace AutoServerPro.Core
             }
         }
 
-        private DateTime? GetNativeSaveTimestamp(string saveName)
+        private DateTime? GetDirectoryLatestTime(string dirPath)
         {
-            string saveDir = Path.Combine(SavesRootPath, saveName);
-            if (!Directory.Exists(saveDir)) return null;
+            if (!Directory.Exists(dirPath)) return null;
 
             try
             {
-                var files = Directory.GetFiles(saveDir, "*", SearchOption.AllDirectories);
+                var files = Directory.GetFiles(dirPath, "*", SearchOption.AllDirectories);
                 if (files.Length == 0) return null;
 
                 DateTime latest = DateTime.MinValue;
@@ -504,11 +511,51 @@ namespace AutoServerPro.Core
                 string json = JsonSerializer.Serialize(snapshot, new JsonSerializerOptions { WriteIndented = true });
                 string path = ExtraDataPath(_currentSaveName);
                 File.WriteAllText(path, json);
-                _monitor.Log($"临时保存已保存: {snapshot.PlayerPositions.Count}玩家位置, {snapshot.DebrisItems.Count}掉落物", LogLevel.Info);
+                _monitor.Log($"临时数据已保存: {snapshot.PlayerPositions.Count}玩家位置, {snapshot.DebrisItems.Count}掉落物", LogLevel.Info);
             }
             catch (Exception ex)
             {
                 _monitor.Log($"保存临时数据失败: {ex.Message}", LogLevel.Warn);
+            }
+        }
+
+        private void CopySaveToTemp(string saveName)
+        {
+            string src = Path.Combine(SavesRootPath, saveName);
+            string dst = Path.Combine(TempSavesRootPath, saveName);
+            if (!Directory.Exists(src)) return;
+
+            try
+            {
+                if (Directory.Exists(dst))
+                    Directory.Delete(dst, true);
+
+                DirectoryHelper.CopyDirectory(src, dst, true);
+                _monitor.Log($"存档文件已复制到TempSaves", LogLevel.Debug);
+            }
+            catch (Exception ex)
+            {
+                _monitor.Log($"复制存档到TempSaves失败: {ex.Message}", LogLevel.Warn);
+            }
+        }
+
+        private void RestoreSaveFromTemp(string saveName)
+        {
+            string src = Path.Combine(TempSavesRootPath, saveName);
+            string dst = Path.Combine(SavesRootPath, saveName);
+            if (!Directory.Exists(src)) return;
+
+            try
+            {
+                if (Directory.Exists(dst))
+                    Directory.Delete(dst, true);
+
+                DirectoryHelper.CopyDirectory(src, dst, true);
+                _monitor.Log($"存档文件已从TempSaves恢复到Saves", LogLevel.Info);
+            }
+            catch (Exception ex)
+            {
+                _monitor.Log($"从TempSaves恢复存档失败: {ex.Message}", LogLevel.Warn);
             }
         }
 
