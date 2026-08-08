@@ -658,7 +658,7 @@ namespace AutoServerPro.Core
 
                 SaveGame.IsProcessing = true;
                 var getSaveEnumerator = typeof(SaveGame).GetMethod("getSaveEnumerator",
-                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
                 if (getSaveEnumerator == null)
                 {
                     _monitor.Log("找不到 getSaveEnumerator 方法", LogLevel.Error);
