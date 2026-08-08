@@ -283,6 +283,11 @@ namespace AutoServerPro
                 menu.isProfessionChooser = false;
                 menu.RemoveLevelFromLevelList();
             }
+            if (e.NewMenu is SaveGameMenu saveMenu)
+            {
+                Monitor.Log("跳过保存菜单", LogLevel.Debug);
+                saveMenu.hasDrawn = true;
+            }
             _festivalManager.HandleFestivalEndDialog(e);
         }
 
