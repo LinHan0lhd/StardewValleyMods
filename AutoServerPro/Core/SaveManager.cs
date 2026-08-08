@@ -310,17 +310,20 @@ namespace AutoServerPro.Core
         {
             try
             {
-                Game1.timeOfDay = snapshot.TimeOfDay;
+                // 设置基础时间（日期/季节/年份）
                 Game1.dayOfMonth = snapshot.DayOfMonth;
                 Game1.currentSeason = snapshot.Season;
                 Game1.year = snapshot.Year;
+
+                // 通过推进方式设置时间，而不是直接赋值
+                RestoreTimeByTick(snapshot.TimeOfDay);
 
                 if (snapshot.MineLowestLevelReached > 0)
                 {
                     MineShaft.lowestLevelReached = snapshot.MineLowestLevelReached;
                 }
 
-                _monitor.Log($"时间已恢复: {snapshot.Season} {snapshot.DayOfMonth}日 {snapshot.TimeOfDay}:00", LogLevel.Debug);
+                _monitor.Log($"时间已恢复: {snapshot.Season} {snapshot.DayOfMonth}日 {Game1.timeOfDay}:00", LogLevel.Debug);
             }
             catch (Exception ex)
             {
@@ -343,6 +346,35 @@ namespace AutoServerPro.Core
             catch (Exception ex)
             {
                 _monitor.Log($"恢复玩家位置失败: {ex.Message}", LogLevel.Warn);
+            }
+        }
+
+        /// <summary>
+        /// 通过推进游戏时间的方式到达目标时间，触发完整的游戏逻辑
+        /// </summary>
+        private void RestoreTimeByTick(int targetTime)
+        {
+            int currentTime = Game1.timeOfDay;
+            int maxIterations = 300; // 防止无限循环（最多推进 3000 分钟 = 50 小时）
+            int iterations = 0;
+
+            _monitor.Log($"时间推进: {currentTime} → {targetTime}", LogLevel.Debug);
+
+            while (currentTime < targetTime && iterations < maxIterations)
+            {
+                // 重置时间间隔，确保立即触发下一次推进
+                Game1.gameTimeInterval = Game1.realMilliSecondsPerGameTenMinutes;
+
+                // 推进 10 分钟（这会触发所有游戏逻辑：NPC行程、事件、音乐等）
+                Game1.performTenMinuteClockUpdate();
+
+                currentTime = Game1.timeOfDay;
+                iterations++;
+            }
+
+            if (iterations > 0)
+            {
+                _monitor.Log($"时间推进完成: {iterations} 步 ({iterations * 10} 分钟)", LogLevel.Debug);
             }
         }
 
