@@ -61,7 +61,6 @@ namespace AutoServerPro.Core
                 if (_config.DisableKeyboardInput) features.Add("禁键盘");
                 if (_config.DisableMouseInput) features.Add("禁鼠标");
                 if (_config.DisableGamepadInput) features.Add("禁手柄");
-                features.Add("日结修复");
                 if (features.Count > 0)
                     _monitor.Log($"CPU优化已启用: {string.Join(", ", features)}", LogLevel.Info);
             }
@@ -83,7 +82,6 @@ namespace AutoServerPro.Core
 
             var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(DrawPrefix));
             _harmony.Patch(drawMethod, prefix: prefix);
-            _monitor.Log("Draw补丁已安装（无头服务器跳过渲染）", LogLevel.Debug);
         }
 
         private static bool DrawPrefix()
@@ -115,8 +113,6 @@ namespace AutoServerPro.Core
                 var musicPrefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(UpdateMusicPrefix));
                 _harmony.Patch(updateMusic, prefix: musicPrefix);
             }
-
-            _monitor.Log("音频补丁已安装", LogLevel.Debug);
         }
 
         private static bool AudioUpdatePrefix() => false;
@@ -139,8 +135,6 @@ namespace AutoServerPro.Core
                 var prefix2 = new HarmonyMethod(typeof(CPUDispatcher), nameof(UpdateDebrisWeatherPrefix));
                 _harmony.Patch(weatherDebris, prefix: prefix2);
             }
-
-            _monitor.Log("天气粒子补丁已安装", LogLevel.Debug);
         }
 
         private static bool UpdateRaindropPrefix() => false;
@@ -155,7 +149,6 @@ namespace AutoServerPro.Core
                 {
                     var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(GetKeyboardStatePrefix));
                     _harmony.Patch(kbMethod, prefix: prefix);
-                    _monitor.Log("键盘输入补丁已安装", LogLevel.Debug);
                 }
                 else
                 {
@@ -170,7 +163,6 @@ namespace AutoServerPro.Core
                 {
                     var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(GetMouseStatePrefix));
                     _harmony.Patch(mouseMethod, prefix: prefix);
-                    _monitor.Log("鼠标输入补丁已安装", LogLevel.Debug);
                 }
                 else
                 {
@@ -185,7 +177,6 @@ namespace AutoServerPro.Core
                 {
                     var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(GetGamePadStatePrefix));
                     _harmony.Patch(padMethod, prefix: prefix);
-                    _monitor.Log("手柄输入补丁已安装", LogLevel.Debug);
                 }
                 else
                 {
@@ -220,7 +211,6 @@ namespace AutoServerPro.Core
             {
                 var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(SaveGameMenuUpdatePrefix));
                 _saveGameMenuHarmony.Patch(updateMethod, prefix: prefix);
-                _monitor.Log("日结补丁已安装: SaveGameMenu.update → hasDrawn=true", LogLevel.Debug);
             }
             else
             {
@@ -233,7 +223,6 @@ namespace AutoServerPro.Core
             {
                 var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(SaveGamePrefix));
                 _saveGameHarmony.Patch(saveMethod, prefix: prefix);
-                _monitor.Log("日结补丁已安装: SaveGame.Save → 强制同步保存", LogLevel.Debug);
             }
             else
             {
@@ -254,7 +243,7 @@ namespace AutoServerPro.Core
             var getSaveEnumerator = AccessTools.Method(typeof(SaveGame), "getSaveEnumerator");
             if (getSaveEnumerator == null)
             {
-                _staticMonitor?.Log("无法找到 getSaveEnumerator，回退到原始保存方法", LogLevel.Warn);
+                _staticMonitor?.Log("无法找到 getSaveEnumerator 回退到原始保存方法", LogLevel.Warn);
                 return true;
             }
             var original = (IEnumerator<int>)getSaveEnumerator.Invoke(null, null);

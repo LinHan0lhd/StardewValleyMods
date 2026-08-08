@@ -32,15 +32,15 @@ namespace AutoServerPro.Models
         public bool? SpawnMonstersAtNight { get; set; } = null;
         public int StartingCabins { get; set; } = 1;
 
-        // ===== CPU优化（无头服务器） =====
+        // ===== CPU优化 =====
         public bool EnableCPUOptimization { get; set; } = true;
         public bool SkipDrawing { get; set; } = true;
         public bool DisableAudio { get; set; } = true;
         public bool DisableWeatherParticles { get; set; } = true;
 
-        // ===== 输入控制（各开关独立） =====
-        public bool DisableKeyboardInput { get; set; } = false;
-        public bool DisableMouseInput { get; set; } = false;
+        // ===== 输入控制 =====
+        public bool DisableKeyboardInput { get; set; } = true;
+        public bool DisableMouseInput { get; set; } = true;
         public bool DisableGamepadInput { get; set; } = true;
 
         // ===== 备份 =====

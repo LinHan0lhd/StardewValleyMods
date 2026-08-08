@@ -82,7 +82,7 @@ namespace AutoServerPro
             // 手动备份
             Helper.ConsoleCommands.Add("save_backup", "手动备份当前存档", _saveManager.ManualBackupCommand);
 
-            // 即时保存（不触发日结）
+            // 即时保存
             Helper.ConsoleCommands.Add("save_now", "即时保存当前进度", (_, __) =>
             {
                 _saveManager.ForceSaveNow();
@@ -98,7 +98,7 @@ namespace AutoServerPro
         {
             if (!Context.IsWorldReady)
             {
-                Monitor.Log("世界未加载，无法使用聊天指令", LogLevel.Warn);
+                Monitor.Log("世界未加载 > 无法使用聊天指令", LogLevel.Warn);
                 return;
             }
             if (args.Length < 1)

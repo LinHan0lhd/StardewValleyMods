@@ -189,7 +189,7 @@ namespace AutoServerPro.Core
                 if (hiddenBeds.Any())
                 {
                     farmhouse.furniture.Remove(hiddenBeds.First());
-                    _monitor.Log("移除隐藏备用床（已检测到正常床）", LogLevel.Debug);
+                    _monitor.Log("移除隐藏备用床", LogLevel.Debug);
                 }
             }
         }
