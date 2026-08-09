@@ -621,41 +621,22 @@ namespace AutoServerPro.Core
 
         private void SyncOnlinePlayerPositions()
         {
-            int synced = 0;
+            int synced = Game1.otherFarmers.Count;
 
             Game1.player.disconnectPosition.Value = Game1.player.position.Value;
             Game1.player.disconnectLocation.Value = Game1.player.currentLocation?.NameOrUniqueName ?? "";
             Game1.player.disconnectDay.Value = (int)Game1.stats.DaysPlayed;
 
-            foreach (var storedFarmer in Game1.netWorldState.Value.farmhandData.Values)
+            foreach (var farmer in Game1.otherFarmers.Values)
             {
-                var onlineFarmer = Game1.otherFarmers.Values
-                    .FirstOrDefault(f => f.UniqueMultiplayerID == storedFarmer.UniqueMultiplayerID);
-
-                if (onlineFarmer != null)
-                {
-                    var target = onlineFarmer.position.Value;
-                    _monitor.Log($"同步玩家[{onlineFarmer.Name}] ID={onlineFarmer.UniqueMultiplayerID} " +
-                        $"pos=({target.X}, {target.Y}) loc={onlineFarmer.currentLocation?.NameOrUniqueName}", LogLevel.Debug);
-
-                    storedFarmer.position.Set(new Vector2(target.X + 0.01f, target.Y));
-                    storedFarmer.position.Set(target);
-                    storedFarmer.FacingDirection = onlineFarmer.FacingDirection;
-                    storedFarmer.currentLocation = onlineFarmer.currentLocation;
-
-                    storedFarmer.disconnectPosition.Value = target;
-                    storedFarmer.disconnectLocation.Value = onlineFarmer.currentLocation?.NameOrUniqueName ?? "";
-                    storedFarmer.disconnectDay.Value = (int)Game1.stats.DaysPlayed;
-
-                    synced++;
-                }
-                else
-                {
-                    _monitor.Log($"玩家ID={storedFarmer.UniqueMultiplayerID} 未在线，跳过同步", LogLevel.Trace);
-                }
+                farmer.disconnectPosition.Value = farmer.position.Value;
+                farmer.disconnectLocation.Value = farmer.currentLocation?.NameOrUniqueName ?? "";
+                farmer.disconnectDay.Value = (int)Game1.stats.DaysPlayed;
             }
 
-            _monitor.Log($"已同步 {synced} 个在线玩家位置到存档数据", synced > 0 ? LogLevel.Debug : LogLevel.Trace);
+            Game1.multiplayer?.saveFarmhands();
+
+            _monitor.Log($"已通过 saveFarmhands() 同步 {synced} 个在线玩家位置到存档数据", synced > 0 ? LogLevel.Debug : LogLevel.Trace);
         }
 
         private void ResetNpcSchedules()
