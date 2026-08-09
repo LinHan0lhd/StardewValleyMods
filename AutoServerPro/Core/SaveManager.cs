@@ -493,13 +493,13 @@ namespace AutoServerPro.Core
                     var targetPos = new Vector2(debrisState.X, debrisState.Y);
                     var debris = new Debris();
                     
-                    // 修复：使用 netItem 直接赋值，比通过属性更安全
-                    debris.netItem.Value = item;
+                    // 使用公共属性 item，其 setter 会自动设置 netItem.Value
+                    debris.item = item;
                     debris.itemId.Value = item.QualifiedItemId;
                     debris.debrisType.Value = Debris.DebrisType.OBJECT;
 
-                    // 修复：Chunk 构造函数最后一个参数是 random_offset (决定显示物品图标的角)
-                    // 这里传 0 表示使用标准位置
+                    // Chunk 构造函数: position, xVelocity, yVelocity, randomOffset
+                    // randomOffset 决定物品图标在精灵图中的位置，传 0 为标准位置
                     var chunk = new Chunk(targetPos, 0f, 0f, 0);
                     chunk.hasPassedRestingLineOnce.Value = true; // 跳过初始弹跳动画
                     chunk.bounces = 100; // 设置为已完成弹跳
