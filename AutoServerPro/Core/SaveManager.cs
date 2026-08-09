@@ -528,7 +528,7 @@ namespace AutoServerPro.Core
                 }
             }
 
-            _monitor.Log($"掉落物恢复: 成功{restored}, 位置未找到{locNotFound}, 物品创建失败{itemFailed}", LogLevel.Debug);
+            _monitor.Log($"掉落物恢复: 成功{restored}个物品实例, 位置未找到{locNotFound}, 物品创建失败{itemFailed}", LogLevel.Debug);
         }
 
         private string SerializeItem(Item item)
@@ -704,6 +704,7 @@ namespace AutoServerPro.Core
             };
 
             int debrisCount = 0;
+            int chunkCount = 0;
             int failedCount = 0;
             int xmlFallbackCount = 0;
             foreach (var location in Game1.locations)
@@ -722,14 +723,6 @@ namespace AutoServerPro.Core
                         }
                         if (item == null) continue;
 
-                        float x = 0, y = 0;
-                        if (debris.Chunks != null && debris.Chunks.Count > 0)
-                        {
-                            var chunk = debris.Chunks[0];
-                            x = chunk.position.Value.X;
-                            y = chunk.position.Value.Y;
-                        }
-
                         string itemXml = null;
                         try
                         {
@@ -737,22 +730,48 @@ namespace AutoServerPro.Core
                         }
                         catch { }
 
-                        // 保存数量和品质信息，用于回退恢复
                         int amount = item.Stack > 0 ? item.Stack : 1;
                         int quality = item.Quality;
+                        string qualifiedItemId = itemId ?? item.QualifiedItemId;
 
-                        var state = new DebrisItemState
+                        // 为每个 Chunk 创建一个 DebrisItemState
+                        if (debris.Chunks != null && debris.Chunks.Count > 0)
                         {
-                            LocationName = location.NameOrUniqueName,
-                            ItemId = itemId ?? item.QualifiedItemId,
-                            ItemXml = itemXml,
-                            Amount = amount,
-                            Quality = quality,
-                            X = x,
-                            Y = y
-                        };
+                            foreach (var chunk in debris.Chunks)
+                            {
+                                var state = new DebrisItemState
+                                {
+                                    LocationName = location.NameOrUniqueName,
+                                    ItemId = qualifiedItemId,
+                                    ItemXml = itemXml,
+                                    Amount = amount,
+                                    Quality = quality,
+                                    X = chunk.position.Value.X,
+                                    Y = chunk.position.Value.Y
+                                };
 
-                        snapshot.DebrisItems.Add(state);
+                                snapshot.DebrisItems.Add(state);
+                                chunkCount++;
+                            }
+                        }
+                        else
+                        {
+                            // 没有 Chunk 时仍保存一个
+                            var state = new DebrisItemState
+                            {
+                                LocationName = location.NameOrUniqueName,
+                                ItemId = qualifiedItemId,
+                                ItemXml = itemXml,
+                                Amount = amount,
+                                Quality = quality,
+                                X = 0,
+                                Y = 0
+                            };
+
+                            snapshot.DebrisItems.Add(state);
+                            chunkCount++;
+                        }
+
                         if (itemXml == null) xmlFallbackCount++;
                         debrisCount++;
                     }
@@ -763,7 +782,7 @@ namespace AutoServerPro.Core
                 }
             }
 
-            _monitor.Log($"快照创建完成: {debrisCount}掉落物", LogLevel.Debug);
+            _monitor.Log($"快照创建完成: {debrisCount}掉落物, {chunkCount}物品实例", LogLevel.Debug);
             if (xmlFallbackCount > 0)
                 _monitor.Log($"掉落物XML序列化失败，将用ItemId恢复: {xmlFallbackCount} 个", LogLevel.Warn);
             if (failedCount > 0)
