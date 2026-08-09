@@ -419,7 +419,14 @@ namespace AutoServerPro.Core
                 _monitor.Log($"恢复掉落物失败: {ex.Message}", LogLevel.Warn);
             }
 
-            _monitor.Log("玩家位置由原生存档处理（已在保存前同步在线位置）", LogLevel.Debug);
+            try
+            {
+                RestorePlayerPositions(snapshot);
+            }
+            catch (Exception ex)
+            {
+                _monitor.Log($"恢复玩家位置失败: {ex.Message}", LogLevel.Warn);
+            }
         }
 
         /// <summary>
@@ -570,25 +577,53 @@ namespace AutoServerPro.Core
 
             foreach (var pos in snapshot.PlayerPositions)
             {
+                GameLocation targetLocation = null;
+                if (!string.IsNullOrEmpty(pos.LocationName))
+                {
+                    targetLocation = Game1.locations.FirstOrDefault(l => l.NameOrUniqueName == pos.LocationName);
+                    if (targetLocation == null)
+                    {
+                        _monitor.Log($"  位置[{pos.LocationName}]未找到，仅设置坐标", LogLevel.Trace);
+                    }
+                }
+
                 if (pos.UniqueId == Game1.player.UniqueMultiplayerID)
                 {
-                    var target = new Vector2(pos.X, pos.Y);
-                    Game1.player.position.Set(new Vector2(pos.X + 0.01f, pos.Y));
-                    Game1.player.position.Set(target);
-                    Game1.player.FacingDirection = pos.FacingDirection;
-                    _monitor.Log($"  主机位置: ({pos.X}, {pos.Y})", LogLevel.Debug);
+                    RestoreFarmerPosition(Game1.player, pos, targetLocation, "主机");
                     continue;
                 }
 
                 if (Game1.netWorldState.Value.farmhandData.TryGetValue(pos.UniqueId, out var farmhandData))
                 {
-                    var target = new Vector2(pos.X, pos.Y);
-                    farmhandData.position.Set(new Vector2(pos.X + 0.01f, pos.Y));
-                    farmhandData.position.Set(target);
-                    farmhandData.FacingDirection = pos.FacingDirection;
-                    _monitor.Log($"  玩家位置: ({pos.X}, {pos.Y})", LogLevel.Debug);
+                    RestoreFarmerPosition(farmhandData, pos, targetLocation, $"玩家[{farmhandData.Name}]");
+                }
+                else
+                {
+                    _monitor.Log($"  玩家ID={pos.UniqueId} 不在farmhandData中，跳过", LogLevel.Trace);
                 }
             }
+        }
+
+        private void RestoreFarmerPosition(Farmer farmer, PlayerPosition pos, GameLocation targetLocation, string label)
+        {
+            var target = new Vector2(pos.X, pos.Y);
+
+            if (targetLocation != null && farmer.currentLocation != targetLocation)
+            {
+                if (farmer.currentLocation != null)
+                {
+                    farmer.currentLocation.characters.Remove(farmer);
+                }
+                targetLocation.characters.Add(farmer);
+                farmer.currentLocation = targetLocation;
+                _monitor.Log($"  {label} 切换位置到 [{targetLocation.NameOrUniqueName}]", LogLevel.Debug);
+            }
+
+            farmer.position.Set(new Vector2(target.X + 0.01f, target.Y));
+            farmer.position.Set(target);
+            farmer.FacingDirection = pos.FacingDirection;
+
+            _monitor.Log($"  {label} 位置: ({pos.X}, {pos.Y}) 朝向: {pos.FacingDirection}", LogLevel.Debug);
         }
 
         private void SyncOnlinePlayerPositions()
