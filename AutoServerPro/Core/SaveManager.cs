@@ -77,11 +77,11 @@ namespace AutoServerPro.Core
         [XmlElement("LocationName")]
         public string LocationName { get; set; }
 
-        [XmlElement("TileX")]
-        public int TileX { get; set; }
+        [XmlElement("X")]
+        public float X { get; set; }
 
-        [XmlElement("TileY")]
-        public int TileY { get; set; }
+        [XmlElement("Y")]
+        public float Y { get; set; }
 
         [XmlElement("FacingDirection")]
         public int FacingDirection { get; set; }
@@ -599,7 +599,7 @@ namespace AutoServerPro.Core
 
         private void RestoreFarmerPosition(Farmer farmer, PlayerPosition pos, GameLocation targetLocation, string label)
         {
-            var target = new Vector2(pos.TileX * 64f, pos.TileY * 64f);
+            var target = new Vector2(pos.X, pos.Y);
 
             if (targetLocation != null && farmer.currentLocation != targetLocation)
             {
@@ -616,12 +616,16 @@ namespace AutoServerPro.Core
             farmer.position.Set(target);
             farmer.FacingDirection = pos.FacingDirection;
 
-            _monitor.Log($"  {label} 瓦片: ({pos.TileX}, {pos.TileY}) 朝向: {pos.FacingDirection}", LogLevel.Debug);
+            _monitor.Log($"  {label} 位置: ({pos.X}, {pos.Y}) 朝向: {pos.FacingDirection}", LogLevel.Debug);
         }
 
         private void SyncOnlinePlayerPositions()
         {
             int synced = 0;
+
+            Game1.player.disconnectPosition.Value = Game1.player.position.Value;
+            Game1.player.disconnectLocation.Value = Game1.player.currentLocation?.NameOrUniqueName ?? "";
+            Game1.player.disconnectDay.Value = (int)Game1.stats.DaysPlayed;
 
             foreach (var storedFarmer in Game1.netWorldState.Value.farmhandData.Values)
             {
@@ -632,12 +636,17 @@ namespace AutoServerPro.Core
                 {
                     var target = onlineFarmer.position.Value;
                     _monitor.Log($"同步玩家[{onlineFarmer.Name}] ID={onlineFarmer.UniqueMultiplayerID} " +
-                        $"isActive={onlineFarmer.isActive()} pos=({target.X}, {target.Y})", LogLevel.Debug);
+                        $"pos=({target.X}, {target.Y}) loc={onlineFarmer.currentLocation?.NameOrUniqueName}", LogLevel.Debug);
 
                     storedFarmer.position.Set(new Vector2(target.X + 0.01f, target.Y));
                     storedFarmer.position.Set(target);
                     storedFarmer.FacingDirection = onlineFarmer.FacingDirection;
                     storedFarmer.currentLocation = onlineFarmer.currentLocation;
+
+                    storedFarmer.disconnectPosition.Value = target;
+                    storedFarmer.disconnectLocation.Value = onlineFarmer.currentLocation?.NameOrUniqueName ?? "";
+                    storedFarmer.disconnectDay.Value = (int)Game1.stats.DaysPlayed;
+
                     synced++;
                 }
                 else
@@ -760,8 +769,8 @@ namespace AutoServerPro.Core
             {
                 UniqueId = Game1.player.UniqueMultiplayerID,
                 LocationName = Game1.player.currentLocation?.NameOrUniqueName ?? "",
-                TileX = (int)Game1.player.Tile.X,
-                TileY = (int)Game1.player.Tile.Y,
+                X = Game1.player.position.X,
+                Y = Game1.player.position.Y,
                 FacingDirection = Game1.player.FacingDirection
             });
 
@@ -771,8 +780,8 @@ namespace AutoServerPro.Core
                 {
                     UniqueId = farmer.UniqueMultiplayerID,
                     LocationName = farmer.currentLocation?.NameOrUniqueName ?? "",
-                    TileX = (int)farmer.Tile.X,
-                    TileY = (int)farmer.Tile.Y,
+                    X = farmer.position.X,
+                    Y = farmer.position.Y,
                     FacingDirection = farmer.FacingDirection
                 });
             }
