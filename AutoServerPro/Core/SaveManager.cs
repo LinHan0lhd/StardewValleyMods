@@ -68,9 +68,6 @@ namespace AutoServerPro.Core
     [XmlRoot("PlayerPosition")]
     public class PlayerPosition
     {
-        [XmlElement("Name")]
-        public string Name { get; set; }
-
         [XmlElement("UniqueId")]
         public long UniqueId { get; set; }
 
@@ -85,6 +82,14 @@ namespace AutoServerPro.Core
 
         [XmlElement("FacingDirection")]
         public int FacingDirection { get; set; }
+
+        [XmlArray("Mailbox")]
+        [XmlArrayItem("MailId")]
+        public List<string> Mailbox { get; set; } = new();
+
+        [XmlArray("MailReceived")]
+        [XmlArrayItem("MailId")]
+        public List<string> MailReceived { get; set; } = new();
     }
 
     public class SaveManager
@@ -92,6 +97,7 @@ namespace AutoServerPro.Core
         private readonly IMonitor _monitor;
         private ModConfig _config;
         private readonly IModHelper _helper;
+        private readonly FestivalManager _festivalManager;
         private string _currentSaveName = "";
         private Harmony _harmony;
         private bool _savePathRedirected;
@@ -100,6 +106,9 @@ namespace AutoServerPro.Core
         private bool _isSaving;
         private bool _saveNeedExtraData;
         private GameStateSnapshot _pendingSnapshot;
+
+        private bool _waitingForFestivalEnd;
+        private bool _saveRequestedDuringFestival;
 
         // XML 序列化器
         private static readonly XmlSerializer ItemSerializer;
@@ -120,11 +129,12 @@ namespace AutoServerPro.Core
 
         public string CurrentSavesPath { get; private set; }
 
-        public SaveManager(IMonitor monitor, ModConfig config, IModHelper helper)
+        public SaveManager(IMonitor monitor, ModConfig config, IModHelper helper, FestivalManager festivalManager)
         {
             _monitor = monitor;
             _config = config;
             _helper = helper;
+            _festivalManager = festivalManager;
             CurrentSavesPath = SavesRootPath;
         }
 
@@ -365,7 +375,6 @@ namespace AutoServerPro.Core
         {
             try
             {
-                // 通过推进方式设置时间（日期/季节/年份由原生存档恢复）
                 RestoreTimeByTick(snapshot.TimeOfDay);
 
                 if (snapshot.MineLowestLevelReached > 0)
@@ -396,6 +405,15 @@ namespace AutoServerPro.Core
             catch (Exception ex)
             {
                 _monitor.Log($"恢复玩家位置失败: {ex.Message}", LogLevel.Warn);
+            }
+
+            try
+            {
+                RestoreMailState(snapshot);
+            }
+            catch (Exception ex)
+            {
+                _monitor.Log($"恢复邮箱状态失败: {ex.Message}", LogLevel.Warn);
             }
         }
 
@@ -504,22 +522,60 @@ namespace AutoServerPro.Core
 
             foreach (var pos in snapshot.PlayerPositions)
             {
-                if (pos.Name == Game1.player.Name && pos.LocationName == Game1.player.currentLocation?.NameOrUniqueName)
+                if (pos.UniqueId == Game1.player.UniqueMultiplayerID)
                 {
-                    Game1.player.position.Value = new Vector2(pos.X, pos.Y);
+                    Game1.player.position.Set(pos.X, pos.Y);
                     Game1.player.FacingDirection = pos.FacingDirection;
-                    _monitor.Log($"  主机 {pos.Name} 位置: ({pos.X}, {pos.Y})", LogLevel.Debug);
+                    _monitor.Log($"  主机位置: ({pos.X}, {pos.Y})", LogLevel.Debug);
                 }
             }
 
             foreach (var farmer in Game1.otherFarmers.Values)
             {
                 var saved = snapshot.PlayerPositions.FirstOrDefault(p => p.UniqueId == farmer.UniqueMultiplayerID);
-                if (saved != null && saved.LocationName == farmer.currentLocation?.NameOrUniqueName)
+                if (saved != null)
                 {
-                    farmer.position.Value = new Vector2(saved.X, saved.Y);
+                    farmer.position.Set(saved.X, saved.Y);
                     farmer.FacingDirection = saved.FacingDirection;
                     _monitor.Log($"  玩家 {farmer.Name} 位置: ({saved.X}, {saved.Y})", LogLevel.Debug);
+                }
+            }
+        }
+
+        private void RestoreMailState(GameStateSnapshot snapshot)
+        {
+            if (snapshot.PlayerPositions == null || snapshot.PlayerPositions.Count == 0) return;
+
+            foreach (var pos in snapshot.PlayerPositions)
+            {
+                try
+                {
+                    Farmer farmer = null;
+                    if (pos.UniqueId == Game1.player.UniqueMultiplayerID)
+                        farmer = Game1.player;
+                    else
+                        farmer = Game1.otherFarmers.Values.FirstOrDefault(f => f.UniqueMultiplayerID == pos.UniqueId);
+
+                    if (farmer == null) continue;
+
+                    if (pos.Mailbox != null && pos.Mailbox.Count > 0)
+                    {
+                        farmer.mailbox.Clear();
+                        farmer.mailbox.AddRange(pos.Mailbox);
+                    }
+
+                    if (pos.MailReceived != null && pos.MailReceived.Count > 0)
+                    {
+                        farmer.mailReceived.Clear();
+                        foreach (var mailId in pos.MailReceived)
+                            farmer.mailReceived.Add(mailId);
+                    }
+
+                    _monitor.Log($"  玩家 {farmer.Name} 邮箱状态已恢复: 未读{pos.Mailbox?.Count ?? 0}, 已读{pos.MailReceived?.Count ?? 0}", LogLevel.Debug);
+                }
+                catch (Exception ex)
+                {
+                    _monitor.Log($"恢复邮箱状态失败: {ex.Message}", LogLevel.Warn);
                 }
             }
         }
@@ -633,24 +689,26 @@ namespace AutoServerPro.Core
 
             snapshot.PlayerPositions.Add(new PlayerPosition
             {
-                Name = Game1.player.Name,
                 UniqueId = Game1.player.UniqueMultiplayerID,
                 LocationName = Game1.player.currentLocation?.NameOrUniqueName ?? "",
                 X = Game1.player.position.X,
                 Y = Game1.player.position.Y,
-                FacingDirection = Game1.player.FacingDirection
+                FacingDirection = Game1.player.FacingDirection,
+                Mailbox = new List<string>(Game1.player.mailbox),
+                MailReceived = new List<string>(Game1.player.mailReceived)
             });
 
             foreach (var farmer in Game1.otherFarmers.Values)
             {
                 snapshot.PlayerPositions.Add(new PlayerPosition
                 {
-                    Name = farmer.Name,
                     UniqueId = farmer.UniqueMultiplayerID,
                     LocationName = farmer.currentLocation?.NameOrUniqueName ?? "",
                     X = farmer.position.X,
                     Y = farmer.position.Y,
-                    FacingDirection = farmer.FacingDirection
+                    FacingDirection = farmer.FacingDirection,
+                    Mailbox = new List<string>(farmer.mailbox),
+                    MailReceived = new List<string>(farmer.mailReceived)
                 });
             }
 
@@ -664,12 +722,15 @@ namespace AutoServerPro.Core
                 {
                     try
                     {
-                        // 获取物品
                         Item item = debris.item;
+                        if (item == null && debris.itemId.Value != null)
+                        {
+                            item = debris.itemId.Value;
+                        }
                         if (item == null) continue;
 
-                        // 获取位置
-                        float x = 0, y = 0;
+                        float x = debris.position.X;
+                        float y = debris.position.Y;
                         if (debris.Chunks != null && debris.Chunks.Count > 0)
                         {
                             var chunk = debris.Chunks[0];
@@ -677,7 +738,6 @@ namespace AutoServerPro.Core
                             y = chunk.position.Y;
                         }
 
-                        // 序列化物品为 XML
                         string itemXml = SerializeItem(item);
                         if (string.IsNullOrEmpty(itemXml))
                         {
@@ -731,6 +791,31 @@ namespace AutoServerPro.Core
             }
         }
 
+        public bool IsWaitingFestivalEnd => _waitingForFestivalEnd;
+
+        public void TickFestivalSaveFlow()
+        {
+            if (!_waitingForFestivalEnd) return;
+
+            if (_festivalManager.IsFestivalActive)
+            {
+                if (Game1.multiplayerMode != 0)
+                {
+                    Game1.multiplayerMode = 0;
+                    _monitor.Log("存档时检测到节日活动，切换为单机模式以断开所有玩家...", LogLevel.Info);
+                }
+                return;
+            }
+
+            _waitingForFestivalEnd = false;
+            if (_saveRequestedDuringFestival)
+            {
+                _saveRequestedDuringFestival = false;
+                _monitor.Log("节日已结束，开始执行保存...", LogLevel.Info);
+                ForceSaveNow();
+            }
+        }
+
         public void ForceSaveNow()
         {
             if (!Context.IsWorldReady)
@@ -743,6 +828,15 @@ namespace AutoServerPro.Core
                 _monitor.Log("正在保存中，请稍候...", LogLevel.Warn);
                 return;
             }
+
+            if (_festivalManager.IsFestivalActive)
+            {
+                _monitor.Log("存档时检测到节日活动，等待节日结束后再保存...", LogLevel.Info);
+                _waitingForFestivalEnd = true;
+                _saveRequestedDuringFestival = true;
+                return;
+            }
+
             if (SaveGame.IsProcessing)
             {
                 _monitor.Log("游戏正在处理保存，强制重置状态...", LogLevel.Warn);

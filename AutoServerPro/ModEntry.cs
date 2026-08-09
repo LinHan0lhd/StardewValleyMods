@@ -33,8 +33,8 @@ namespace AutoServerPro
             _config = helper.ReadConfig<ModConfig>();
             ReflectionHelper.Initialize(helper);
 
-            _saveManager = new SaveManager(Monitor, _config, helper);
             _festivalManager = new FestivalManager(Monitor);
+            _saveManager = new SaveManager(Monitor, _config, helper, _festivalManager);
             _sleepManager = new AutoSleepManager(Monitor, _config, helper);
             _syncManager = new SceneSyncManager(Monitor, _config);
             _chatLogger = new ChatLogger(Monitor, ModManifest.UniqueID);
@@ -228,6 +228,10 @@ namespace AutoServerPro
             }
 
             if (!Context.IsWorldReady) return;
+
+            _saveManager.TickFestivalSaveFlow();
+
+            if (_saveManager.IsWaitingFestivalEnd) return;
 
             _saveManager.UpdateSave();
 
