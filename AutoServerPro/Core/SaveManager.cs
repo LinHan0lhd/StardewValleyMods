@@ -525,6 +525,25 @@ namespace AutoServerPro.Core
             }
         }
 
+        private void SyncOnlinePlayerPositions()
+        {
+            int synced = 0;
+            foreach (var storedFarmer in Game1.netWorldState.Value.farmhandData.Values)
+            {
+                var onlineFarmer = Game1.otherFarmers.Values
+                    .FirstOrDefault(f => f.UniqueMultiplayerID == storedFarmer.UniqueMultiplayerID);
+
+                if (onlineFarmer != null && onlineFarmer.isActive())
+                {
+                    storedFarmer.position.Set(onlineFarmer.position.Value);
+                    synced++;
+                }
+            }
+
+            if (synced > 0)
+                _monitor.Log($"已同步 {synced} 个在线玩家位置到存档数据", LogLevel.Debug);
+        }
+
         private void ResetNpcSchedules()
         {
             _monitor.Log("重置 NPC 行程状态，防止卡死...", LogLevel.Debug);
@@ -781,6 +800,15 @@ namespace AutoServerPro.Core
             {
                 _monitor.Log("游戏正在处理保存，强制重置状态...", LogLevel.Warn);
                 SaveGame.IsProcessing = false;
+            }
+
+            try
+            {
+                SyncOnlinePlayerPositions();
+            }
+            catch (Exception ex)
+            {
+                _monitor.Log($"同步在线玩家位置失败: {ex.Message}", LogLevel.Warn);
             }
 
             try
