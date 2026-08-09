@@ -31,8 +31,8 @@ namespace AutoServerPro.Core
         [XmlElement("LocationName")]
         public string LocationName { get; set; }
 
-        [XmlElement("ItemXml")]
-        public string ItemXml { get; set; }
+        [XmlElement("ItemId")]
+        public string ItemId { get; set; }
 
         [XmlElement("X")]
         public float X { get; set; }
@@ -507,20 +507,24 @@ namespace AutoServerPro.Core
             {
                 if (pos.UniqueId == Game1.player.UniqueMultiplayerID)
                 {
-                    Game1.player.position.Set(new Vector2(pos.X, pos.Y));
+                    var target = new Vector2(pos.X, pos.Y);
+                    Game1.player.position.Set(new Vector2(pos.X + 0.01f, pos.Y));
+                    Game1.player.position.Set(target);
                     Game1.player.FacingDirection = pos.FacingDirection;
                     _monitor.Log($"  主机位置: ({pos.X}, {pos.Y})", LogLevel.Debug);
+                    continue;
                 }
-            }
 
-            foreach (var farmer in Game1.otherFarmers.Values)
-            {
-                var saved = snapshot.PlayerPositions.FirstOrDefault(p => p.UniqueId == farmer.UniqueMultiplayerID);
-                if (saved != null)
+                var farmhandData = Game1.netWorldState.Value.farmhandData
+                    .FirstOrDefault(kvp => kvp.Key == pos.UniqueId).Value;
+
+                if (farmhandData != null)
                 {
-                    farmer.position.Set(new Vector2(saved.X, saved.Y));
-                    farmer.FacingDirection = saved.FacingDirection;
-                    _monitor.Log($"  玩家 {farmer.Name} 位置: ({saved.X}, {saved.Y})", LogLevel.Debug);
+                    var target = new Vector2(pos.X, pos.Y);
+                    farmhandData.position.Set(new Vector2(pos.X + 0.01f, pos.Y));
+                    farmhandData.position.Set(target);
+                    farmhandData.FacingDirection = pos.FacingDirection;
+                    _monitor.Log($"  玩家位置: ({pos.X}, {pos.Y})", LogLevel.Debug);
                 }
             }
         }
@@ -535,7 +539,10 @@ namespace AutoServerPro.Core
 
                 if (onlineFarmer != null && onlineFarmer.isActive())
                 {
-                    storedFarmer.position.Set(onlineFarmer.position.Value);
+                    var target = onlineFarmer.position.Value;
+                    storedFarmer.position.Set(new Vector2(target.X + 0.01f, target.Y));
+                    storedFarmer.position.Set(target);
+                    storedFarmer.FacingDirection = onlineFarmer.FacingDirection;
                     synced++;
                 }
             }
