@@ -492,13 +492,17 @@ namespace AutoServerPro.Core
 
                     var targetPos = new Vector2(debrisState.X, debrisState.Y);
                     var debris = new Debris();
-                    debris.item = item;
+                    
+                    // 修复：使用 netItem 直接赋值，比通过属性更安全
+                    debris.netItem.Value = item;
                     debris.itemId.Value = item.QualifiedItemId;
                     debris.debrisType.Value = Debris.DebrisType.OBJECT;
 
+                    // 修复：Chunk 构造函数最后一个参数是 random_offset (决定显示物品图标的角)
+                    // 这里传 0 表示使用标准位置
                     var chunk = new Chunk(targetPos, 0f, 0f, 0);
-                    chunk.hasPassedRestingLineOnce.Value = true;
-                    chunk.bounces = 100;
+                    chunk.hasPassedRestingLineOnce.Value = true; // 跳过初始弹跳动画
+                    chunk.bounces = 100; // 设置为已完成弹跳
                     debris.Chunks.Add(chunk);
                     debris.chunkFinalYLevel = (int)targetPos.Y;
                     debris.chunksMoveTowardPlayer = false;
@@ -558,21 +562,24 @@ namespace AutoServerPro.Core
 
         private void SyncOnlinePlayerPositions()
         {
-            int synced = Game1.otherFarmers.Count;
+            int synced = 0;
 
             // 仅同步 Farmhand（农场助手）的位置
             // 主机（Game1.player）的位置由原生保存流程直接处理，无需修改 disconnect* 字段
             // 关键：不要修改 disconnectDay，否则会导致游戏误判玩家已离线
+            // 修复：不再调用 saveFarmhands() (会强制回床)，改为直接修改 farmhandData 中的数据
             foreach (var farmer in Game1.otherFarmers.Values)
             {
-                farmer.disconnectPosition.Value = farmer.position.Value;
-                farmer.disconnectLocation.Value = farmer.currentLocation?.NameOrUniqueName ?? "";
-                // 注意：不修改 disconnectDay，保持为 0 表示在线
+                if (Game1.netWorldState.Value.farmhandData.TryGetValue(farmer.UniqueMultiplayerID, out var farmhandData))
+                {
+                    farmhandData.disconnectPosition.Value = farmer.position.Value;
+                    farmhandData.disconnectLocation.Value = farmer.currentLocation?.NameOrUniqueName ?? "";
+                    // 注意：不修改 disconnectDay，保持为 0 表示在线
+                    synced++;
+                }
             }
 
-            Game1.Multiplayer?.saveFarmhands();
-
-            _monitor.Log($"已通过 saveFarmhands() 同步 {synced} 个在线玩家位置到存档数据", synced > 0 ? LogLevel.Debug : LogLevel.Trace);
+            _monitor.Log($"已通过直接修改 farmhandData 同步 {synced} 个在线玩家位置", synced > 0 ? LogLevel.Debug : LogLevel.Trace);
         }
 
         private void ResetNpcSchedules()
@@ -814,10 +821,11 @@ namespace AutoServerPro.Core
                 return;
             }
 
+            // 修复：不再强制重置游戏保存状态，而是提示用户
             if (SaveGame.IsProcessing)
             {
-                _monitor.Log("游戏正在处理保存，强制重置状态...", LogLevel.Warn);
-                SaveGame.IsProcessing = false;
+                _monitor.Log("游戏正在处理其他保存请求，请稍后再试", LogLevel.Warn);
+                return;
             }
 
             try
