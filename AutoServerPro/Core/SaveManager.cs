@@ -566,10 +566,7 @@ namespace AutoServerPro.Core
                     continue;
                 }
 
-                var farmhandData = Game1.netWorldState.Value.farmhandData
-                    .FirstOrDefault(kvp => kvp.Key == pos.UniqueId).Value;
-
-                if (farmhandData != null)
+                if (Game1.netWorldState.Value.farmhandData.TryGetValue(pos.UniqueId, out var farmhandData))
                 {
                     var target = new Vector2(pos.X, pos.Y);
                     farmhandData.position.Set(new Vector2(pos.X + 0.01f, pos.Y));
