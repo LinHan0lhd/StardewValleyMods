@@ -524,7 +524,7 @@ namespace AutoServerPro.Core
             {
                 if (pos.UniqueId == Game1.player.UniqueMultiplayerID)
                 {
-                    Game1.player.position.Set(pos.X, pos.Y);
+                    Game1.player.position.Set(new Vector2(pos.X, pos.Y));
                     Game1.player.FacingDirection = pos.FacingDirection;
                     _monitor.Log($"  主机位置: ({pos.X}, {pos.Y})", LogLevel.Debug);
                 }
@@ -535,7 +535,7 @@ namespace AutoServerPro.Core
                 var saved = snapshot.PlayerPositions.FirstOrDefault(p => p.UniqueId == farmer.UniqueMultiplayerID);
                 if (saved != null)
                 {
-                    farmer.position.Set(saved.X, saved.Y);
+                    farmer.position.Set(new Vector2(saved.X, saved.Y));
                     farmer.FacingDirection = saved.FacingDirection;
                     _monitor.Log($"  玩家 {farmer.Name} 位置: ({saved.X}, {saved.Y})", LogLevel.Debug);
                 }
@@ -723,19 +723,18 @@ namespace AutoServerPro.Core
                     try
                     {
                         Item item = debris.item;
-                        if (item == null && debris.itemId.Value != null)
+                        if (item == null && !string.IsNullOrEmpty(debris.itemId.Value))
                         {
-                            item = debris.itemId.Value;
+                            item = ItemRegistry.Create(debris.itemId.Value);
                         }
                         if (item == null) continue;
 
-                        float x = debris.position.X;
-                        float y = debris.position.Y;
+                        float x = 0, y = 0;
                         if (debris.Chunks != null && debris.Chunks.Count > 0)
                         {
                             var chunk = debris.Chunks[0];
-                            x = chunk.position.X;
-                            y = chunk.position.Y;
+                            x = chunk.position.Value.X;
+                            y = chunk.position.Value.Y;
                         }
 
                         string itemXml = SerializeItem(item);
