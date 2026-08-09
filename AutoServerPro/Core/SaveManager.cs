@@ -37,6 +37,12 @@ namespace AutoServerPro.Core
         [XmlElement("ItemXml")]
         public string ItemXml { get; set; }
 
+        [XmlElement("Amount")]
+        public int Amount { get; set; }
+
+        [XmlElement("Quality")]
+        public int Quality { get; set; }
+
         [XmlElement("X")]
         public float X { get; set; }
 
@@ -481,7 +487,10 @@ namespace AutoServerPro.Core
 
                     if (item == null && !string.IsNullOrEmpty(debrisState.ItemId))
                     {
-                        item = ItemRegistry.Create(debrisState.ItemId);
+                        // 回退创建时使用保存的数量和品质
+                        int amount = debrisState.Amount > 0 ? debrisState.Amount : 1;
+                        int quality = debrisState.Quality;
+                        item = ItemRegistry.Create(debrisState.ItemId, amount, quality);
                     }
 
                     if (item == null)
@@ -509,6 +518,12 @@ namespace AutoServerPro.Core
 
                     location.debris.Add(debris);
                     restored++;
+                    
+                    // 调试日志：显示每个恢复的物品信息
+                    if (_monitor.IsVerbose)
+                    {
+                        _monitor.Log($"  恢复: {item.QualifiedItemId} x{item.Stack} @ ({targetPos.X:F1}, {targetPos.Y:F1})", LogLevel.Verbose);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -723,11 +738,17 @@ namespace AutoServerPro.Core
                         }
                         catch { }
 
+                        // 保存数量和品质信息，用于回退恢复
+                        int amount = item.Stack > 0 ? item.Stack : 1;
+                        int quality = item.Quality;
+
                         var state = new DebrisItemState
                         {
                             LocationName = location.NameOrUniqueName,
                             ItemId = itemId ?? item.QualifiedItemId,
                             ItemXml = itemXml,
+                            Amount = amount,
+                            Quality = quality,
                             X = x,
                             Y = y
                         };
