@@ -34,6 +34,9 @@ namespace AutoServerPro.Core
         [XmlElement("ItemId")]
         public string ItemId { get; set; }
 
+        [XmlElement("ItemXml")]
+        public string ItemXml { get; set; }
+
         [XmlElement("X")]
         public float X { get; set; }
 
@@ -442,9 +445,19 @@ namespace AutoServerPro.Core
                     if (location == null) continue;
 
                     Item item = null;
+
                     if (!string.IsNullOrEmpty(debrisState.ItemXml))
                     {
-                        item = DeserializeItem(debrisState.ItemXml);
+                        try
+                        {
+                            item = DeserializeItem(debrisState.ItemXml);
+                        }
+                        catch { }
+                    }
+
+                    if (item == null && !string.IsNullOrEmpty(debrisState.ItemId))
+                    {
+                        item = ItemRegistry.Create(debrisState.ItemId);
                     }
 
                     if (item == null) continue;
@@ -681,6 +694,7 @@ namespace AutoServerPro.Core
 
             int debrisCount = 0;
             int failedCount = 0;
+            int xmlFallbackCount = 0;
             foreach (var location in Game1.locations)
             {
                 if (location == null || location.debris == null) continue;
@@ -690,9 +704,10 @@ namespace AutoServerPro.Core
                     try
                     {
                         Item item = debris.item;
-                        if (item == null && !string.IsNullOrEmpty(debris.itemId.Value))
+                        string itemId = debris.itemId.Value;
+                        if (item == null && !string.IsNullOrEmpty(itemId))
                         {
-                            item = ItemRegistry.Create(debris.itemId.Value);
+                            item = ItemRegistry.Create(itemId);
                         }
                         if (item == null) continue;
 
@@ -704,20 +719,24 @@ namespace AutoServerPro.Core
                             y = chunk.position.Value.Y;
                         }
 
-                        string itemXml = SerializeItem(item);
-                        if (string.IsNullOrEmpty(itemXml))
+                        string itemXml = null;
+                        try
                         {
-                            failedCount++;
-                            continue;
+                            itemXml = SerializeItem(item);
                         }
+                        catch { }
 
-                        snapshot.DebrisItems.Add(new DebrisItemState
+                        var state = new DebrisItemState
                         {
                             LocationName = location.NameOrUniqueName,
+                            ItemId = itemId ?? item.QualifiedItemId,
                             ItemXml = itemXml,
                             X = x,
                             Y = y
-                        });
+                        };
+
+                        snapshot.DebrisItems.Add(state);
+                        if (itemXml == null) xmlFallbackCount++;
                         debrisCount++;
                     }
                     catch
@@ -728,8 +747,10 @@ namespace AutoServerPro.Core
             }
 
             _monitor.Log($"快照创建完成: {snapshot.PlayerPositions.Count}玩家, {debrisCount}掉落物", LogLevel.Debug);
+            if (xmlFallbackCount > 0)
+                _monitor.Log($"掉落物XML序列化失败，将用ItemId恢复: {xmlFallbackCount} 个", LogLevel.Warn);
             if (failedCount > 0)
-                _monitor.Log($"物品序列化失败: {failedCount} 个", LogLevel.Warn);
+                _monitor.Log($"物品记录失败: {failedCount} 个", LogLevel.Warn);
 
             return snapshot;
         }
