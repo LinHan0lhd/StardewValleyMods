@@ -59,32 +59,9 @@ namespace AutoServerPro.Core
         [XmlElement("MineLowestLevelReached")]
         public int MineLowestLevelReached { get; set; }
 
-        [XmlArray("PlayerPositions")]
-        [XmlArrayItem("PlayerPosition")]
-        public List<PlayerPosition> PlayerPositions { get; set; } = new();
-
         [XmlArray("DebrisItems")]
         [XmlArrayItem("DebrisItem")]
         public List<DebrisItemState> DebrisItems { get; set; } = new();
-    }
-
-    [XmlRoot("PlayerPosition")]
-    public class PlayerPosition
-    {
-        [XmlElement("UniqueId")]
-        public long UniqueId { get; set; }
-
-        [XmlElement("LocationName")]
-        public string LocationName { get; set; }
-
-        [XmlElement("X")]
-        public float X { get; set; }
-
-        [XmlElement("Y")]
-        public float Y { get; set; }
-
-        [XmlElement("FacingDirection")]
-        public int FacingDirection { get; set; }
     }
 
     public class SaveManager
@@ -562,63 +539,6 @@ namespace AutoServerPro.Core
             }
         }
 
-        private void RestorePlayerPositions(GameStateSnapshot snapshot)
-        {
-            if (snapshot.PlayerPositions == null || snapshot.PlayerPositions.Count == 0) return;
-
-            _monitor.Log($"恢复 {snapshot.PlayerPositions.Count} 个玩家位置", LogLevel.Debug);
-
-            foreach (var pos in snapshot.PlayerPositions)
-            {
-                GameLocation targetLocation = null;
-                if (!string.IsNullOrEmpty(pos.LocationName))
-                {
-                    targetLocation = Game1.locations.FirstOrDefault(l => l.NameOrUniqueName == pos.LocationName);
-                    if (targetLocation == null)
-                    {
-                        _monitor.Log($"  位置[{pos.LocationName}]未找到，仅设置坐标", LogLevel.Trace);
-                    }
-                }
-
-                if (pos.UniqueId == Game1.player.UniqueMultiplayerID)
-                {
-                    RestoreFarmerPosition(Game1.player, pos, targetLocation, "主机");
-                    continue;
-                }
-
-                if (Game1.netWorldState.Value.farmhandData.TryGetValue(pos.UniqueId, out var farmhandData))
-                {
-                    RestoreFarmerPosition(farmhandData, pos, targetLocation, $"玩家[{farmhandData.Name}]");
-                }
-                else
-                {
-                    _monitor.Log($"  玩家ID={pos.UniqueId} 不在farmhandData中，跳过", LogLevel.Trace);
-                }
-            }
-        }
-
-        private void RestoreFarmerPosition(Farmer farmer, PlayerPosition pos, GameLocation targetLocation, string label)
-        {
-            var target = new Vector2(pos.X, pos.Y);
-
-            if (targetLocation != null && farmer.currentLocation != targetLocation)
-            {
-                if (farmer.currentLocation != null)
-                {
-                    farmer.currentLocation.characters.Remove(farmer);
-                }
-                targetLocation.characters.Add(farmer);
-                farmer.currentLocation = targetLocation;
-                _monitor.Log($"  {label} 切换位置到 [{targetLocation.NameOrUniqueName}]", LogLevel.Debug);
-            }
-
-            farmer.position.Set(new Vector2(target.X + 0.01f, target.Y));
-            farmer.position.Set(target);
-            farmer.FacingDirection = pos.FacingDirection;
-
-            _monitor.Log($"  {label} 位置: ({pos.X}, {pos.Y}) 朝向: {pos.FacingDirection}", LogLevel.Debug);
-        }
-
         private void SyncOnlinePlayerPositions()
         {
             int synced = Game1.otherFarmers.Count;
@@ -746,27 +666,6 @@ namespace AutoServerPro.Core
                 MineLowestLevelReached = MineShaft.lowestLevelReached
             };
 
-            snapshot.PlayerPositions.Add(new PlayerPosition
-            {
-                UniqueId = Game1.player.UniqueMultiplayerID,
-                LocationName = Game1.player.currentLocation?.NameOrUniqueName ?? "",
-                X = Game1.player.position.X,
-                Y = Game1.player.position.Y,
-                FacingDirection = Game1.player.FacingDirection
-            });
-
-            foreach (var farmer in Game1.otherFarmers.Values)
-            {
-                snapshot.PlayerPositions.Add(new PlayerPosition
-                {
-                    UniqueId = farmer.UniqueMultiplayerID,
-                    LocationName = farmer.currentLocation?.NameOrUniqueName ?? "",
-                    X = farmer.position.X,
-                    Y = farmer.position.Y,
-                    FacingDirection = farmer.FacingDirection
-                });
-            }
-
             int debrisCount = 0;
             int failedCount = 0;
             int xmlFallbackCount = 0;
@@ -821,7 +720,7 @@ namespace AutoServerPro.Core
                 }
             }
 
-            _monitor.Log($"快照创建完成: {snapshot.PlayerPositions.Count}玩家, {debrisCount}掉落物", LogLevel.Debug);
+            _monitor.Log($"快照创建完成: {debrisCount}掉落物", LogLevel.Debug);
             if (xmlFallbackCount > 0)
                 _monitor.Log($"掉落物XML序列化失败，将用ItemId恢复: {xmlFallbackCount} 个", LogLevel.Warn);
             if (failedCount > 0)
@@ -845,7 +744,7 @@ namespace AutoServerPro.Core
                 {
                     SnapshotSerializer.Serialize(fs, snapshot);
                 }
-                _monitor.Log($"额外数据已保存(XML): {snapshot.PlayerPositions.Count}玩家位置, {snapshot.DebrisItems.Count}掉落物", LogLevel.Info);
+                _monitor.Log($"额外数据已保存(XML): {snapshot.DebrisItems.Count}掉落物", LogLevel.Info);
             }
             catch (Exception ex)
             {
