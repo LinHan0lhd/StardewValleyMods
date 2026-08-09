@@ -82,14 +82,6 @@ namespace AutoServerPro.Core
 
         [XmlElement("FacingDirection")]
         public int FacingDirection { get; set; }
-
-        [XmlArray("Mailbox")]
-        [XmlArrayItem("MailId")]
-        public List<string> Mailbox { get; set; } = new();
-
-        [XmlArray("MailReceived")]
-        [XmlArrayItem("MailId")]
-        public List<string> MailReceived { get; set; } = new();
     }
 
     public class SaveManager
@@ -406,15 +398,6 @@ namespace AutoServerPro.Core
             {
                 _monitor.Log($"恢复玩家位置失败: {ex.Message}", LogLevel.Warn);
             }
-
-            try
-            {
-                RestoreMailState(snapshot);
-            }
-            catch (Exception ex)
-            {
-                _monitor.Log($"恢复邮箱状态失败: {ex.Message}", LogLevel.Warn);
-            }
         }
 
         /// <summary>
@@ -542,44 +525,6 @@ namespace AutoServerPro.Core
             }
         }
 
-        private void RestoreMailState(GameStateSnapshot snapshot)
-        {
-            if (snapshot.PlayerPositions == null || snapshot.PlayerPositions.Count == 0) return;
-
-            foreach (var pos in snapshot.PlayerPositions)
-            {
-                try
-                {
-                    Farmer farmer = null;
-                    if (pos.UniqueId == Game1.player.UniqueMultiplayerID)
-                        farmer = Game1.player;
-                    else
-                        farmer = Game1.otherFarmers.Values.FirstOrDefault(f => f.UniqueMultiplayerID == pos.UniqueId);
-
-                    if (farmer == null) continue;
-
-                    if (pos.Mailbox != null && pos.Mailbox.Count > 0)
-                    {
-                        farmer.mailbox.Clear();
-                        farmer.mailbox.AddRange(pos.Mailbox);
-                    }
-
-                    if (pos.MailReceived != null && pos.MailReceived.Count > 0)
-                    {
-                        farmer.mailReceived.Clear();
-                        foreach (var mailId in pos.MailReceived)
-                            farmer.mailReceived.Add(mailId);
-                    }
-
-                    _monitor.Log($"  玩家 {farmer.Name} 邮箱状态已恢复: 未读{pos.Mailbox?.Count ?? 0}, 已读{pos.MailReceived?.Count ?? 0}", LogLevel.Debug);
-                }
-                catch (Exception ex)
-                {
-                    _monitor.Log($"恢复邮箱状态失败: {ex.Message}", LogLevel.Warn);
-                }
-            }
-        }
-
         private void ResetNpcSchedules()
         {
             _monitor.Log("重置 NPC 行程状态，防止卡死...", LogLevel.Debug);
@@ -693,9 +638,7 @@ namespace AutoServerPro.Core
                 LocationName = Game1.player.currentLocation?.NameOrUniqueName ?? "",
                 X = Game1.player.position.X,
                 Y = Game1.player.position.Y,
-                FacingDirection = Game1.player.FacingDirection,
-                Mailbox = new List<string>(Game1.player.mailbox),
-                MailReceived = new List<string>(Game1.player.mailReceived)
+                FacingDirection = Game1.player.FacingDirection
             });
 
             foreach (var farmer in Game1.otherFarmers.Values)
@@ -706,9 +649,7 @@ namespace AutoServerPro.Core
                     LocationName = farmer.currentLocation?.NameOrUniqueName ?? "",
                     X = farmer.position.X,
                     Y = farmer.position.Y,
-                    FacingDirection = farmer.FacingDirection,
-                    Mailbox = new List<string>(farmer.mailbox),
-                    MailReceived = new List<string>(farmer.mailReceived)
+                    FacingDirection = farmer.FacingDirection
                 });
             }
 
