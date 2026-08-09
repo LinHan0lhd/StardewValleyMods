@@ -554,7 +554,7 @@ namespace AutoServerPro.Core
                 farmer.disconnectDay.Value = (int)Game1.stats.DaysPlayed;
             }
 
-            Game1.multiplayer?.saveFarmhands();
+            Game1.Multiplayer?.saveFarmhands();
 
             _monitor.Log($"已通过 saveFarmhands() 同步 {synced} 个在线玩家位置到存档数据", synced > 0 ? LogLevel.Debug : LogLevel.Trace);
         }
