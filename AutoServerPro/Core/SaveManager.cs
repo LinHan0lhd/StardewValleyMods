@@ -520,10 +520,7 @@ namespace AutoServerPro.Core
                     restored++;
                     
                     // 调试日志：显示每个恢复的物品信息
-                    if (_monitor.IsVerbose)
-                    {
-                        _monitor.Log($"  恢复: {item.QualifiedItemId} x{item.Stack} @ ({targetPos.X:F1}, {targetPos.Y:F1})", LogLevel.Verbose);
-                    }
+                    _monitor.Log($"  恢复: {item.QualifiedItemId} x{item.Stack} @ ({targetPos.X:F1}, {targetPos.Y:F1})", LogLevel.Trace);
                 }
                 catch (Exception ex)
                 {
