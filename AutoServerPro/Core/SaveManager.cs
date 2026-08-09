@@ -419,14 +419,7 @@ namespace AutoServerPro.Core
                 _monitor.Log($"恢复掉落物失败: {ex.Message}", LogLevel.Warn);
             }
 
-            try
-            {
-                RestorePlayerPositions(snapshot);
-            }
-            catch (Exception ex)
-            {
-                _monitor.Log($"恢复玩家位置失败: {ex.Message}", LogLevel.Warn);
-            }
+            _monitor.Log("玩家位置由原生存档处理（SyncOnlinePlayerPositions已同步在线位置）", LogLevel.Debug);
         }
 
         /// <summary>
