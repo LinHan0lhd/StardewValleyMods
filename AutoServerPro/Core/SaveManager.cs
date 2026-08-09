@@ -432,6 +432,25 @@ namespace AutoServerPro.Core
 
             _monitor.Log($"恢复 {snapshot.DebrisItems.Count} 个掉落物", LogLevel.Debug);
 
+            var snapshotLocations = snapshot.DebrisItems
+                .Select(d => d.LocationName)
+                .Where(n => !string.IsNullOrEmpty(n))
+                .Distinct()
+                .ToList();
+
+            int cleared = 0;
+            foreach (var locName in snapshotLocations)
+            {
+                var location = Game1.locations.FirstOrDefault(l => l.NameOrUniqueName == locName);
+                if (location == null) continue;
+
+                int beforeCount = location.debris.Count;
+                location.debris.Clear();
+                cleared += beforeCount;
+            }
+            if (cleared > 0)
+                _monitor.Log($"已清除 {cleared} 个原生残留掉落物，准备恢复快照", LogLevel.Debug);
+
             int restored = 0;
             int locNotFound = 0;
             int itemFailed = 0;
@@ -472,17 +491,15 @@ namespace AutoServerPro.Core
                     }
 
                     var targetPos = new Vector2(debrisState.X, debrisState.Y);
-                    var debris = new Debris(item, targetPos, targetPos);
+                    var debris = new Debris();
+                    debris.item = item;
+                    debris.itemId.Value = item.QualifiedItemId;
+                    debris.debrisType.Value = Debris.DebrisType.OBJECT;
 
-                    foreach (var chunk in debris.Chunks)
-                    {
-                        chunk.position.Set(targetPos);
-                        chunk.xVelocity.Value = 0f;
-                        chunk.yVelocity.Value = 0f;
-                        chunk.hasPassedRestingLineOnce.Value = true;
-                        chunk.bounces = 100;
-                        chunk.rotationVelocity = 0f;
-                    }
+                    var chunk = new Chunk(targetPos, 0f, 0f, 0);
+                    chunk.hasPassedRestingLineOnce.Value = true;
+                    chunk.bounces = 100;
+                    debris.Chunks.Add(chunk);
                     debris.chunkFinalYLevel = (int)targetPos.Y;
                     debris.chunksMoveTowardPlayer = false;
 
