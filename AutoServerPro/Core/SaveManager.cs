@@ -77,11 +77,11 @@ namespace AutoServerPro.Core
         [XmlElement("LocationName")]
         public string LocationName { get; set; }
 
-        [XmlElement("X")]
-        public float X { get; set; }
+        [XmlElement("TileX")]
+        public int TileX { get; set; }
 
-        [XmlElement("Y")]
-        public float Y { get; set; }
+        [XmlElement("TileY")]
+        public int TileY { get; set; }
 
         [XmlElement("FacingDirection")]
         public int FacingDirection { get; set; }
@@ -599,7 +599,7 @@ namespace AutoServerPro.Core
 
         private void RestoreFarmerPosition(Farmer farmer, PlayerPosition pos, GameLocation targetLocation, string label)
         {
-            var target = new Vector2(pos.X, pos.Y);
+            var target = new Vector2(pos.TileX * 64f, pos.TileY * 64f);
 
             if (targetLocation != null && farmer.currentLocation != targetLocation)
             {
@@ -616,7 +616,7 @@ namespace AutoServerPro.Core
             farmer.position.Set(target);
             farmer.FacingDirection = pos.FacingDirection;
 
-            _monitor.Log($"  {label} 位置: ({pos.X}, {pos.Y}) 朝向: {pos.FacingDirection}", LogLevel.Debug);
+            _monitor.Log($"  {label} 瓦片: ({pos.TileX}, {pos.TileY}) 朝向: {pos.FacingDirection}", LogLevel.Debug);
         }
 
         private void SyncOnlinePlayerPositions()
@@ -760,8 +760,8 @@ namespace AutoServerPro.Core
             {
                 UniqueId = Game1.player.UniqueMultiplayerID,
                 LocationName = Game1.player.currentLocation?.NameOrUniqueName ?? "",
-                X = Game1.player.position.X,
-                Y = Game1.player.position.Y,
+                TileX = (int)Game1.player.Tile.X,
+                TileY = (int)Game1.player.Tile.Y,
                 FacingDirection = Game1.player.FacingDirection
             });
 
@@ -771,8 +771,8 @@ namespace AutoServerPro.Core
                 {
                     UniqueId = farmer.UniqueMultiplayerID,
                     LocationName = farmer.currentLocation?.NameOrUniqueName ?? "",
-                    X = farmer.position.X,
-                    Y = farmer.position.Y,
+                    TileX = (int)farmer.Tile.X,
+                    TileY = (int)farmer.Tile.Y,
                     FacingDirection = farmer.FacingDirection
                 });
             }
