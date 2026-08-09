@@ -556,7 +556,9 @@ namespace AutoServerPro.Core
             {
                 if (string.IsNullOrEmpty(xml)) return null;
 
-                xml = System.Text.RegularExpressions.Regex.Replace(xml, @"\s+xmlns:xsi\s*=\s*[""'][^""']*[""']", "");
+                // 只移除 xmlns:xsd 命名空间（它是多余的），保留 xmlns:xsi
+                // xmlns:xsi 对多态反序列化至关重要，因为 xsi:type 属性依赖它
+                xml = System.Text.RegularExpressions.Regex.Replace(xml, @"\s+xmlns:xsd\s*=\s*[""'][^""']*[""']", "");
 
                 using (var sr = new StringReader(xml))
                 {
