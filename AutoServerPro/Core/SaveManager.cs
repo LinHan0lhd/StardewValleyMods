@@ -594,23 +594,30 @@ namespace AutoServerPro.Core
         private void SyncOnlinePlayerPositions()
         {
             int synced = 0;
+
             foreach (var storedFarmer in Game1.netWorldState.Value.farmhandData.Values)
             {
                 var onlineFarmer = Game1.otherFarmers.Values
                     .FirstOrDefault(f => f.UniqueMultiplayerID == storedFarmer.UniqueMultiplayerID);
 
-                if (onlineFarmer != null && onlineFarmer.isActive())
+                if (onlineFarmer != null)
                 {
                     var target = onlineFarmer.position.Value;
+                    _monitor.Log($"同步玩家[{onlineFarmer.Name}] ID={onlineFarmer.UniqueMultiplayerID} " +
+                        $"isActive={onlineFarmer.isActive()} pos=({target.X}, {target.Y})", LogLevel.Debug);
+
                     storedFarmer.position.Set(new Vector2(target.X + 0.01f, target.Y));
                     storedFarmer.position.Set(target);
                     storedFarmer.FacingDirection = onlineFarmer.FacingDirection;
                     synced++;
                 }
+                else
+                {
+                    _monitor.Log($"玩家ID={storedFarmer.UniqueMultiplayerID} 未在线，跳过同步", LogLevel.Trace);
+                }
             }
 
-            if (synced > 0)
-                _monitor.Log($"已同步 {synced} 个在线玩家位置到存档数据", LogLevel.Debug);
+            _monitor.Log($"已同步 {synced} 个在线玩家位置到存档数据", synced > 0 ? LogLevel.Debug : LogLevel.Trace);
         }
 
         private void ResetNpcSchedules()
@@ -882,6 +889,9 @@ namespace AutoServerPro.Core
             try
             {
                 SyncOnlinePlayerPositions();
+
+                _monitor.Log($"保存前位置状态: 主机=({Game1.player.position.Value.X}, {Game1.player.position.Value.Y}), " +
+                    $"farmhands={Game1.netWorldState.Value.farmhandData.Count}", LogLevel.Debug);
             }
             catch (Exception ex)
             {
