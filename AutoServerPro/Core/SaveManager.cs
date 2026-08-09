@@ -105,6 +105,9 @@ namespace AutoServerPro.Core
         private bool _waitingForFestivalEnd;
         private bool _saveRequestedDuringFestival;
 
+        private GameStateSnapshot _pendingRestoreSnapshot;
+        private int _restoreDelayTicks;
+
         // XML 序列化器
         private static readonly XmlSerializer ItemSerializer;
         private static readonly XmlSerializer SnapshotSerializer;
@@ -330,16 +333,39 @@ namespace AutoServerPro.Core
                     var snapshot = (GameStateSnapshot)SnapshotSerializer.Deserialize(fs);
                     if (snapshot == null) return;
 
-                    _monitor.Log($"恢复存档数据 - 时间: {snapshot.Season} {snapshot.DayOfMonth}日 {snapshot.TimeOfDay}:00, 掉落物: {snapshot.DebrisItems.Count}", LogLevel.Info);
+                    _monitor.Log($"加载存档数据 - 时间: {snapshot.Season} {snapshot.DayOfMonth}日 {snapshot.TimeOfDay}:00, 掉落物: {snapshot.DebrisItems.Count}", LogLevel.Info);
 
-                    RestoreSnapshot(snapshot);
-                    ResetNpcSchedules();
-                    _monitor.Log("存档数据恢复完成", LogLevel.Info);
+                    _pendingRestoreSnapshot = snapshot;
+                    _restoreDelayTicks = 15;
                 }
             }
             catch (Exception ex)
             {
                 _monitor.Log($"恢复存档数据失败: {ex.Message}", LogLevel.Warn);
+            }
+        }
+
+        public void UpdateRestoreDelay()
+        {
+            if (_pendingRestoreSnapshot == null) return;
+
+            _restoreDelayTicks--;
+            if (_restoreDelayTicks > 0) return;
+
+            try
+            {
+                _monitor.Log($"延迟恢复存档数据 (延迟{_restoreDelayTicks + 1}tick已过)", LogLevel.Debug);
+                RestoreSnapshot(_pendingRestoreSnapshot);
+                ResetNpcSchedules();
+                _monitor.Log("存档数据恢复完成", LogLevel.Info);
+            }
+            catch (Exception ex)
+            {
+                _monitor.Log($"恢复存档数据失败: {ex.Message}", LogLevel.Warn);
+            }
+            finally
+            {
+                _pendingRestoreSnapshot = null;
             }
         }
 
@@ -437,12 +463,18 @@ namespace AutoServerPro.Core
             _monitor.Log($"恢复 {snapshot.DebrisItems.Count} 个掉落物", LogLevel.Debug);
 
             int restored = 0;
+            int locNotFound = 0;
+            int itemFailed = 0;
             foreach (var debrisState in snapshot.DebrisItems)
             {
                 try
                 {
                     var location = Game1.locations.FirstOrDefault(l => l.NameOrUniqueName == debrisState.LocationName);
-                    if (location == null) continue;
+                    if (location == null)
+                    {
+                        locNotFound++;
+                        continue;
+                    }
 
                     Item item = null;
 
@@ -452,7 +484,10 @@ namespace AutoServerPro.Core
                         {
                             item = DeserializeItem(debrisState.ItemXml);
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            _monitor.Log($"  XML反序列化异常: {ex.Message}", LogLevel.Trace);
+                        }
                     }
 
                     if (item == null && !string.IsNullOrEmpty(debrisState.ItemId))
@@ -460,17 +495,23 @@ namespace AutoServerPro.Core
                         item = ItemRegistry.Create(debrisState.ItemId);
                     }
 
-                    if (item == null) continue;
+                    if (item == null)
+                    {
+                        itemFailed++;
+                        continue;
+                    }
 
                     var debris = new Debris(item, new Vector2(debrisState.X, debrisState.Y), new Vector2(debrisState.X, debrisState.Y));
                     location.debris.Add(debris);
                     restored++;
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    _monitor.Log($"  掉落物恢复异常: {ex.Message}", LogLevel.Trace);
+                }
             }
 
-            if (restored > 0)
-                _monitor.Log($"成功恢复 {restored} 个掉落物", LogLevel.Debug);
+            _monitor.Log($"掉落物恢复: 成功{restored}, 位置未找到{locNotFound}, 物品创建失败{itemFailed}", LogLevel.Debug);
         }
 
         private string SerializeItem(Item item)
@@ -496,12 +537,16 @@ namespace AutoServerPro.Core
         {
             try
             {
-                // 移除 xsi 命名空间（参考 MasterHand）
+                if (string.IsNullOrEmpty(xml)) return null;
+
                 xml = System.Text.RegularExpressions.Regex.Replace(xml, @"\s+xmlns:xsi\s*=\s*[""'][^""']*[""']", "");
 
-                var wrapper = (ItemsWrapper)ItemSerializer.Deserialize(new StringReader(xml));
-                if (wrapper?.Items != null && wrapper.Items.Length > 0)
-                    return wrapper.Items[0];
+                using (var sr = new StringReader(xml))
+                {
+                    var wrapper = (ItemsWrapper)ItemSerializer.Deserialize(sr);
+                    if (wrapper?.Items != null && wrapper.Items.Length > 0)
+                        return wrapper.Items[0];
+                }
                 return null;
             }
             catch

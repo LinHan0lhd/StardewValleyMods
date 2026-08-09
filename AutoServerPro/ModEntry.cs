@@ -229,6 +229,8 @@ namespace AutoServerPro
 
             if (!Context.IsWorldReady) return;
 
+            _saveManager.UpdateRestoreDelay();
+
             _saveManager.TickFestivalSaveFlow();
 
             if (_saveManager.IsWaitingFestivalEnd) return;
