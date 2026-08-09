@@ -494,7 +494,21 @@ namespace AutoServerPro.Core
                         continue;
                     }
 
-                    var debris = new Debris(item, new Vector2(debrisState.X, debrisState.Y), new Vector2(debrisState.X, debrisState.Y));
+                    var targetPos = new Vector2(debrisState.X, debrisState.Y);
+                    var debris = new Debris(item, targetPos, targetPos);
+
+                    foreach (var chunk in debris.Chunks)
+                    {
+                        chunk.position.Set(targetPos);
+                        chunk.xVelocity.Value = 0f;
+                        chunk.yVelocity.Value = 0f;
+                        chunk.hasPassedRestingLineOnce.Value = true;
+                        chunk.bounces = 100;
+                        chunk.rotationVelocity = 0f;
+                    }
+                    debris.chunkFinalYLevel = (int)targetPos.Y;
+                    debris.chunksMoveTowardPlayer = false;
+
                     location.debris.Add(debris);
                     restored++;
                 }
