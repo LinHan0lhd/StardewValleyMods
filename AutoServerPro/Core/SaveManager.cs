@@ -609,6 +609,7 @@ namespace AutoServerPro.Core
                     storedFarmer.position.Set(new Vector2(target.X + 0.01f, target.Y));
                     storedFarmer.position.Set(target);
                     storedFarmer.FacingDirection = onlineFarmer.FacingDirection;
+                    storedFarmer.currentLocation = onlineFarmer.currentLocation;
                     synced++;
                 }
                 else
@@ -891,7 +892,7 @@ namespace AutoServerPro.Core
                 SyncOnlinePlayerPositions();
 
                 _monitor.Log($"保存前位置状态: 主机=({Game1.player.position.Value.X}, {Game1.player.position.Value.Y}), " +
-                    $"farmhands={Game1.netWorldState.Value.farmhandData.Count}", LogLevel.Debug);
+                    $"farmhands={Game1.netWorldState.Value.farmhandData.Count()}", LogLevel.Debug);
             }
             catch (Exception ex)
             {
