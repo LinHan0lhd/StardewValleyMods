@@ -560,15 +560,14 @@ namespace AutoServerPro.Core
         {
             int synced = Game1.otherFarmers.Count;
 
-            Game1.player.disconnectPosition.Value = Game1.player.position.Value;
-            Game1.player.disconnectLocation.Value = Game1.player.currentLocation?.NameOrUniqueName ?? "";
-            Game1.player.disconnectDay.Value = (int)Game1.stats.DaysPlayed;
-
+            // 仅同步 Farmhand（农场助手）的位置
+            // 主机（Game1.player）的位置由原生保存流程直接处理，无需修改 disconnect* 字段
+            // 关键：不要修改 disconnectDay，否则会导致游戏误判玩家已离线
             foreach (var farmer in Game1.otherFarmers.Values)
             {
                 farmer.disconnectPosition.Value = farmer.position.Value;
                 farmer.disconnectLocation.Value = farmer.currentLocation?.NameOrUniqueName ?? "";
-                farmer.disconnectDay.Value = (int)Game1.stats.DaysPlayed;
+                // 注意：不修改 disconnectDay，保持为 0 表示在线
             }
 
             Game1.Multiplayer?.saveFarmhands();
