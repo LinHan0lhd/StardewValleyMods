@@ -46,24 +46,10 @@ namespace AutoServerPro.Core
         [XmlElement("DebrisType")]
         public int DebrisType { get; set; }
 
-        [XmlElement("ChunkType")]
-        public int ChunkType { get; set; }
-
         [XmlElement("ChunkFinalYLevel")]
         public int ChunkFinalYLevel { get; set; }
 
-        [XmlElement("ChunksMoveTowardPlayer")]
-        public bool ChunksMoveTowardPlayer { get; set; }
-
-        [XmlElement("FloppingFish")]
-        public bool FloppingFish { get; set; }
-
-        [XmlElement("Scale")]
-        public float Scale { get; set; }
-
-        [XmlElement("ItemQuality")]
-        public int ItemQuality { get; set; }
-
+        // chunksColor 默认是 (0,0,0,0) 透明，必须保存
         [XmlElement("ChunksColorR")]
         public int ChunksColorR { get; set; }
 
@@ -75,39 +61,6 @@ namespace AutoServerPro.Core
 
         [XmlElement("ChunksColorA")]
         public int ChunksColorA { get; set; }
-
-        [XmlElement("NonSpriteColorR")]
-        public int NonSpriteColorR { get; set; }
-
-        [XmlElement("NonSpriteColorG")]
-        public int NonSpriteColorG { get; set; }
-
-        [XmlElement("NonSpriteColorB")]
-        public int NonSpriteColorB { get; set; }
-
-        [XmlElement("NonSpriteColorA")]
-        public int NonSpriteColorA { get; set; }
-
-        [XmlElement("SpriteChunkSheetName")]
-        public string SpriteChunkSheetName { get; set; }
-
-        [XmlElement("SizeOfSourceRectSquares")]
-        public int SizeOfSourceRectSquares { get; set; }
-
-        [XmlElement("DebrisMessage")]
-        public string DebrisMessage { get; set; }
-
-        [XmlElement("TimeSinceDoneBouncing")]
-        public float TimeSinceDoneBouncing { get; set; }
-
-        [XmlElement("IsFishable")]
-        public bool IsFishable { get; set; }
-
-        [XmlElement("IsSinking")]
-        public bool IsSinking { get; set; }
-
-        [XmlElement("DroppedByPlayerID")]
-        public long DroppedByPlayerID { get; set; }
 
         [XmlArray("Chunks")]
         [XmlArrayItem("Chunk")]
@@ -122,47 +75,8 @@ namespace AutoServerPro.Core
         [XmlElement("Y")]
         public float Y { get; set; }
 
-        [XmlElement("XVelocity")]
-        public float XVelocity { get; set; }
-
-        [XmlElement("YVelocity")]
-        public float YVelocity { get; set; }
-
         [XmlElement("RandomOffset")]
         public int RandomOffset { get; set; }
-
-        [XmlElement("XSpriteSheet")]
-        public int XSpriteSheet { get; set; }
-
-        [XmlElement("YSpriteSheet")]
-        public int YSpriteSheet { get; set; }
-
-        [XmlElement("Scale")]
-        public float Scale { get; set; }
-
-        [XmlElement("Alpha")]
-        public float Alpha { get; set; }
-
-        [XmlElement("Rotation")]
-        public float Rotation { get; set; }
-
-        [XmlElement("RotationVelocity")]
-        public float RotationVelocity { get; set; }
-
-        [XmlElement("Bob")]
-        public float Bob { get; set; }
-
-        [XmlElement("HasPassedRestingLineOnce")]
-        public bool HasPassedRestingLineOnce { get; set; }
-
-        [XmlElement("Bounces")]
-        public int Bounces { get; set; }
-
-        [XmlElement("HitWall")]
-        public bool HitWall { get; set; }
-
-        [XmlElement("SinkTimer")]
-        public int SinkTimer { get; set; }
     }
 
     [XmlRoot("GameStateSnapshot")]
@@ -616,44 +530,28 @@ namespace AutoServerPro.Core
                         continue;
                     }
 
-                    // 2. 使用无参构造器创建 Debris（不触发 InitializeChunks 的副作用）
+                    // 2. 创建 Debris
                     var debris = new Debris();
-
-                    // 设置物品相关属性
                     debris.item = item;
                     debris.itemId.Value = item.QualifiedItemId;
                     debris.itemQuality = item.Quality;
                     if (debrisState.Stack > 0)
                         item.Stack = debrisState.Stack;
 
-                    // 3. 恢复 Debris 级别的视觉属性
+                    // 3. 恢复 Debris 必要属性（其余使用默认值）
                     debris.debrisType.Value = (Debris.DebrisType)debrisState.DebrisType;
-                    debris.chunkType.Value = debrisState.ChunkType;
                     debris.chunkFinalYLevel = debrisState.ChunkFinalYLevel;
-                    // 关键：设置为 true 让物品立即处于"可拾取"状态，会自动飞向玩家
-                    debris.chunksMoveTowardPlayer = true;
-                    debris.floppingFish.Value = debrisState.FloppingFish;
-                    debris.scale.Value = debrisState.Scale;
-                    debris.isFishable = debrisState.IsFishable;
-                    debris.isSinking.Value = false;
-                    // 让游戏认为物品已完成弹跳，立即进入向玩家移动阶段
-                    debris.timeSinceDoneBouncing = 600f;
-                    debris.DroppedByPlayerID.Value = debrisState.DroppedByPlayerID;
-                    debris.spriteChunkSheetName.Value = debrisState.SpriteChunkSheetName ?? "";
-                    debris.sizeOfSourceRectSquares.Value = debrisState.SizeOfSourceRectSquares;
-                    debris.debrisMessage.Value = debrisState.DebrisMessage ?? "";
                     debris.chunksColor.Value = new Color(
                         debrisState.ChunksColorR,
                         debrisState.ChunksColorG,
                         debrisState.ChunksColorB,
                         debrisState.ChunksColorA);
-                    debris.nonSpriteChunkColor.Value = new Color(
-                        debrisState.NonSpriteColorR,
-                        debrisState.NonSpriteColorG,
-                        debrisState.NonSpriteColorB,
-                        debrisState.NonSpriteColorA);
+                    // 使用默认值: scale=1, nonSpriteColor=White, sizeOfSourceRectSquares=8, 等
+                    // 强制设为"可拾取"状态
+                    debris.chunksMoveTowardPlayer = true;
+                    debris.timeSinceDoneBouncing = 600f;
 
-                    // 4. 重建每个 Chunk — 从"静止"状态恢复
+                    // 4. 重建 Chunk — 使用默认值即可
                     if (debrisState.Chunks != null && debrisState.Chunks.Count > 0)
                     {
                         foreach (var chunkState in debrisState.Chunks)
@@ -661,23 +559,14 @@ namespace AutoServerPro.Core
                             try
                             {
                                 var pos = new Vector2(chunkState.X, chunkState.Y);
-                                // 使用零速度创建 Chunk（物品静止在地面）
+                                // 构造器已设 alpha=1, xVelocity/yVelocity=0
                                 var chunk = new Chunk(pos, 0f, 0f, chunkState.RandomOffset);
 
-                                // 恢复 Chunk 的视觉属性
-                                chunk.xSpriteSheet.Value = chunkState.XSpriteSheet;
-                                chunk.ySpriteSheet.Value = chunkState.YSpriteSheet;
-                                chunk.scale = chunkState.Scale;
-                                chunk.alpha = chunkState.Alpha;
-                                chunk.rotation = chunkState.Rotation;
-                                chunk.rotationVelocity = 0f;
-                                chunk.bob = 0f;
-                                // 关键：标记为已过休息线，防止继续弹跳
+                                // 关键：设为"静止"状态，等待向玩家移动
+                                chunk.scale = 1f;
                                 chunk.hasPassedRestingLineOnce.Value = true;
                                 chunk.bounces = 100;
-                                chunk.hitWall = false;
                                 chunk.sinkTimer.Value = int.MaxValue;
-
                                 chunk.position.Field.CancelInterpolation();
 
                                 debris.Chunks.Add(chunk);
@@ -693,7 +582,7 @@ namespace AutoServerPro.Core
                     location.debris.Add(debris);
                     restored++;
 
-                    _monitor.Log($"  恢复 Debris: {item.QualifiedItemId} q{item.Quality} stack={item.Stack} type={debrisState.DebrisType} chunks={debris.Chunks.Count} finalY={debrisState.ChunkFinalYLevel}", LogLevel.Trace);
+                    _monitor.Log($"  恢复 Debris: {item.QualifiedItemId} q{item.Quality} stack={item.Stack} type={debrisState.DebrisType} chunks={debris.Chunks.Count}", LogLevel.Trace);
                 }
                 catch (Exception ex)
                 {
@@ -917,75 +806,37 @@ namespace AutoServerPro.Core
                             Stack = stack,
                             Quality = quality,
                             DebrisType = (int)debris.debrisType.Value,
-                            ChunkType = debris.chunkType.Value,
                             ChunkFinalYLevel = debris.chunkFinalYLevel,
-                            // 关键：保存时物品已落地，恢复后应立即处于"可拾取"状态
-                            ChunksMoveTowardPlayer = true,
-                            FloppingFish = debris.floppingFish.Value,
-                            Scale = debris.scale.Value,
-                            ItemQuality = debris.itemQuality,
                             ChunksColorR = debris.chunksColor.Value.R,
                             ChunksColorG = debris.chunksColor.Value.G,
                             ChunksColorB = debris.chunksColor.Value.B,
                             ChunksColorA = debris.chunksColor.Value.A,
-                            NonSpriteColorR = debris.nonSpriteChunkColor.Value.R,
-                            NonSpriteColorG = debris.nonSpriteChunkColor.Value.G,
-                            NonSpriteColorB = debris.nonSpriteChunkColor.Value.B,
-                            NonSpriteColorA = debris.nonSpriteChunkColor.Value.A,
-                            SpriteChunkSheetName = debris.spriteChunkSheetName.Value,
-                            SizeOfSourceRectSquares = debris.sizeOfSourceRectSquares.Value,
-                            DebrisMessage = debris.debrisMessage.Value,
-                            TimeSinceDoneBouncing = debris.timeSinceDoneBouncing,
-                            IsFishable = debris.isFishable,
-                            IsSinking = debris.isSinking.Value,
-                            DroppedByPlayerID = debris.DroppedByPlayerID.Value,
                         };
 
                         if (debris.Chunks != null && debris.Chunks.Count > 0)
                         {
                             foreach (var chunk in debris.Chunks)
                             {
-                                // 使用 TargetValue 保存未经插值的实际位置
                                 Vector2 pos = chunk.position.Field.TargetValue;
 
                                 state.Chunks.Add(new ChunkState
                                 {
                                     X = pos.X,
                                     Y = pos.Y,
-                                    XVelocity = 0f,
-                                    YVelocity = 0f,
                                     RandomOffset = chunk.randomOffset,
-                                    XSpriteSheet = chunk.xSpriteSheet.Value,
-                                    YSpriteSheet = chunk.ySpriteSheet.Value,
-                                    Scale = chunk.scale,
-                                    Alpha = chunk.alpha,
-                                    Rotation = chunk.rotation,
-                                    RotationVelocity = 0f,
-                                    Bob = 0f,
-                                    HasPassedRestingLineOnce = true,
-                                    Bounces = 100,
-                                    HitWall = false,
-                                    SinkTimer = int.MaxValue,
                                 });
                                 chunkCount++;
 
-                                _monitor.Log($"  保存 Chunk: pos=({pos.X:F2},{pos.Y:F2}) xVel={chunk.xVelocity.Value:F2} yVel={chunk.yVelocity.Value:F2} bounces={chunk.bounces} scale={chunk.scale:F2} alpha={chunk.alpha:F2}", LogLevel.Trace);
+                                _monitor.Log($"  保存 Chunk: pos=({pos.X:F2},{pos.Y:F2}) random={chunk.randomOffset}", LogLevel.Trace);
                             }
                         }
                         else
                         {
-                            // 没有 Chunk 时仍保存一个默认 Chunk
                             state.Chunks.Add(new ChunkState
                             {
                                 X = 0,
                                 Y = debris.chunkFinalYLevel,
-                                XVelocity = 0,
-                                YVelocity = 0,
                                 RandomOffset = 0,
-                                Scale = 1f,
-                                Alpha = 1f,
-                                HasPassedRestingLineOnce = true,
-                                Bounces = 100,
                             });
                             chunkCount++;
                         }
