@@ -508,11 +508,9 @@ namespace AutoServerPro.Core
                     debris.itemQuality = item.Quality; // 关键：itemQuality 决定物品大小和阴影位置
                     debris.debrisType.Value = Debris.DebrisType.OBJECT;
 
-                    // 原版逻辑：chunkFinalYLevel 是物品静止时的 Y 坐标（整数）
-                    // 我们直接用保存的 Y 值，确保 chunk.position.Y == chunkFinalYLevel
-                    // 这样物品会立即满足静止条件，不会有位移
-                    int finalYLevel = (int)targetPos.Y;  // 直接截断，不是 Ceiling
-                    var finalPos = new Vector2(targetPos.X, targetPos.Y);  // 保留原始浮点位置
+                    // 强制物品位置对齐到 chunkFinalYLevel，防止物理模拟移动物品
+                    int finalYLevel = (int)targetPos.Y;
+                    var finalPos = new Vector2(targetPos.X, finalYLevel);  // 强制 Y 为整数
                     
                     var chunk = new Chunk(finalPos, 0f, 0f, 0);
                     chunk.hasPassedRestingLineOnce.Value = true; // 跳过初始弹跳动画
@@ -718,6 +716,7 @@ namespace AutoServerPro.Core
             int chunkCount = 0;
             int failedCount = 0;
             int xmlFallbackCount = 0;
+            int stabilizedCount = 0;
             foreach (var location in Game1.locations)
             {
                 if (location == null || location.debris == null) continue;
@@ -733,6 +732,32 @@ namespace AutoServerPro.Core
                             item = ItemRegistry.Create(itemId);
                         }
                         if (item == null) continue;
+
+                        // 关键：强制物品进入稳定状态，确保保存的是最终位置
+                        // 物品稳定条件：hasPassedRestingLineOnce=true, bounces>2, 速度为0
+                        // 但物理模拟可能还在进行，导致位置不稳定
+                        bool wasStabilized = false;
+                        if (debris.Chunks != null && debris.Chunks.Count > 0)
+                        {
+                            foreach (var chunk in debris.Chunks)
+                            {
+                                int targetY = debris.chunkFinalYLevel;
+                                // 如果物品还没稳定，强制稳定它
+                                if (!chunk.hasPassedRestingLineOnce.Value || chunk.bounces <= 2 || 
+                                    Math.Abs(chunk.position.Y - targetY) > 0.5f)
+                                {
+                                    chunk.position.Value = new Vector2(chunk.position.X, targetY);
+                                    chunk.xVelocity.Value = 0f;
+                                    chunk.yVelocity.Value = 0f;
+                                    chunk.rotationVelocity = 0f;
+                                    chunk.hasPassedRestingLineOnce.Value = true;
+                                    chunk.bounces = 100;
+                                    chunk.bob = 0f;
+                                    wasStabilized = true;
+                                }
+                            }
+                        }
+                        if (wasStabilized) stabilizedCount++;
 
                         string itemXml = null;
                         try
@@ -793,7 +818,7 @@ namespace AutoServerPro.Core
                 }
             }
 
-            _monitor.Log($"快照创建完成: {debrisCount}掉落物, {chunkCount}物品实例", LogLevel.Debug);
+            _monitor.Log($"快照创建完成: {debrisCount}掉落物, {chunkCount}物品实例, 强制稳定化{stabilizedCount}个", LogLevel.Debug);
             if (xmlFallbackCount > 0)
                 _monitor.Log($"掉落物XML序列化失败，将用ItemId恢复: {xmlFallbackCount} 个", LogLevel.Warn);
             if (failedCount > 0)
