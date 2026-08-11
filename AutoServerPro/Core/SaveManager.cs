@@ -505,6 +505,7 @@ namespace AutoServerPro.Core
                     // 使用公共属性 item，其 setter 会自动设置 netItem.Value
                     debris.item = item;
                     debris.itemId.Value = item.QualifiedItemId;
+                    debris.itemQuality = item.Quality; // 关键：itemQuality 决定物品大小和阴影位置
                     debris.debrisType.Value = Debris.DebrisType.OBJECT;
 
                     // 将物品位置直接设为 chunkFinalYLevel，跳过物理下落
@@ -520,7 +521,6 @@ namespace AutoServerPro.Core
                     chunk.sinkTimer.Value = int.MaxValue; // 防止物品自动沉没消失
                     chunk.hitWall = false;
                     chunk.bob = 0f;
-                    chunk.scale = 1f;
                     chunk.alpha = 1f;
                     debris.Chunks.Add(chunk);
                     debris.chunkFinalYLevel = finalYLevel;
@@ -530,8 +530,8 @@ namespace AutoServerPro.Core
                     location.debris.Add(debris);
                     restored++;
                     
-                    // 调试日志：显示每个恢复的物品信息
-                    _monitor.Log($"  恢复: {item.QualifiedItemId} x{item.Stack} @ ({targetPos.X:F1}, {targetPos.Y:F1})", LogLevel.Trace);
+                    // 调试日志：显示每个恢复的物品信息（含大小相关属性）
+                    _monitor.Log($"  恢复: {item.QualifiedItemId} q{item.Quality} @ ({targetPos.X:F1}, {targetPos.Y:F1}) scale={4f * (0.8f + item.Quality * 0.1f):F2}", LogLevel.Trace);
                 }
                 catch (Exception ex)
                 {
