@@ -508,11 +508,11 @@ namespace AutoServerPro.Core
                     debris.itemQuality = item.Quality; // 关键：itemQuality 决定物品大小和阴影位置
                     debris.debrisType.Value = Debris.DebrisType.OBJECT;
 
-                    // 将物品位置直接设为 chunkFinalYLevel，跳过物理下落
-                    // 原因：Debris.update() 会在 chunk.position.Y >= chunkFinalYLevel && hasPassedRestingLineOnce 时停止物品
-                    // 所以需要让位置立即满足静止条件
-                    int finalYLevel = (int)Math.Ceiling(targetPos.Y);
-                    var finalPos = new Vector2(targetPos.X, finalYLevel);
+                    // 原版逻辑：chunkFinalYLevel 是物品静止时的 Y 坐标（整数）
+                    // 我们直接用保存的 Y 值，确保 chunk.position.Y == chunkFinalYLevel
+                    // 这样物品会立即满足静止条件，不会有位移
+                    int finalYLevel = (int)targetPos.Y;  // 直接截断，不是 Ceiling
+                    var finalPos = new Vector2(targetPos.X, targetPos.Y);  // 保留原始浮点位置
                     
                     var chunk = new Chunk(finalPos, 0f, 0f, 0);
                     chunk.hasPassedRestingLineOnce.Value = true; // 跳过初始弹跳动画
@@ -530,8 +530,8 @@ namespace AutoServerPro.Core
                     location.debris.Add(debris);
                     restored++;
                     
-                    // 调试日志：显示每个恢复的物品信息（含大小相关属性）
-                    _monitor.Log($"  恢复: {item.QualifiedItemId} q{item.Quality} @ ({targetPos.X:F1}, {targetPos.Y:F1}) scale={4f * (0.8f + item.Quality * 0.1f):F2}", LogLevel.Trace);
+                    // 调试日志：显示每个恢复的物品信息
+                    _monitor.Log($"  恢复: {item.QualifiedItemId} q{item.Quality} pos=({targetPos.X:F1},{targetPos.Y:F1}) finalY={finalYLevel}", LogLevel.Trace);
                 }
                 catch (Exception ex)
                 {
