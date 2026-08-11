@@ -548,12 +548,9 @@ namespace AutoServerPro.Core
                     restored++;
                     
                     // 调试日志：显示每个恢复的物品信息
-                    Vector2 restoredCurrentPos = chunk.position.Value;
-                    Vector2 restoredTargetPos = chunk.position.Field.TargetValue;
                     _monitor.Log($"  恢复: {item.QualifiedItemId} q{item.Quality} stack={item.Stack}", LogLevel.Trace);
-                    _monitor.Log($"    saved: pos=({debrisState.X:F2},{debrisState.Y:F2}) chunkFinalYLevel={debrisState.ChunkFinalYLevel}", LogLevel.Trace);
-                    _monitor.Log($"    restored: pos.Value=({restoredCurrentPos.X:F2},{restoredCurrentPos.Y:F2}) TargetValue=({restoredTargetPos.X:F2},{restoredTargetPos.Y:F2}) chunkFinalYLevel={debris.chunkFinalYLevel}", LogLevel.Trace);
-                    _monitor.Log($"    restored: xVel={chunk.xVelocity.Value:F2} yVel={chunk.yVelocity.Value:F2} bounces={chunk.bounces} hasPassedResting={chunk.hasPassedRestingLineOnce.Value}", LogLevel.Trace);
+                    _monitor.Log($"    saved: X={debrisState.X:F2} Y={debrisState.Y:F2} chunkFinalYLevel={debrisState.ChunkFinalYLevel}", LogLevel.Trace);
+                    _monitor.Log($"    restored: X={chunk.position.Value.X:F2} Y={chunk.position.Value.Y:F2} chunkFinalYLevel={debris.chunkFinalYLevel}", LogLevel.Trace);
                 }
                 catch (Exception ex)
                 {
@@ -772,13 +769,15 @@ namespace AutoServerPro.Core
                         string qualifiedItemId = itemId ?? item.QualifiedItemId;
 
                         // 为每个 Chunk 创建一个 DebrisItemState
-                        // 使用 TargetValue 获取原始存储位置，而不是 Value（它可能是插值/外推后的值）
+                        // 关键：使用 chunkFinalYLevel 作为 Y 坐标
+                        // 原因：物品静止时 chunk.position.Y 可能 > chunkFinalYLevel（物理弹跳结果）
+                        //       但阴影绘制在 chunkFinalYLevel 处，所以物品应该对齐到阴影位置
                         if (debris.Chunks != null && debris.Chunks.Count > 0)
                         {
                             foreach (var chunk in debris.Chunks)
                             {
-                                Vector2 targetPos = chunk.position.Field.TargetValue;
-                                Vector2 currentPos = chunk.position.Value;
+                                Vector2 originalPos = chunk.position.Field.TargetValue;
+                                float alignedY = debris.chunkFinalYLevel;
                                 
                                 var state = new DebrisItemState
                                 {
@@ -787,8 +786,8 @@ namespace AutoServerPro.Core
                                     ItemXml = itemXml,
                                     Amount = amount,
                                     Quality = quality,
-                                    X = targetPos.X,
-                                    Y = targetPos.Y,
+                                    X = originalPos.X,
+                                    Y = alignedY,  // 使用 chunkFinalYLevel 而非原始位置
                                     ChunkFinalYLevel = debris.chunkFinalYLevel
                                 };
 
@@ -797,8 +796,8 @@ namespace AutoServerPro.Core
                                 
                                 // 详细调试日志
                                 _monitor.Log($"  保存: {qualifiedItemId} q{quality} stack={amount}", LogLevel.Trace);
-                                _monitor.Log($"    chunk.position.Value=({currentPos.X:F2},{currentPos.Y:F2}) TargetValue=({targetPos.X:F2},{targetPos.Y:F2})", LogLevel.Trace);
-                                _monitor.Log($"    chunkFinalYLevel={debris.chunkFinalYLevel} movingFinalYLevel={debris.movingFinalYLevel} chunksMoveTowardPlayer={debris.chunksMoveTowardPlayer}", LogLevel.Trace);
+                                _monitor.Log($"    original: pos.Y={originalPos.Y:F2} chunkFinalYLevel={debris.chunkFinalYLevel} diff={originalPos.Y - debris.chunkFinalYLevel:F2}", LogLevel.Trace);
+                                _monitor.Log($"    saved: X={originalPos.X:F2} Y={alignedY} (aligned to chunkFinalYLevel)", LogLevel.Trace);
                                 _monitor.Log($"    xVel={chunk.xVelocity.Value:F2} yVel={chunk.yVelocity.Value:F2} bounces={chunk.bounces} hasPassedResting={chunk.hasPassedRestingLineOnce.Value} sinkTimer={chunk.sinkTimer.Value}", LogLevel.Trace);
                             }
                         }
