@@ -53,6 +53,28 @@ namespace AutoServerPro.Core
         public int ChunkFinalYLevel { get; set; }
     }
 
+    [XmlRoot("ShippingBinItem")]
+    public class ShippingBinItemState
+    {
+        [XmlElement("ItemId")]
+        public string ItemId { get; set; }
+
+        [XmlElement("ItemXml")]
+        public string ItemXml { get; set; }
+
+        [XmlElement("Amount")]
+        public int Amount { get; set; }
+
+        [XmlElement("Quality")]
+        public int Quality { get; set; }
+
+        [XmlElement("FarmerId")]
+        public string FarmerId { get; set; }
+
+        [XmlElement("IsLastItem")]
+        public bool IsLastItem { get; set; }
+    }
+
     [XmlRoot("GameStateSnapshot")]
     public class GameStateSnapshot
     {
@@ -71,6 +93,10 @@ namespace AutoServerPro.Core
         [XmlArray("DebrisItems")]
         [XmlArrayItem("DebrisItem")]
         public List<DebrisItemState> DebrisItems { get; set; } = new();
+
+        [XmlArray("ShippingBinItems")]
+        [XmlArrayItem("ShippingBinItem")]
+        public List<ShippingBinItemState> ShippingBinItems { get; set; } = new();
     }
 
     public class SaveManager
@@ -403,6 +429,15 @@ namespace AutoServerPro.Core
             catch (Exception ex)
             {
                 _monitor.Log($"恢复掉落物失败: {ex.Message}", LogLevel.Warn);
+            }
+
+            try
+            {
+                RestoreShippingBinItems(snapshot);
+            }
+            catch (Exception ex)
+            {
+                _monitor.Log($"恢复出货箱失败: {ex.Message}", LogLevel.Warn);
             }
 
             _monitor.Log("玩家位置由原生存档处理（SyncOnlinePlayerPositions已同步在线位置）", LogLevel.Debug);
@@ -837,7 +872,153 @@ namespace AutoServerPro.Core
             if (failedCount > 0)
                 _monitor.Log($"物品记录失败: {failedCount} 个", LogLevel.Warn);
 
+            // 保存出货箱内容
+            SaveShippingBinItems(snapshot);
+
             return snapshot;
+        }
+
+        private void SaveShippingBinItems(GameStateSnapshot snapshot)
+        {
+            try
+            {
+                Farm farm = Game1.getFarm();
+                if (farm == null || farm.getShippingBin(Game1.player) == null) return;
+
+                var shippingBin = farm.getShippingBin(Game1.player);
+                int lastItemId = farm.lastItemShipped?.QualifiedItemId.GetHashCode() ?? 0;
+
+                int count = 0;
+                foreach (var item in shippingBin)
+                {
+                    try
+                    {
+                        string itemXml = null;
+                        try
+                        {
+                            itemXml = SerializeItem(item);
+                        }
+                        catch { }
+
+                        string farmerId = "";
+                        if (item.modData.ContainsKey("farmerSelling"))
+                            farmerId = item.modData["farmerSelling"];
+
+                        snapshot.ShippingBinItems.Add(new ShippingBinItemState
+                        {
+                            ItemId = item.QualifiedItemId,
+                            ItemXml = itemXml,
+                            Amount = item.Stack,
+                            Quality = item.Quality,
+                            FarmerId = farmerId,
+                            IsLastItem = (item.GetHashCode() == lastItemId)
+                        });
+                        count++;
+                    }
+                    catch { }
+                }
+
+                _monitor.Log($"出货箱保存: {count} 个物品", LogLevel.Debug);
+            }
+            catch (Exception ex)
+            {
+                _monitor.Log($"出货箱保存失败: {ex.Message}", LogLevel.Warn);
+            }
+        }
+
+        private void RestoreShippingBinItems(GameStateSnapshot snapshot)
+        {
+            if (snapshot.ShippingBinItems == null || snapshot.ShippingBinItems.Count == 0) return;
+
+            Farm farm = Game1.getFarm();
+            if (farm == null) return;
+
+            _monitor.Log($"恢复 {snapshot.ShippingBinItems.Count} 个出货箱物品", LogLevel.Debug);
+
+            bool separateWallets = Game1.player.team.useSeparateWallets.Value;
+
+            // 清空所有玩家的出货箱（共享模式下所有玩家共用一个）
+            if (!separateWallets)
+            {
+                var sharedBin = farm.getShippingBin(Game1.player);
+                if (sharedBin != null)
+                    sharedBin.Clear();
+            }
+            else
+            {
+                // 单独钱包：清空主机 + 所有在线玩家的个人出货箱
+                Game1.player.personalShippingBin.Value?.Clear();
+                foreach (var farmer in Game1.otherFarmers.Values)
+                    farmer.personalShippingBin.Value?.Clear();
+            }
+
+            // 收集所有可用玩家
+            var allFarmers = new Dictionary<string, Farmer>(StringComparer.OrdinalIgnoreCase);
+            allFarmers[Game1.player.UniqueMultiplayerID] = Game1.player;
+            foreach (var kvp in Game1.otherFarmers)
+                allFarmers[kvp.Key] = kvp.Value;
+
+            Item lastRestoredItem = null;
+            int restored = 0;
+            int failed = 0;
+
+            foreach (var state in snapshot.ShippingBinItems)
+            {
+                try
+                {
+                    Item item = null;
+
+                    if (!string.IsNullOrEmpty(state.ItemXml))
+                        item = DeserializeItem(state.ItemXml);
+
+                    if (item == null && !string.IsNullOrEmpty(state.ItemId))
+                        item = ItemRegistry.Create(state.ItemId, state.Amount > 0 ? state.Amount : 1, state.Quality);
+
+                    if (item == null)
+                    {
+                        failed++;
+                        continue;
+                    }
+
+                    if (state.Amount > 0)
+                        item.Stack = state.Amount;
+                    if (state.Quality > 0)
+                        item.Quality = state.Quality;
+
+                    // 根据 FarmerId 选择目标玩家的出货箱
+                    Farmer targetFarmer = Game1.player;
+                    if (!string.IsNullOrEmpty(state.FarmerId) &&
+                        allFarmers.TryGetValue(state.FarmerId, out var farmer) &&
+                        farmer != null)
+                    {
+                        targetFarmer = farmer;
+                        item.modData["farmerSelling"] = state.FarmerId;
+                    }
+
+                    var bin = farm.getShippingBin(targetFarmer);
+                    if (bin != null)
+                    {
+                        bin.Add(item);
+                        if (state.IsLastItem)
+                            lastRestoredItem = item;
+                        restored++;
+                    }
+                    else
+                    {
+                        failed++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _monitor.Log($"恢复出货箱物品失败: {ex.Message}", LogLevel.Trace);
+                    failed++;
+                }
+            }
+
+            if (lastRestoredItem != null)
+                farm.lastItemShipped = lastRestoredItem;
+
+            _monitor.Log($"出货箱恢复: 成功{restored} 个, 失败{failed} 个", LogLevel.Debug);
         }
 
         private void SaveExtraData(GameStateSnapshot snapshot)
