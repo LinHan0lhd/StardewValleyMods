@@ -25,8 +25,8 @@ namespace AutoServerPro.Core
         public Item[] Items { get; set; }
     }
 
-    [XmlRoot("DebrisItem")]
-    public class DebrisItemState
+    [XmlRoot("DebrisState")]
+    public class DebrisState
     {
         [XmlElement("LocationName")]
         public string LocationName { get; set; }
@@ -37,42 +37,132 @@ namespace AutoServerPro.Core
         [XmlElement("ItemXml")]
         public string ItemXml { get; set; }
 
-        [XmlElement("Amount")]
-        public int Amount { get; set; }
+        [XmlElement("Stack")]
+        public int Stack { get; set; }
 
         [XmlElement("Quality")]
         public int Quality { get; set; }
 
+        [XmlElement("DebrisType")]
+        public int DebrisType { get; set; }
+
+        [XmlElement("ChunkType")]
+        public int ChunkType { get; set; }
+
+        [XmlElement("ChunkFinalYLevel")]
+        public int ChunkFinalYLevel { get; set; }
+
+        [XmlElement("ChunksMoveTowardPlayer")]
+        public bool ChunksMoveTowardPlayer { get; set; }
+
+        [XmlElement("FloppingFish")]
+        public bool FloppingFish { get; set; }
+
+        [XmlElement("Scale")]
+        public float Scale { get; set; }
+
+        [XmlElement("ItemQuality")]
+        public int ItemQuality { get; set; }
+
+        [XmlElement("ChunksColorR")]
+        public int ChunksColorR { get; set; }
+
+        [XmlElement("ChunksColorG")]
+        public int ChunksColorG { get; set; }
+
+        [XmlElement("ChunksColorB")]
+        public int ChunksColorB { get; set; }
+
+        [XmlElement("ChunksColorA")]
+        public int ChunksColorA { get; set; }
+
+        [XmlElement("NonSpriteColorR")]
+        public int NonSpriteColorR { get; set; }
+
+        [XmlElement("NonSpriteColorG")]
+        public int NonSpriteColorG { get; set; }
+
+        [XmlElement("NonSpriteColorB")]
+        public int NonSpriteColorB { get; set; }
+
+        [XmlElement("NonSpriteColorA")]
+        public int NonSpriteColorA { get; set; }
+
+        [XmlElement("SpriteChunkSheetName")]
+        public string SpriteChunkSheetName { get; set; }
+
+        [XmlElement("SizeOfSourceRectSquares")]
+        public int SizeOfSourceRectSquares { get; set; }
+
+        [XmlElement("DebrisMessage")]
+        public string DebrisMessage { get; set; }
+
+        [XmlElement("TimeSinceDoneBouncing")]
+        public float TimeSinceDoneBouncing { get; set; }
+
+        [XmlElement("IsFishable")]
+        public bool IsFishable { get; set; }
+
+        [XmlElement("IsSinking")]
+        public bool IsSinking { get; set; }
+
+        [XmlElement("DroppedByPlayerID")]
+        public long DroppedByPlayerID { get; set; }
+
+        [XmlArray("Chunks")]
+        [XmlArrayItem("Chunk")]
+        public List<ChunkState> Chunks { get; set; } = new();
+    }
+
+    public class ChunkState
+    {
         [XmlElement("X")]
         public float X { get; set; }
 
         [XmlElement("Y")]
         public float Y { get; set; }
 
-        [XmlElement("ChunkFinalYLevel")]
-        public int ChunkFinalYLevel { get; set; }
-    }
+        [XmlElement("XVelocity")]
+        public float XVelocity { get; set; }
 
-    [XmlRoot("ShippingBinItem")]
-    public class ShippingBinItemState
-    {
-        [XmlElement("ItemId")]
-        public string ItemId { get; set; }
+        [XmlElement("YVelocity")]
+        public float YVelocity { get; set; }
 
-        [XmlElement("ItemXml")]
-        public string ItemXml { get; set; }
+        [XmlElement("RandomOffset")]
+        public int RandomOffset { get; set; }
 
-        [XmlElement("Amount")]
-        public int Amount { get; set; }
+        [XmlElement("XSpriteSheet")]
+        public int XSpriteSheet { get; set; }
 
-        [XmlElement("Quality")]
-        public int Quality { get; set; }
+        [XmlElement("YSpriteSheet")]
+        public int YSpriteSheet { get; set; }
 
-        [XmlElement("FarmerId")]
-        public string FarmerId { get; set; }
+        [XmlElement("Scale")]
+        public float Scale { get; set; }
 
-        [XmlElement("IsLastItem")]
-        public bool IsLastItem { get; set; }
+        [XmlElement("Alpha")]
+        public float Alpha { get; set; }
+
+        [XmlElement("Rotation")]
+        public float Rotation { get; set; }
+
+        [XmlElement("RotationVelocity")]
+        public float RotationVelocity { get; set; }
+
+        [XmlElement("Bob")]
+        public float Bob { get; set; }
+
+        [XmlElement("HasPassedRestingLineOnce")]
+        public bool HasPassedRestingLineOnce { get; set; }
+
+        [XmlElement("Bounces")]
+        public int Bounces { get; set; }
+
+        [XmlElement("HitWall")]
+        public bool HitWall { get; set; }
+
+        [XmlElement("SinkTimer")]
+        public int SinkTimer { get; set; }
     }
 
     [XmlRoot("GameStateSnapshot")]
@@ -92,11 +182,7 @@ namespace AutoServerPro.Core
 
         [XmlArray("DebrisItems")]
         [XmlArrayItem("DebrisItem")]
-        public List<DebrisItemState> DebrisItems { get; set; } = new();
-
-        [XmlArray("ShippingBinItems")]
-        [XmlArrayItem("ShippingBinItem")]
-        public List<ShippingBinItemState> ShippingBinItems { get; set; } = new();
+        public List<DebrisState> DebrisItems { get; set; } = new();
     }
 
     public class SaveManager
@@ -431,15 +517,6 @@ namespace AutoServerPro.Core
                 _monitor.Log($"恢复掉落物失败: {ex.Message}", LogLevel.Warn);
             }
 
-            try
-            {
-                RestoreShippingBinItems(snapshot);
-            }
-            catch (Exception ex)
-            {
-                _monitor.Log($"恢复出货箱失败: {ex.Message}", LogLevel.Warn);
-            }
-
             _monitor.Log("玩家位置由原生存档处理（SyncOnlinePlayerPositions已同步在线位置）", LogLevel.Debug);
         }
 
@@ -498,7 +575,8 @@ namespace AutoServerPro.Core
             int restored = 0;
             int locNotFound = 0;
             int itemFailed = 0;
-            int oldFormatFallback = 0;  // 使用旧存档格式（没有ChunkFinalYLevel）的物品数量
+            int chunkFailed = 0;
+
             foreach (var debrisState in snapshot.DebrisItems)
             {
                 try
@@ -510,6 +588,7 @@ namespace AutoServerPro.Core
                         continue;
                     }
 
+                    // 1. 反序列化物品
                     Item item = null;
 
                     if (!string.IsNullOrEmpty(debrisState.ItemXml))
@@ -526,10 +605,9 @@ namespace AutoServerPro.Core
 
                     if (item == null && !string.IsNullOrEmpty(debrisState.ItemId))
                     {
-                        // 回退创建时使用保存的数量和品质
-                        int amount = debrisState.Amount > 0 ? debrisState.Amount : 1;
+                        int stack = debrisState.Stack > 0 ? debrisState.Stack : 1;
                         int quality = debrisState.Quality;
-                        item = ItemRegistry.Create(debrisState.ItemId, amount, quality);
+                        item = ItemRegistry.Create(debrisState.ItemId, stack, quality);
                     }
 
                     if (item == null)
@@ -538,54 +616,94 @@ namespace AutoServerPro.Core
                         continue;
                     }
 
-                    var targetPos = new Vector2(debrisState.X, debrisState.Y);
+                    // 2. 使用无参构造器创建 Debris（不触发 InitializeChunks 的副作用）
                     var debris = new Debris();
-                    
-                    // 使用公共属性 item，其 setter 会自动设置 netItem.Value
+
+                    // 设置物品相关属性
                     debris.item = item;
                     debris.itemId.Value = item.QualifiedItemId;
-                    debris.itemQuality = item.Quality; // 关键：itemQuality 决定物品大小和阴影位置
-                    debris.debrisType.Value = Debris.DebrisType.OBJECT;
+                    debris.itemQuality = item.Quality;
+                    if (debrisState.Stack > 0)
+                        item.Stack = debrisState.Stack;
 
-                    // 使用保存的 ChunkFinalYLevel（物品静止时的 Y 坐标）
-                    // 这是物品真正"落地"的位置，用于阴影和物理模拟
-                    int finalYLevel;
-                    if (debrisState.ChunkFinalYLevel != 0)
-                    {
-                        finalYLevel = debrisState.ChunkFinalYLevel;
-                    }
-                    else
-                    {
-                        finalYLevel = (int)targetPos.Y;  // 回退：旧存档没有这个字段
-                        oldFormatFallback++;
-                    }
-                    
-                    // 关键：强制物品位置 Y = chunkFinalYLevel
-                    // 保存时物品可能在 chunkFinalYLevel 上方（物理模拟未完全稳定）
-                    // 恢复时需要强制对齐，确保物品真正"落地"
-                    var restoredPos = new Vector2(targetPos.X, finalYLevel);
-                    
-                    var chunk = new Chunk(restoredPos, 0f, 0f, 0);
-                    chunk.hasPassedRestingLineOnce.Value = true;
-                    chunk.bounces = 100;
-                    chunk.rotationVelocity = 0f;
-                    chunk.sinkTimer.Value = int.MaxValue;
-                    chunk.hitWall = false;
-                    chunk.bob = 0f;
-                    chunk.alpha = 1f;
-                    chunk.position.Field.CancelInterpolation();
-                    debris.Chunks.Add(chunk);
-                    debris.chunkFinalYLevel = finalYLevel;
-                    debris.chunksMoveTowardPlayer = false;
+                    // 3. 恢复 Debris 级别的视觉属性
+                    debris.debrisType.Value = (Debris.DebrisType)debrisState.DebrisType;
+                    debris.chunkType.Value = debrisState.ChunkType;
+                    debris.chunkFinalYLevel = debrisState.ChunkFinalYLevel;
+                    debris.chunksMoveTowardPlayer = false;  // 静止在地面，不向玩家移动
+                    debris.floppingFish.Value = debrisState.FloppingFish;
+                    debris.scale.Value = debrisState.Scale;
+                    debris.isFishable = debrisState.IsFishable;
                     debris.isSinking.Value = false;
+                    debris.timeSinceDoneBouncing = float.Max(debrisState.TimeSinceDoneBouncing, 600f);  // 确保物品不会被定时移除
+                    debris.DroppedByPlayerID.Value = debrisState.DroppedByPlayerID;
+                    debris.spriteChunkSheetName.Value = debrisState.SpriteChunkSheetName ?? "";
+                    debris.sizeOfSourceRectSquares.Value = debrisState.SizeOfSourceRectSquares;
+                    debris.debrisMessage.Value = debrisState.DebrisMessage ?? "";
+                    debris.chunksColor.Value = new Color(
+                        debrisState.ChunksColorR,
+                        debrisState.ChunksColorG,
+                        debrisState.ChunksColorB,
+                        debrisState.ChunksColorA);
+                    debris.nonSpriteChunkColor.Value = new Color(
+                        debrisState.NonSpriteColorR,
+                        debrisState.NonSpriteColorG,
+                        debrisState.NonSpriteColorB,
+                        debrisState.NonSpriteColorA);
+
+                    // 4. 重建每个 Chunk
+                    if (debrisState.Chunks != null && debrisState.Chunks.Count > 0)
+                    {
+                        foreach (var chunkState in debrisState.Chunks)
+                        {
+                            try
+                            {
+                                // 创建 Chunk 时保持原始位置和速度
+                                var pos = new Vector2(chunkState.X, chunkState.Y);
+                                var chunk = new Chunk(pos, chunkState.XVelocity, chunkState.YVelocity, chunkState.RandomOffset);
+
+                                // 恢复 Chunk 的完整状态
+                                chunk.xSpriteSheet.Value = chunkState.XSpriteSheet;
+                                chunk.ySpriteSheet.Value = chunkState.YSpriteSheet;
+                                chunk.scale = chunkState.Scale;
+                                chunk.alpha = chunkState.Alpha;
+                                chunk.rotation = chunkState.Rotation;
+                                chunk.rotationVelocity = chunkState.RotationVelocity;
+                                chunk.bob = chunkState.Bob;
+                                chunk.hasPassedRestingLineOnce.Value = chunkState.HasPassedRestingLineOnce;
+                                chunk.bounces = chunkState.Bounces;
+                                chunk.hitWall = chunkState.HitWall;
+                                chunk.sinkTimer.Value = chunkState.SinkTimer;
+
+                                // 阻止位置插值（防止瞬移）
+                                chunk.position.Field.CancelInterpolation();
+
+                                debris.Chunks.Add(chunk);
+                            }
+                            catch (Exception ex)
+                            {
+                                _monitor.Log($"    Chunk恢复失败: {ex.Message}", LogLevel.Trace);
+                                chunkFailed++;
+                            }
+                        }
+                    }
+
+                    // 5. 强制将物品位置对齐到 chunkFinalYLevel
+                    // 这解决了"物品看起来轻微下沉"的问题
+                    if (debris.Chunks.Count > 0 && debrisState.ChunkFinalYLevel > 0)
+                    {
+                        foreach (var chunk in debris.Chunks)
+                        {
+                            var p = chunk.position.Value;
+                            chunk.position.Value = new Vector2(p.X, debrisState.ChunkFinalYLevel);
+                            chunk.position.Field.CancelInterpolation();
+                        }
+                    }
 
                     location.debris.Add(debris);
                     restored++;
-                    
-                    // 调试日志：显示每个恢复的物品信息
-                    _monitor.Log($"  恢复: {item.QualifiedItemId} q{item.Quality} stack={item.Stack}", LogLevel.Trace);
-                    _monitor.Log($"    saved: X={debrisState.X:F2} Y={debrisState.Y:F2} chunkFinalYLevel={debrisState.ChunkFinalYLevel}", LogLevel.Trace);
-                    _monitor.Log($"    restored: X={chunk.position.Value.X:F2} Y={chunk.position.Value.Y:F2} chunkFinalYLevel={debris.chunkFinalYLevel}", LogLevel.Trace);
+
+                    _monitor.Log($"  恢复 Debris: {item.QualifiedItemId} q{item.Quality} stack={item.Stack} type={debrisState.DebrisType} chunks={debris.Chunks.Count} finalY={debrisState.ChunkFinalYLevel}", LogLevel.Trace);
                 }
                 catch (Exception ex)
                 {
@@ -593,9 +711,7 @@ namespace AutoServerPro.Core
                 }
             }
 
-            _monitor.Log($"掉落物恢复: 成功{restored}个物品实例, 位置未找到{locNotFound}, 物品创建失败{itemFailed}, 旧格式回退{oldFormatFallback}个", LogLevel.Debug);
-            if (oldFormatFallback > 0)
-                _monitor.Log($"检测到 {oldFormatFallback} 个物品使用旧存档格式，建议重新保存以修复位置问题", LogLevel.Warn);
+            _monitor.Log($"掉落物恢复: 成功{restored}个, 位置未找到{locNotFound}, 物品创建失败{itemFailed}, Chunk恢复失败{chunkFailed}", LogLevel.Debug);
         }
 
         private string SerializeItem(Item item)
@@ -792,8 +908,6 @@ namespace AutoServerPro.Core
                         }
                         if (item == null) continue;
 
-                        // 直接保存物品状态，不要修改游戏世界中的物品
-                        // 使用 TargetValue 获取原始存储位置（而非显示用的 Value）
                         string itemXml = null;
                         try
                         {
@@ -801,63 +915,95 @@ namespace AutoServerPro.Core
                         }
                         catch { }
 
-                        int amount = item.Stack > 0 ? item.Stack : 1;
+                        int stack = item.Stack > 0 ? item.Stack : 1;
                         int quality = item.Quality;
                         string qualifiedItemId = itemId ?? item.QualifiedItemId;
 
-                        // 为每个 Chunk 创建一个 DebrisItemState
-                        // 关键：使用 chunkFinalYLevel 作为 Y 坐标
-                        // 原因：物品静止时 chunk.position.Y 可能 > chunkFinalYLevel（物理弹跳结果）
-                        //       但阴影绘制在 chunkFinalYLevel 处，所以物品应该对齐到阴影位置
+                        var state = new DebrisState
+                        {
+                            LocationName = location.NameOrUniqueName,
+                            ItemId = qualifiedItemId,
+                            ItemXml = itemXml,
+                            Stack = stack,
+                            Quality = quality,
+                            DebrisType = (int)debris.debrisType.Value,
+                            ChunkType = debris.chunkType.Value,
+                            ChunkFinalYLevel = debris.chunkFinalYLevel,
+                            ChunksMoveTowardPlayer = debris.chunksMoveTowardPlayer,
+                            FloppingFish = debris.floppingFish.Value,
+                            Scale = debris.scale.Value,
+                            ItemQuality = debris.itemQuality,
+                            ChunksColorR = debris.chunksColor.Value.R,
+                            ChunksColorG = debris.chunksColor.Value.G,
+                            ChunksColorB = debris.chunksColor.Value.B,
+                            ChunksColorA = debris.chunksColor.Value.A,
+                            NonSpriteColorR = debris.nonSpriteChunkColor.Value.R,
+                            NonSpriteColorG = debris.nonSpriteChunkColor.Value.G,
+                            NonSpriteColorB = debris.nonSpriteChunkColor.Value.B,
+                            NonSpriteColorA = debris.nonSpriteChunkColor.Value.A,
+                            SpriteChunkSheetName = debris.spriteChunkSheetName.Value,
+                            SizeOfSourceRectSquares = debris.sizeOfSourceRectSquares.Value,
+                            DebrisMessage = debris.debrisMessage.Value,
+                            TimeSinceDoneBouncing = debris.timeSinceDoneBouncing,
+                            IsFishable = debris.isFishable,
+                            IsSinking = debris.isSinking.Value,
+                            DroppedByPlayerID = debris.DroppedByPlayerID.Value,
+                        };
+
                         if (debris.Chunks != null && debris.Chunks.Count > 0)
                         {
                             foreach (var chunk in debris.Chunks)
                             {
-                                Vector2 originalPos = chunk.position.Field.TargetValue;
-                                float alignedY = debris.chunkFinalYLevel;
-                                
-                                var state = new DebrisItemState
-                                {
-                                    LocationName = location.NameOrUniqueName,
-                                    ItemId = qualifiedItemId,
-                                    ItemXml = itemXml,
-                                    Amount = amount,
-                                    Quality = quality,
-                                    X = originalPos.X,
-                                    Y = alignedY,  // 使用 chunkFinalYLevel 而非原始位置
-                                    ChunkFinalYLevel = debris.chunkFinalYLevel
-                                };
+                                // 使用 TargetValue 保存未经插值的实际位置
+                                Vector2 pos = chunk.position.Field.TargetValue;
 
-                                snapshot.DebrisItems.Add(state);
+                                state.Chunks.Add(new ChunkState
+                                {
+                                    X = pos.X,
+                                    Y = pos.Y,
+                                    XVelocity = chunk.xVelocity.Value,
+                                    YVelocity = chunk.yVelocity.Value,
+                                    RandomOffset = chunk.randomOffset,
+                                    XSpriteSheet = chunk.xSpriteSheet.Value,
+                                    YSpriteSheet = chunk.ySpriteSheet.Value,
+                                    Scale = chunk.scale,
+                                    Alpha = chunk.alpha,
+                                    Rotation = chunk.rotation,
+                                    RotationVelocity = chunk.rotationVelocity,
+                                    Bob = chunk.bob,
+                                    HasPassedRestingLineOnce = chunk.hasPassedRestingLineOnce.Value,
+                                    Bounces = chunk.bounces,
+                                    HitWall = chunk.hitWall,
+                                    SinkTimer = chunk.sinkTimer.Value,
+                                });
                                 chunkCount++;
-                                
-                                // 详细调试日志
-                                _monitor.Log($"  保存: {qualifiedItemId} q{quality} stack={amount}", LogLevel.Trace);
-                                _monitor.Log($"    original: pos.Y={originalPos.Y:F2} chunkFinalYLevel={debris.chunkFinalYLevel} diff={originalPos.Y - debris.chunkFinalYLevel:F2}", LogLevel.Trace);
-                                _monitor.Log($"    saved: X={originalPos.X:F2} Y={alignedY} (aligned to chunkFinalYLevel)", LogLevel.Trace);
-                                _monitor.Log($"    xVel={chunk.xVelocity.Value:F2} yVel={chunk.yVelocity.Value:F2} bounces={chunk.bounces} hasPassedResting={chunk.hasPassedRestingLineOnce.Value} sinkTimer={chunk.sinkTimer.Value}", LogLevel.Trace);
+
+                                _monitor.Log($"  保存 Chunk: pos=({pos.X:F2},{pos.Y:F2}) xVel={chunk.xVelocity.Value:F2} yVel={chunk.yVelocity.Value:F2} bounces={chunk.bounces} scale={chunk.scale:F2} alpha={chunk.alpha:F2}", LogLevel.Trace);
                             }
                         }
                         else
                         {
-                            // 没有 Chunk 时仍保存一个
-                            var state = new DebrisItemState
+                            // 没有 Chunk 时仍保存一个默认 Chunk
+                            state.Chunks.Add(new ChunkState
                             {
-                                LocationName = location.NameOrUniqueName,
-                                ItemId = qualifiedItemId,
-                                ItemXml = itemXml,
-                                Amount = amount,
-                                Quality = quality,
                                 X = 0,
-                                Y = 0
-                            };
-
-                            snapshot.DebrisItems.Add(state);
+                                Y = debris.chunkFinalYLevel,
+                                XVelocity = 0,
+                                YVelocity = 0,
+                                RandomOffset = 0,
+                                Scale = 1f,
+                                Alpha = 1f,
+                                HasPassedRestingLineOnce = true,
+                                Bounces = 100,
+                            });
                             chunkCount++;
                         }
 
+                        snapshot.DebrisItems.Add(state);
                         if (itemXml == null) xmlFallbackCount++;
                         debrisCount++;
+
+                        _monitor.Log($"保存 Debris: {qualifiedItemId} q{quality} stack={stack} type={state.DebrisType} chunks={state.Chunks.Count}", LogLevel.Trace);
                     }
                     catch
                     {
@@ -872,153 +1018,7 @@ namespace AutoServerPro.Core
             if (failedCount > 0)
                 _monitor.Log($"物品记录失败: {failedCount} 个", LogLevel.Warn);
 
-            // 保存出货箱内容
-            SaveShippingBinItems(snapshot);
-
             return snapshot;
-        }
-
-        private void SaveShippingBinItems(GameStateSnapshot snapshot)
-        {
-            try
-            {
-                Farm farm = Game1.getFarm();
-                if (farm == null || farm.getShippingBin(Game1.player) == null) return;
-
-                var shippingBin = farm.getShippingBin(Game1.player);
-                int lastItemId = farm.lastItemShipped?.QualifiedItemId.GetHashCode() ?? 0;
-
-                int count = 0;
-                foreach (var item in shippingBin)
-                {
-                    try
-                    {
-                        string itemXml = null;
-                        try
-                        {
-                            itemXml = SerializeItem(item);
-                        }
-                        catch { }
-
-                        string farmerId = "";
-                        if (item.modData.ContainsKey("farmerSelling"))
-                            farmerId = item.modData["farmerSelling"];
-
-                        snapshot.ShippingBinItems.Add(new ShippingBinItemState
-                        {
-                            ItemId = item.QualifiedItemId,
-                            ItemXml = itemXml,
-                            Amount = item.Stack,
-                            Quality = item.Quality,
-                            FarmerId = farmerId,
-                            IsLastItem = (item.GetHashCode() == lastItemId)
-                        });
-                        count++;
-                    }
-                    catch { }
-                }
-
-                _monitor.Log($"出货箱保存: {count} 个物品", LogLevel.Debug);
-            }
-            catch (Exception ex)
-            {
-                _monitor.Log($"出货箱保存失败: {ex.Message}", LogLevel.Warn);
-            }
-        }
-
-        private void RestoreShippingBinItems(GameStateSnapshot snapshot)
-        {
-            if (snapshot.ShippingBinItems == null || snapshot.ShippingBinItems.Count == 0) return;
-
-            Farm farm = Game1.getFarm();
-            if (farm == null) return;
-
-            _monitor.Log($"恢复 {snapshot.ShippingBinItems.Count} 个出货箱物品", LogLevel.Debug);
-
-            bool separateWallets = Game1.player.team.useSeparateWallets.Value;
-
-            // 清空所有玩家的出货箱（共享模式下所有玩家共用一个）
-            if (!separateWallets)
-            {
-                var sharedBin = farm.getShippingBin(Game1.player);
-                if (sharedBin != null)
-                    sharedBin.Clear();
-            }
-            else
-            {
-                // 单独钱包：清空主机 + 所有在线玩家的个人出货箱
-                Game1.player.personalShippingBin.Value?.Clear();
-                foreach (var farmer in Game1.otherFarmers.Values)
-                    farmer.personalShippingBin.Value?.Clear();
-            }
-
-            // 收集所有可用玩家
-            var allFarmers = new Dictionary<string, Farmer>(StringComparer.OrdinalIgnoreCase);
-            allFarmers[Game1.player.UniqueMultiplayerID] = Game1.player;
-            foreach (var kvp in Game1.otherFarmers)
-                allFarmers[kvp.Key] = kvp.Value;
-
-            Item lastRestoredItem = null;
-            int restored = 0;
-            int failed = 0;
-
-            foreach (var state in snapshot.ShippingBinItems)
-            {
-                try
-                {
-                    Item item = null;
-
-                    if (!string.IsNullOrEmpty(state.ItemXml))
-                        item = DeserializeItem(state.ItemXml);
-
-                    if (item == null && !string.IsNullOrEmpty(state.ItemId))
-                        item = ItemRegistry.Create(state.ItemId, state.Amount > 0 ? state.Amount : 1, state.Quality);
-
-                    if (item == null)
-                    {
-                        failed++;
-                        continue;
-                    }
-
-                    if (state.Amount > 0)
-                        item.Stack = state.Amount;
-                    if (state.Quality > 0)
-                        item.Quality = state.Quality;
-
-                    // 根据 FarmerId 选择目标玩家的出货箱
-                    Farmer targetFarmer = Game1.player;
-                    if (!string.IsNullOrEmpty(state.FarmerId) &&
-                        allFarmers.TryGetValue(state.FarmerId, out var farmer) &&
-                        farmer != null)
-                    {
-                        targetFarmer = farmer;
-                        item.modData["farmerSelling"] = state.FarmerId;
-                    }
-
-                    var bin = farm.getShippingBin(targetFarmer);
-                    if (bin != null)
-                    {
-                        bin.Add(item);
-                        if (state.IsLastItem)
-                            lastRestoredItem = item;
-                        restored++;
-                    }
-                    else
-                    {
-                        failed++;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _monitor.Log($"恢复出货箱物品失败: {ex.Message}", LogLevel.Trace);
-                    failed++;
-                }
-            }
-
-            if (lastRestoredItem != null)
-                farm.lastItemShipped = lastRestoredItem;
-
-            _monitor.Log($"出货箱恢复: 成功{restored} 个, 失败{failed} 个", LogLevel.Debug);
         }
 
         private void SaveExtraData(GameStateSnapshot snapshot)
