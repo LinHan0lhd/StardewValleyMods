@@ -525,15 +525,20 @@ namespace AutoServerPro.Core
                         oldFormatFallback++;
                     }
                     
-                    var chunk = new Chunk(targetPos, 0f, 0f, 0);  // 使用原始位置
-                    chunk.hasPassedRestingLineOnce.Value = true; // 跳过初始弹跳动画
-                    chunk.bounces = 100; // 设置为已完成弹跳，确保速度归零
+                    // 关键：强制物品位置 Y = chunkFinalYLevel
+                    // 保存时物品可能在 chunkFinalYLevel 上方（物理模拟未完全稳定）
+                    // 恢复时需要强制对齐，确保物品真正"落地"
+                    var restoredPos = new Vector2(targetPos.X, finalYLevel);
+                    
+                    var chunk = new Chunk(restoredPos, 0f, 0f, 0);
+                    chunk.hasPassedRestingLineOnce.Value = true;
+                    chunk.bounces = 100;
                     chunk.rotationVelocity = 0f;
-                    chunk.sinkTimer.Value = int.MaxValue; // 防止物品自动沉没消失
+                    chunk.sinkTimer.Value = int.MaxValue;
                     chunk.hitWall = false;
                     chunk.bob = 0f;
                     chunk.alpha = 1f;
-                    chunk.position.Field.CancelInterpolation(); // 关键：取消插值，确保位置立即生效
+                    chunk.position.Field.CancelInterpolation();
                     debris.Chunks.Add(chunk);
                     debris.chunkFinalYLevel = finalYLevel;
                     debris.chunksMoveTowardPlayer = false;
