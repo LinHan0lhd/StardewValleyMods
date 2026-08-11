@@ -520,6 +520,7 @@ namespace AutoServerPro.Core
                     chunk.hitWall = false;
                     chunk.bob = 0f;
                     chunk.alpha = 1f;
+                    chunk.position.Field.CancelInterpolation(); // 关键：取消插值，确保位置立即生效
                     debris.Chunks.Add(chunk);
                     debris.chunkFinalYLevel = finalYLevel;
                     debris.chunksMoveTowardPlayer = false;
@@ -734,19 +735,20 @@ namespace AutoServerPro.Core
                         if (item == null) continue;
 
                         // 关键：强制物品进入稳定状态，确保保存的是最终位置
-                        // 物品稳定条件：hasPassedRestingLineOnce=true, bounces>2, 速度为0
-                        // 但物理模拟可能还在进行，导致位置不稳定
+                        // 使用 TargetValue（原始存储位置）而非 Value（可能是插值/外推后的值）
                         bool wasStabilized = false;
                         if (debris.Chunks != null && debris.Chunks.Count > 0)
                         {
                             foreach (var chunk in debris.Chunks)
                             {
                                 int targetY = debris.chunkFinalYLevel;
+                                Vector2 currentPos = chunk.position.Field.TargetValue;  // 获取原始位置
                                 // 如果物品还没稳定，强制稳定它
                                 if (!chunk.hasPassedRestingLineOnce.Value || chunk.bounces <= 2 || 
-                                    Math.Abs(chunk.position.Y - targetY) > 0.5f)
+                                    Math.Abs(currentPos.Y - targetY) > 0.5f)
                                 {
-                                    chunk.position.Value = new Vector2(chunk.position.X, targetY);
+                                    chunk.position.Value = new Vector2(currentPos.X, targetY);
+                                    chunk.position.Field.CancelInterpolation();  // 取消插值，确保位置立即生效
                                     chunk.xVelocity.Value = 0f;
                                     chunk.yVelocity.Value = 0f;
                                     chunk.rotationVelocity = 0f;
@@ -771,6 +773,7 @@ namespace AutoServerPro.Core
                         string qualifiedItemId = itemId ?? item.QualifiedItemId;
 
                         // 为每个 Chunk 创建一个 DebrisItemState
+                        // 使用 TargetValue 获取原始存储位置，而不是 Value（它可能是插值/外推后的值）
                         if (debris.Chunks != null && debris.Chunks.Count > 0)
                         {
                             foreach (var chunk in debris.Chunks)
@@ -782,8 +785,8 @@ namespace AutoServerPro.Core
                                     ItemXml = itemXml,
                                     Amount = amount,
                                     Quality = quality,
-                                    X = chunk.position.Value.X,
-                                    Y = chunk.position.Value.Y
+                                    X = chunk.position.Field.TargetValue.X,  // 原始存储位置
+                                    Y = chunk.position.Field.TargetValue.Y   // 原始存储位置
                                 };
 
                                 snapshot.DebrisItems.Add(state);
