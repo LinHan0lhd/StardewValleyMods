@@ -48,6 +48,9 @@ namespace AutoServerPro.Core
 
         [XmlElement("Y")]
         public float Y { get; set; }
+
+        [XmlElement("ChunkFinalYLevel")]
+        public int ChunkFinalYLevel { get; set; }
     }
 
     [XmlRoot("GameStateSnapshot")]
@@ -508,11 +511,13 @@ namespace AutoServerPro.Core
                     debris.itemQuality = item.Quality; // 关键：itemQuality 决定物品大小和阴影位置
                     debris.debrisType.Value = Debris.DebrisType.OBJECT;
 
-                    // 强制物品位置对齐到 chunkFinalYLevel，防止物理模拟移动物品
-                    int finalYLevel = (int)targetPos.Y;
-                    var finalPos = new Vector2(targetPos.X, finalYLevel);  // 强制 Y 为整数
+                    // 使用保存的 ChunkFinalYLevel（物品静止时的 Y 坐标）
+                    // 这是物品真正"落地"的位置，用于阴影和物理模拟
+                    int finalYLevel = debrisState.ChunkFinalYLevel != 0 
+                        ? debrisState.ChunkFinalYLevel 
+                        : (int)targetPos.Y;
                     
-                    var chunk = new Chunk(finalPos, 0f, 0f, 0);
+                    var chunk = new Chunk(targetPos, 0f, 0f, 0);  // 使用原始位置
                     chunk.hasPassedRestingLineOnce.Value = true; // 跳过初始弹跳动画
                     chunk.bounces = 100; // 设置为已完成弹跳，确保速度归零
                     chunk.rotationVelocity = 0f;
@@ -530,7 +535,7 @@ namespace AutoServerPro.Core
                     restored++;
                     
                     // 调试日志：显示每个恢复的物品信息
-                    _monitor.Log($"  恢复: {item.QualifiedItemId} q{item.Quality} pos=({targetPos.X:F1},{targetPos.Y:F1}) finalY={finalYLevel}", LogLevel.Trace);
+                    _monitor.Log($"  恢复: {item.QualifiedItemId} q{item.Quality} pos=({targetPos.X:F1},{targetPos.Y:F1}) finalY={finalYLevel} savedFinalY={debrisState.ChunkFinalYLevel}", LogLevel.Trace);
                 }
                 catch (Exception ex)
                 {
@@ -786,7 +791,8 @@ namespace AutoServerPro.Core
                                     Amount = amount,
                                     Quality = quality,
                                     X = chunk.position.Field.TargetValue.X,  // 原始存储位置
-                                    Y = chunk.position.Field.TargetValue.Y   // 原始存储位置
+                                    Y = chunk.position.Field.TargetValue.Y,   // 原始存储位置
+                                    ChunkFinalYLevel = debris.chunkFinalYLevel  // 物品静止时的 Y 坐标
                                 };
 
                                 snapshot.DebrisItems.Add(state);
