@@ -463,6 +463,7 @@ namespace AutoServerPro.Core
             int restored = 0;
             int locNotFound = 0;
             int itemFailed = 0;
+            int oldFormatFallback = 0;  // 使用旧存档格式（没有ChunkFinalYLevel）的物品数量
             foreach (var debrisState in snapshot.DebrisItems)
             {
                 try
@@ -513,9 +514,16 @@ namespace AutoServerPro.Core
 
                     // 使用保存的 ChunkFinalYLevel（物品静止时的 Y 坐标）
                     // 这是物品真正"落地"的位置，用于阴影和物理模拟
-                    int finalYLevel = debrisState.ChunkFinalYLevel != 0 
-                        ? debrisState.ChunkFinalYLevel 
-                        : (int)targetPos.Y;
+                    int finalYLevel;
+                    if (debrisState.ChunkFinalYLevel != 0)
+                    {
+                        finalYLevel = debrisState.ChunkFinalYLevel;
+                    }
+                    else
+                    {
+                        finalYLevel = (int)targetPos.Y;  // 回退：旧存档没有这个字段
+                        oldFormatFallback++;
+                    }
                     
                     var chunk = new Chunk(targetPos, 0f, 0f, 0);  // 使用原始位置
                     chunk.hasPassedRestingLineOnce.Value = true; // 跳过初始弹跳动画
@@ -543,7 +551,9 @@ namespace AutoServerPro.Core
                 }
             }
 
-            _monitor.Log($"掉落物恢复: 成功{restored}个物品实例, 位置未找到{locNotFound}, 物品创建失败{itemFailed}", LogLevel.Debug);
+            _monitor.Log($"掉落物恢复: 成功{restored}个物品实例, 位置未找到{locNotFound}, 物品创建失败{itemFailed}, 旧格式回退{oldFormatFallback}个", LogLevel.Debug);
+            if (oldFormatFallback > 0)
+                _monitor.Log($"检测到 {oldFormatFallback} 个物品使用旧存档格式，建议重新保存以修复位置问题", LogLevel.Warn);
         }
 
         private string SerializeItem(Item item)
@@ -722,7 +732,6 @@ namespace AutoServerPro.Core
             int chunkCount = 0;
             int failedCount = 0;
             int xmlFallbackCount = 0;
-            int stabilizedCount = 0;
             foreach (var location in Game1.locations)
             {
                 if (location == null || location.debris == null) continue;
@@ -739,33 +748,8 @@ namespace AutoServerPro.Core
                         }
                         if (item == null) continue;
 
-                        // 关键：强制物品进入稳定状态，确保保存的是最终位置
-                        // 使用 TargetValue（原始存储位置）而非 Value（可能是插值/外推后的值）
-                        bool wasStabilized = false;
-                        if (debris.Chunks != null && debris.Chunks.Count > 0)
-                        {
-                            foreach (var chunk in debris.Chunks)
-                            {
-                                int targetY = debris.chunkFinalYLevel;
-                                Vector2 currentPos = chunk.position.Field.TargetValue;  // 获取原始位置
-                                // 如果物品还没稳定，强制稳定它
-                                if (!chunk.hasPassedRestingLineOnce.Value || chunk.bounces <= 2 || 
-                                    Math.Abs(currentPos.Y - targetY) > 0.5f)
-                                {
-                                    chunk.position.Value = new Vector2(currentPos.X, targetY);
-                                    chunk.position.Field.CancelInterpolation();  // 取消插值，确保位置立即生效
-                                    chunk.xVelocity.Value = 0f;
-                                    chunk.yVelocity.Value = 0f;
-                                    chunk.rotationVelocity = 0f;
-                                    chunk.hasPassedRestingLineOnce.Value = true;
-                                    chunk.bounces = 100;
-                                    chunk.bob = 0f;
-                                    wasStabilized = true;
-                                }
-                            }
-                        }
-                        if (wasStabilized) stabilizedCount++;
-
+                        // 直接保存物品状态，不要修改游戏世界中的物品
+                        // 使用 TargetValue 获取原始存储位置（而非显示用的 Value）
                         string itemXml = null;
                         try
                         {
@@ -827,7 +811,7 @@ namespace AutoServerPro.Core
                 }
             }
 
-            _monitor.Log($"快照创建完成: {debrisCount}掉落物, {chunkCount}物品实例, 强制稳定化{stabilizedCount}个", LogLevel.Debug);
+            _monitor.Log($"快照创建完成: {debrisCount}掉落物, {chunkCount}物品实例", LogLevel.Debug);
             if (xmlFallbackCount > 0)
                 _monitor.Log($"掉落物XML序列化失败，将用ItemId恢复: {xmlFallbackCount} 个", LogLevel.Warn);
             if (failedCount > 0)
