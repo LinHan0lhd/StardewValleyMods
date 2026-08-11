@@ -507,14 +507,25 @@ namespace AutoServerPro.Core
                     debris.itemId.Value = item.QualifiedItemId;
                     debris.debrisType.Value = Debris.DebrisType.OBJECT;
 
-                    // Chunk 构造函数: position, xVelocity, yVelocity, randomOffset
-                    // randomOffset 决定物品图标在精灵图中的位置，传 0 为标准位置
-                    var chunk = new Chunk(targetPos, 0f, 0f, 0);
+                    // 将物品位置直接设为 chunkFinalYLevel，跳过物理下落
+                    // 原因：Debris.update() 会在 chunk.position.Y >= chunkFinalYLevel && hasPassedRestingLineOnce 时停止物品
+                    // 所以需要让位置立即满足静止条件
+                    int finalYLevel = (int)Math.Ceiling(targetPos.Y);
+                    var finalPos = new Vector2(targetPos.X, finalYLevel);
+                    
+                    var chunk = new Chunk(finalPos, 0f, 0f, 0);
                     chunk.hasPassedRestingLineOnce.Value = true; // 跳过初始弹跳动画
-                    chunk.bounces = 100; // 设置为已完成弹跳
+                    chunk.bounces = 100; // 设置为已完成弹跳，确保速度归零
+                    chunk.rotationVelocity = 0f;
+                    chunk.sinkTimer.Value = int.MaxValue; // 防止物品自动沉没消失
+                    chunk.hitWall = false;
+                    chunk.bob = 0f;
+                    chunk.scale = 1f;
+                    chunk.alpha = 1f;
                     debris.Chunks.Add(chunk);
-                    debris.chunkFinalYLevel = (int)targetPos.Y;
+                    debris.chunkFinalYLevel = finalYLevel;
                     debris.chunksMoveTowardPlayer = false;
+                    debris.isSinking.Value = false;
 
                     location.debris.Add(debris);
                     restored++;
