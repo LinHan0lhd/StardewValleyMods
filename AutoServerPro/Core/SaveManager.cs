@@ -612,15 +612,17 @@ namespace AutoServerPro.Core
 
             // 仅同步 Farmhand（农场助手）的位置
             // 主机（Game1.player）的位置由原生保存流程直接处理，无需修改 disconnect* 字段
-            // 关键：不要修改 disconnectDay，否则会导致游戏误判玩家已离线
-            // 修复：不再调用 saveFarmhands() (会强制回床)，改为直接修改 farmhandData 中的数据
+            // 关键：必须设置 disconnectDay = DaysPlayed，否则位置不会被恢复
+            // 参考 BedFurniture.ApplyWakeUpPosition()：
+            //   if (disconnectDay == DaysPlayed && !newDaySync) 
+            //   { who.currentLocation = disconnectLocation; who.Position = disconnectPosition; }
             foreach (var farmer in Game1.otherFarmers.Values)
             {
                 if (Game1.netWorldState.Value.farmhandData.TryGetValue(farmer.UniqueMultiplayerID, out var farmhandData))
                 {
                     farmhandData.disconnectPosition.Value = farmer.position.Value;
                     farmhandData.disconnectLocation.Value = farmer.currentLocation?.NameOrUniqueName ?? "";
-                    // 注意：不修改 disconnectDay，保持为 0 表示在线
+                    farmhandData.disconnectDay.Value = (int)Game1.MasterPlayer.stats.DaysPlayed;  // 关键：设置为当前天数
                     synced++;
                 }
             }
