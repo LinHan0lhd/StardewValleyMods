@@ -543,7 +543,12 @@ namespace AutoServerPro.Core
                     restored++;
                     
                     // 调试日志：显示每个恢复的物品信息
-                    _monitor.Log($"  恢复: {item.QualifiedItemId} q{item.Quality} pos=({targetPos.X:F1},{targetPos.Y:F1}) finalY={finalYLevel} savedFinalY={debrisState.ChunkFinalYLevel}", LogLevel.Trace);
+                    Vector2 restoredCurrentPos = chunk.position.Value;
+                    Vector2 restoredTargetPos = chunk.position.Field.TargetValue;
+                    _monitor.Log($"  恢复: {item.QualifiedItemId} q{item.Quality} stack={item.Stack}", LogLevel.Trace);
+                    _monitor.Log($"    saved: pos=({debrisState.X:F2},{debrisState.Y:F2}) chunkFinalYLevel={debrisState.ChunkFinalYLevel}", LogLevel.Trace);
+                    _monitor.Log($"    restored: pos.Value=({restoredCurrentPos.X:F2},{restoredCurrentPos.Y:F2}) TargetValue=({restoredTargetPos.X:F2},{restoredTargetPos.Y:F2}) chunkFinalYLevel={debris.chunkFinalYLevel}", LogLevel.Trace);
+                    _monitor.Log($"    restored: xVel={chunk.xVelocity.Value:F2} yVel={chunk.yVelocity.Value:F2} bounces={chunk.bounces} hasPassedResting={chunk.hasPassedRestingLineOnce.Value}", LogLevel.Trace);
                 }
                 catch (Exception ex)
                 {
@@ -767,6 +772,9 @@ namespace AutoServerPro.Core
                         {
                             foreach (var chunk in debris.Chunks)
                             {
+                                Vector2 targetPos = chunk.position.Field.TargetValue;
+                                Vector2 currentPos = chunk.position.Value;
+                                
                                 var state = new DebrisItemState
                                 {
                                     LocationName = location.NameOrUniqueName,
@@ -774,13 +782,19 @@ namespace AutoServerPro.Core
                                     ItemXml = itemXml,
                                     Amount = amount,
                                     Quality = quality,
-                                    X = chunk.position.Field.TargetValue.X,  // 原始存储位置
-                                    Y = chunk.position.Field.TargetValue.Y,   // 原始存储位置
-                                    ChunkFinalYLevel = debris.chunkFinalYLevel  // 物品静止时的 Y 坐标
+                                    X = targetPos.X,
+                                    Y = targetPos.Y,
+                                    ChunkFinalYLevel = debris.chunkFinalYLevel
                                 };
 
                                 snapshot.DebrisItems.Add(state);
                                 chunkCount++;
+                                
+                                // 详细调试日志
+                                _monitor.Log($"  保存: {qualifiedItemId} q{quality} stack={amount}", LogLevel.Trace);
+                                _monitor.Log($"    chunk.position.Value=({currentPos.X:F2},{currentPos.Y:F2}) TargetValue=({targetPos.X:F2},{targetPos.Y:F2})", LogLevel.Trace);
+                                _monitor.Log($"    chunkFinalYLevel={debris.chunkFinalYLevel} movingFinalYLevel={debris.movingFinalYLevel} chunksMoveTowardPlayer={debris.chunksMoveTowardPlayer}", LogLevel.Trace);
+                                _monitor.Log($"    xVel={chunk.xVelocity.Value:F2} yVel={chunk.yVelocity.Value:F2} bounces={chunk.bounces} hasPassedResting={chunk.hasPassedRestingLineOnce.Value} sinkTimer={chunk.sinkTimer.Value}", LogLevel.Trace);
                             }
                         }
                         else
