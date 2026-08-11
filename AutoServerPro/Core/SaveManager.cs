@@ -630,12 +630,14 @@ namespace AutoServerPro.Core
                     debris.debrisType.Value = (Debris.DebrisType)debrisState.DebrisType;
                     debris.chunkType.Value = debrisState.ChunkType;
                     debris.chunkFinalYLevel = debrisState.ChunkFinalYLevel;
-                    debris.chunksMoveTowardPlayer = false;  // 静止在地面，不向玩家移动
+                    // 关键：设置为 true 让物品立即处于"可拾取"状态，会自动飞向玩家
+                    debris.chunksMoveTowardPlayer = true;
                     debris.floppingFish.Value = debrisState.FloppingFish;
                     debris.scale.Value = debrisState.Scale;
                     debris.isFishable = debrisState.IsFishable;
                     debris.isSinking.Value = false;
-                    debris.timeSinceDoneBouncing = float.Max(debrisState.TimeSinceDoneBouncing, 600f);  // 确保物品不会被定时移除
+                    // 让游戏认为物品已完成弹跳，立即进入向玩家移动阶段
+                    debris.timeSinceDoneBouncing = 600f;
                     debris.DroppedByPlayerID.Value = debrisState.DroppedByPlayerID;
                     debris.spriteChunkSheetName.Value = debrisState.SpriteChunkSheetName ?? "";
                     debris.sizeOfSourceRectSquares.Value = debrisState.SizeOfSourceRectSquares;
@@ -651,31 +653,31 @@ namespace AutoServerPro.Core
                         debrisState.NonSpriteColorB,
                         debrisState.NonSpriteColorA);
 
-                    // 4. 重建每个 Chunk
+                    // 4. 重建每个 Chunk — 从"静止"状态恢复
                     if (debrisState.Chunks != null && debrisState.Chunks.Count > 0)
                     {
                         foreach (var chunkState in debrisState.Chunks)
                         {
                             try
                             {
-                                // 创建 Chunk 时保持原始位置和速度
                                 var pos = new Vector2(chunkState.X, chunkState.Y);
-                                var chunk = new Chunk(pos, chunkState.XVelocity, chunkState.YVelocity, chunkState.RandomOffset);
+                                // 使用零速度创建 Chunk（物品静止在地面）
+                                var chunk = new Chunk(pos, 0f, 0f, chunkState.RandomOffset);
 
-                                // 恢复 Chunk 的完整状态
+                                // 恢复 Chunk 的视觉属性
                                 chunk.xSpriteSheet.Value = chunkState.XSpriteSheet;
                                 chunk.ySpriteSheet.Value = chunkState.YSpriteSheet;
                                 chunk.scale = chunkState.Scale;
                                 chunk.alpha = chunkState.Alpha;
                                 chunk.rotation = chunkState.Rotation;
-                                chunk.rotationVelocity = chunkState.RotationVelocity;
-                                chunk.bob = chunkState.Bob;
-                                chunk.hasPassedRestingLineOnce.Value = chunkState.HasPassedRestingLineOnce;
-                                chunk.bounces = chunkState.Bounces;
-                                chunk.hitWall = chunkState.HitWall;
-                                chunk.sinkTimer.Value = chunkState.SinkTimer;
+                                chunk.rotationVelocity = 0f;
+                                chunk.bob = 0f;
+                                // 关键：标记为已过休息线，防止继续弹跳
+                                chunk.hasPassedRestingLineOnce.Value = true;
+                                chunk.bounces = 100;
+                                chunk.hitWall = false;
+                                chunk.sinkTimer.Value = int.MaxValue;
 
-                                // 阻止位置插值（防止瞬移）
                                 chunk.position.Field.CancelInterpolation();
 
                                 debris.Chunks.Add(chunk);
@@ -685,18 +687,6 @@ namespace AutoServerPro.Core
                                 _monitor.Log($"    Chunk恢复失败: {ex.Message}", LogLevel.Trace);
                                 chunkFailed++;
                             }
-                        }
-                    }
-
-                    // 5. 强制将物品位置对齐到 chunkFinalYLevel
-                    // 这解决了"物品看起来轻微下沉"的问题
-                    if (debris.Chunks.Count > 0 && debrisState.ChunkFinalYLevel > 0)
-                    {
-                        foreach (var chunk in debris.Chunks)
-                        {
-                            var p = chunk.position.Value;
-                            chunk.position.Value = new Vector2(p.X, debrisState.ChunkFinalYLevel);
-                            chunk.position.Field.CancelInterpolation();
                         }
                     }
 
@@ -929,7 +919,8 @@ namespace AutoServerPro.Core
                             DebrisType = (int)debris.debrisType.Value,
                             ChunkType = debris.chunkType.Value,
                             ChunkFinalYLevel = debris.chunkFinalYLevel,
-                            ChunksMoveTowardPlayer = debris.chunksMoveTowardPlayer,
+                            // 关键：保存时物品已落地，恢复后应立即处于"可拾取"状态
+                            ChunksMoveTowardPlayer = true,
                             FloppingFish = debris.floppingFish.Value,
                             Scale = debris.scale.Value,
                             ItemQuality = debris.itemQuality,
@@ -961,20 +952,20 @@ namespace AutoServerPro.Core
                                 {
                                     X = pos.X,
                                     Y = pos.Y,
-                                    XVelocity = chunk.xVelocity.Value,
-                                    YVelocity = chunk.yVelocity.Value,
+                                    XVelocity = 0f,
+                                    YVelocity = 0f,
                                     RandomOffset = chunk.randomOffset,
                                     XSpriteSheet = chunk.xSpriteSheet.Value,
                                     YSpriteSheet = chunk.ySpriteSheet.Value,
                                     Scale = chunk.scale,
                                     Alpha = chunk.alpha,
                                     Rotation = chunk.rotation,
-                                    RotationVelocity = chunk.rotationVelocity,
-                                    Bob = chunk.bob,
-                                    HasPassedRestingLineOnce = chunk.hasPassedRestingLineOnce.Value,
-                                    Bounces = chunk.bounces,
-                                    HitWall = chunk.hitWall,
-                                    SinkTimer = chunk.sinkTimer.Value,
+                                    RotationVelocity = 0f,
+                                    Bob = 0f,
+                                    HasPassedRestingLineOnce = true,
+                                    Bounces = 100,
+                                    HitWall = false,
+                                    SinkTimer = int.MaxValue,
                                 });
                                 chunkCount++;
 
