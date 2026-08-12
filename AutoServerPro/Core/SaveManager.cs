@@ -10,6 +10,7 @@ using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Buildings;
+using StardewValley.ItemTypeDefinitions;
 using StardewValley.Locations;
 using StardewValley.Menus;
 using StardewValley.Objects;
@@ -564,7 +565,7 @@ namespace AutoServerPro.Core
                             {
                                 item = ItemRegistry.Create(objState.ItemId);
                             }
-                            if (item is Object obj)
+                            if (item is StardewValley.Object obj)
                             {
                                 obj.TileLocation = new Vector2(objState.TileX, objState.TileY);
                                 currentLocation.objects.Add(obj.TileLocation, obj);
@@ -1082,10 +1083,12 @@ namespace AutoServerPro.Core
             var mine = Game1.currentLocation as MineShaft;
             if (mine != null)
             {
+                int? forceLayout = null;
+                MineShaft.IsGeneratedLevel(mine, out _, out forceLayout);
                 snapshot.Mine = new MineState
                 {
                     MineLevel = mine.mineLevel,
-                    ForceLayout = mine.forceLayout
+                    ForceLayout = forceLayout
                 };
 
                 // 保存所有在矿井中的玩家位置（支持联机）
