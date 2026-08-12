@@ -534,7 +534,6 @@ namespace AutoServerPro.Core
 
             var mineState = snapshot.Mine;
 
-            // 仅在玩家目标位置是矿井时恢复
             var currentLocation = Game1.currentLocation as MineShaft;
             if (currentLocation == null)
             {
@@ -542,14 +541,12 @@ namespace AutoServerPro.Core
                 return;
             }
 
-            _monitor.Log($"恢复矿井状态: Level={mineState.MineLevel}, ForceLayout={mineState.ForceLayout}, Objects={mineState.Objects.Count}, Farmers={mineState.FarmerPositions.Count}", LogLevel.Debug);
+            _monitor.Log($"恢复矿井状态: Level={mineState.MineLevel}, Objects={mineState.Objects.Count}, Farmers={mineState.FarmerPositions.Count}", LogLevel.Debug);
 
             try
             {
-                // 如果是同一层，直接恢复对象
                 if (currentLocation.mineLevel == mineState.MineLevel)
                 {
-                    // 清除现有对象，恢复保存的对象
                     currentLocation.objects.Clear();
                     currentLocation.terrainFeatures.Clear();
 
@@ -575,26 +572,47 @@ namespace AutoServerPro.Core
                         }
                         catch { }
                     }
-
-                    // 恢复所有在矿井中的玩家位置（支持联机）
-                    int restoredFarmers = 0;
-                    foreach (var farmerPos in mineState.FarmerPositions)
-                    {
-                        var farmer = Game1.getAllFarmers().FirstOrDefault(f => f.UniqueMultiplayerID == farmerPos.FarmerId);
-                        if (farmer != null && farmer.currentLocation == currentLocation)
-                        {
-                            farmer.Position = new Vector2(farmerPos.X, farmerPos.Y);
-                            restoredFarmers++;
-                        }
-                    }
-
-                    _monitor.Log($"矿井恢复完成: {mineState.Objects.Count}个对象, {restoredFarmers}个玩家位置", LogLevel.Debug);
                 }
                 else
                 {
-                    // 不同层级：游戏自身会处理层级切换
                     _monitor.Log($"矿井层级不同（当前={currentLocation.mineLevel}, 保存={mineState.MineLevel}），跳过对象恢复", LogLevel.Debug);
                 }
+
+                // 恢复所有玩家位置（含离线农场工人）
+                int restoredFarmers = 0;
+                foreach (var farmerPos in mineState.FarmerPositions)
+                {
+                    // 1. 主机玩家
+                    if (Game1.player.UniqueMultiplayerID == farmerPos.FarmerId)
+                    {
+                        Game1.player.Position = new Vector2(farmerPos.X, farmerPos.Y);
+                        Game1.player.mostRecentBed = new Vector2(farmerPos.X, farmerPos.Y);
+                        restoredFarmers++;
+                        continue;
+                    }
+
+                    // 2. 已在线的农场工人
+                    var onlineFarmer = Game1.otherFarmers.Values.FirstOrDefault(f => f.UniqueMultiplayerID == farmerPos.FarmerId);
+                    if (onlineFarmer != null && onlineFarmer.currentLocation == currentLocation)
+                    {
+                        onlineFarmer.Position = new Vector2(farmerPos.X, farmerPos.Y);
+                        onlineFarmer.mostRecentBed = new Vector2(farmerPos.X, farmerPos.Y);
+                        restoredFarmers++;
+                        continue;
+                    }
+
+                    // 3. 离线农场工人 — 修改 farmhandData 中的对象
+                    if (Game1.netWorldState.Value.farmhandData.TryGetValue(farmerPos.FarmerId, out var offlineFarmer))
+                    {
+                        offlineFarmer.Position = new Vector2(farmerPos.X, farmerPos.Y);
+                        offlineFarmer.mostRecentBed = new Vector2(farmerPos.X, farmerPos.Y);
+                        offlineFarmer.currentLocation = currentLocation;
+                        offlineFarmer.disconnectLocation.Value = currentLocation.NameOrUniqueName;
+                        restoredFarmers++;
+                    }
+                }
+
+                _monitor.Log($"矿井恢复完成: {mineState.Objects.Count}个对象, {restoredFarmers}个玩家位置", LogLevel.Debug);
             }
             catch (Exception ex)
             {
