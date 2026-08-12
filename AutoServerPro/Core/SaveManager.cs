@@ -128,6 +128,42 @@ namespace AutoServerPro.Core
         public float Rotation { get; set; }
     }
 
+    [XmlRoot("ObjectState")]
+    public class ObjectState
+    {
+        [XmlElement("TileX")]
+        public float TileX { get; set; }
+
+        [XmlElement("TileY")]
+        public float TileY { get; set; }
+
+        [XmlElement("ItemId")]
+        public string ItemId { get; set; }
+
+        [XmlElement("ItemXml")]
+        public string ItemXml { get; set; }
+    }
+
+    [XmlRoot("MineState")]
+    public class MineState
+    {
+        [XmlElement("MineLevel")]
+        public int MineLevel { get; set; }
+
+        [XmlElement("ForceLayout")]
+        public int? ForceLayout { get; set; }
+
+        [XmlElement("PlayerX")]
+        public float PlayerX { get; set; }
+
+        [XmlElement("PlayerY")]
+        public float PlayerY { get; set; }
+
+        [XmlArray("Objects")]
+        [XmlArrayItem("Object")]
+        public List<ObjectState> Objects { get; set; } = new();
+    }
+
     [XmlRoot("GameStateSnapshot")]
     public class GameStateSnapshot
     {
@@ -137,6 +173,9 @@ namespace AutoServerPro.Core
         [XmlArray("DebrisItems")]
         [XmlArrayItem("DebrisItem")]
         public List<DebrisState> DebrisItems { get; set; } = new();
+
+        [XmlElement("MineState")]
+        public MineState Mine { get; set; }
     }
 
     public class SaveManager
@@ -459,6 +498,15 @@ namespace AutoServerPro.Core
 
             try
             {
+                RestoreMineState(snapshot);
+            }
+            catch (Exception ex)
+            {
+                _monitor.Log($"恢复矿井状态失败: {ex.Message}", LogLevel.Warn);
+            }
+
+            try
+            {
                 RestoreDebrisItems(snapshot);
             }
             catch (Exception ex)
@@ -467,6 +515,74 @@ namespace AutoServerPro.Core
             }
 
             _monitor.Log("玩家位置由原生存档处理（SyncOnlinePlayerPositions已同步在线位置）", LogLevel.Debug);
+        }
+
+        private void RestoreMineState(GameStateSnapshot snapshot)
+        {
+            if (snapshot.Mine == null) return;
+
+            var mineState = snapshot.Mine;
+
+            // 仅在玩家目标位置是矿井时恢复
+            var currentLocation = Game1.currentLocation as MineShaft;
+            if (currentLocation == null)
+            {
+                _monitor.Log($"跳过矿井恢复：当前位置非矿井", LogLevel.Debug);
+                return;
+            }
+
+            _monitor.Log($"恢复矿井状态: Level={mineState.MineLevel}, ForceLayout={mineState.ForceLayout}, Objects={mineState.Objects.Count}", LogLevel.Debug);
+
+            try
+            {
+                // 如果是同一层，直接恢复对象
+                if (currentLocation.mineLevel == mineState.MineLevel)
+                {
+                    // 清除现有对象，恢复保存的对象
+                    currentLocation.objects.Clear();
+                    currentLocation.terrainFeatures.Clear();
+
+                    foreach (var objState in mineState.Objects)
+                    {
+                        try
+                        {
+                            Item item = null;
+                            if (!string.IsNullOrEmpty(objState.ItemXml))
+                            {
+                                try { item = DeserializeItem(objState.ItemXml); }
+                                catch { }
+                            }
+                            if (item == null && !string.IsNullOrEmpty(objState.ItemId))
+                            {
+                                item = ItemRegistry.Create(objState.ItemId);
+                            }
+                            if (item is Object obj)
+                            {
+                                obj.TileLocation = new Vector2(objState.TileX, objState.TileY);
+                                currentLocation.objects.Add(obj.TileLocation, obj);
+                            }
+                        }
+                        catch { }
+                    }
+
+                    // 恢复玩家位置
+                    if (mineState.PlayerX > 0 && mineState.PlayerY > 0)
+                    {
+                        Game1.player.Position = new Vector2(mineState.PlayerX, mineState.PlayerY);
+                    }
+
+                    _monitor.Log($"矿井对象恢复完成: {mineState.Objects.Count}个对象", LogLevel.Debug);
+                }
+                else
+                {
+                    // 不同层级：游戏自身会处理层级切换
+                    _monitor.Log($"矿井层级不同（当前={currentLocation.mineLevel}, 保存={mineState.MineLevel}），跳过对象恢复", LogLevel.Debug);
+                }
+            }
+            catch (Exception ex)
+            {
+                _monitor.Log($"矿井恢复异常: {ex.Message}", LogLevel.Warn);
+            }
         }
 
         /// <summary>
@@ -941,6 +1057,43 @@ namespace AutoServerPro.Core
                         failedCount++;
                     }
                 }
+            }
+
+            // 保存矿井状态
+            var mine = Game1.currentLocation as MineShaft;
+            if (mine != null)
+            {
+                snapshot.Mine = new MineState
+                {
+                    MineLevel = mine.mineLevel,
+                    ForceLayout = mine.forceLayout,
+                    PlayerX = Game1.player.Position.X,
+                    PlayerY = Game1.player.Position.Y
+                };
+
+                foreach (var kvp in mine.objects.Pairs.ToList())
+                {
+                    try
+                    {
+                        var obj = kvp.Value;
+                        if (obj == null || obj.ItemId == null) continue;
+
+                        string itemXml = null;
+                        try { itemXml = SerializeItem(obj); }
+                        catch { }
+
+                        snapshot.Mine.Objects.Add(new ObjectState
+                        {
+                            TileX = kvp.Key.X,
+                            TileY = kvp.Key.Y,
+                            ItemId = obj.ItemId,
+                            ItemXml = itemXml
+                        });
+                    }
+                    catch { }
+                }
+
+                _monitor.Log($"保存矿井: Level={snapshot.Mine.MineLevel}, ForceLayout={snapshot.Mine.ForceLayout}, Objects={snapshot.Mine.Objects.Count}", LogLevel.Debug);
             }
 
             _monitor.Log($"快照创建完成: {debrisCount}掉落物, {chunkCount}物品实例", LogLevel.Debug);
