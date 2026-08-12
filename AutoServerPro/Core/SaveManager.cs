@@ -15,6 +15,7 @@ using StardewValley.ItemTypeDefinitions;
 using StardewValley.Locations;
 using StardewValley.Menus;
 using StardewValley.Objects;
+using StardewValley.Pathfinding;
 using AutoServerPro.Utils;
 using AutoServerPro.Models;
 
@@ -890,13 +891,18 @@ namespace AutoServerPro.Core
             typeof(NPC).GetField("currentlyDoingEndOfRouteAnimation", BindingFlags.Instance | BindingFlags.NonPublic),
         };
 
+        private static readonly MethodInfo GetRouteEndBehaviorMethod = typeof(NPC).GetMethod("getRouteEndBehaviorFunction", BindingFlags.Instance | BindingFlags.NonPublic);
+
         private void ResetNpcSchedules()
         {
             _monitor.Log("重置 NPC 状态（恢复中途保存的行走状态）...", LogLevel.Debug);
 
             int resetCount = 0;
             int scheduleCount = 0;
+            int pathSetCount = 0;
             int noScheduleCount = 0;
+            int currentTime = Game1.timeOfDay;
+
             foreach (var npc in Utility.getAllCharacters())
             {
                 try
@@ -935,24 +941,28 @@ namespace AutoServerPro.Core
                             npc.currentLocation.characters.Add(npc);
                     }
 
-                    // 5. 重新加载日程（核心修复：确保 Schedule 不为 null，NPC 才能移动）
+                    // 5. 重新加载日程 + 设置当前路径（核心修复！）
                     if (npc.IsVillager)
                     {
                         if (npc.TryLoadSchedule())
                         {
                             scheduleCount++;
                             npc.performSpecialScheduleChanges();
+
+                            // 关键修复：为 NPC 设置当前时间应该执行的路径
+                            // 因为 checkSchedule() 用精确时间点查找，
+                            // 但日程是整点的（1000, 1200），NPC 可能在 10:30 保存
+                            if (SetCurrentSchedulePath(npc, currentTime))
+                                pathSetCount++;
                         }
                         else
                         {
-                            // 日程加载失败（如无匹配日程），手动启用日程跟随
                             npc.followSchedule = true;
                             noScheduleCount++;
                         }
                     }
                     else
                     {
-                        // 非村民 NPC（宠物、怪物等），确保 followSchedule 为 true
                         npc.followSchedule = true;
                     }
 
@@ -965,7 +975,70 @@ namespace AutoServerPro.Core
             }
 
             if (resetCount > 0)
-                _monitor.Log($"已重置 {resetCount} 个 NPC 状态，{scheduleCount} 个已加载日程，{noScheduleCount} 个无日程", LogLevel.Debug);
+                _monitor.Log($"已重置 {resetCount} 个 NPC，{scheduleCount} 个已加载日程，{pathSetCount} 个已设置路径，{noScheduleCount} 个无日程", LogLevel.Debug);
+        }
+
+        /// <summary>
+        /// 为 NPC 设置当前时间应该执行的日程路径
+        /// 解决 checkSchedule() 无法匹配非整点时间的问题
+        /// </summary>
+        private bool SetCurrentSchedulePath(NPC npc, int currentTime)
+        {
+            if (npc.Schedule == null || npc.Schedule.Count == 0) return false;
+
+            var keys = npc.Schedule.Keys.OrderBy(k => k).ToList();
+
+            // 找到当前时间应该执行的行程点
+            // 优先选择 <= 当前时间的最后一个（NPC 应该正在执行的行程）
+            int? currentKey = null;
+            foreach (var key in keys)
+            {
+                if (key <= currentTime)
+                    currentKey = key;
+                else
+                    break;
+            }
+
+            // 如果没有 <= 当前时间的，选择第一个 >= 当前时间的
+            if (!currentKey.HasValue)
+            {
+                foreach (var key in keys)
+                {
+                    if (key >= currentTime)
+                    {
+                        currentKey = key;
+                        break;
+                    }
+                }
+            }
+
+            if (!currentKey.HasValue || !npc.Schedule.TryGetValue(currentKey.Value, out var directions))
+                return false;
+
+            // 如果行程在当前 location，设置路径
+            if (string.IsNullOrEmpty(directions.targetLocationName) ||
+                npc.currentLocation?.NameOrUniqueName == directions.targetLocationName)
+            {
+                PathFindController.endBehavior endBehavior = null;
+                if (GetRouteEndBehaviorMethod != null)
+                {
+                    endBehavior = (PathFindController.endBehavior)GetRouteEndBehaviorMethod.Invoke(npc, new object[] { directions.endOfRouteBehavior, directions.endOfRouteMessage });
+                }
+
+                npc.DirectionsToNewLocation = directions;
+                npc.controller = new PathFindController(directions.route, npc, npc.currentLocation)
+                {
+                    finalFacingDirection = directions.facingDirection,
+                    endBehaviorFunction = endBehavior
+                };
+                return true;
+            }
+            else
+            {
+                // 行程在另一个 location，等时间推进时通过 checkSchedule 触发
+                npc.lastAttemptedSchedule = -1;
+                return false;
+            }
         }
 
         public void AutoBackupCheck()
