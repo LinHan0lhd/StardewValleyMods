@@ -579,19 +579,42 @@ namespace AutoServerPro.Core
                         continue;
                     }
 
-                    // 2. 创建 Debris
+                    // 2. 创建 Debris — 复刻游戏 InitializeItem 逻辑
                     var debris = new Debris();
-                    debris.item = item;
                     debris.itemId.Value = item.QualifiedItemId;
                     debris.itemQuality = item.Quality;
                     if (debrisState.Stack > 0)
                         item.Stack = debrisState.Stack;
 
-                    // 3. 恢复 Debris 渲染属性（物理/状态字段使用强制默认值）
+                    // 恢复保存的 Debris 类型
                     debris.debrisType.Value = (Debris.DebrisType)debrisState.DebrisType;
+
+                    // 根据物品类型决定渲染方式（与游戏 InitializeItem 一致）
+                    ParsedItemData itemData = ItemRegistry.GetData(item.QualifiedItemId);
+                    if (itemData.HasTypeObject())
+                    {
+                        // Object-type: 不设置 item → 多 chunk 渲染
+                        debris.floppingFish.Value = (itemData.Category == -4 && itemData.InternalName != "Mussel");
+                        debris.isFishable = (itemData.ObjectType == "Fish");
+                        // Arch 类物品覆盖为 ARCHAEOLOGY 类型
+                        if (itemData.ObjectType == "Arch")
+                            debris.debrisType.Value = Debris.DebrisType.ARCHAEOLOGY;
+                    }
+                    else
+                    {
+                        // 非 Object-type: 设置 item → 单 sprite 渲染
+                        debris.item = item;
+                    }
+
+                    // 3. 恢复 Debris 渲染属性（物理/状态字段使用强制默认值）
+                    // 注意：debrisType 已在上方设置（可能被 Arch 覆盖为 ARCHAEOLOGY）
+                    // 仅在非 ARCHAEOLOGY 时用保存值覆盖
+                    if (debris.debrisType.Value != Debris.DebrisType.ARCHAEOLOGY)
+                        debris.debrisType.Value = (Debris.DebrisType)debrisState.DebrisType;
                     debris.chunkType.Value = debrisState.ChunkType;
                     debris.chunkFinalYLevel = debrisState.ChunkFinalYLevel;
-                    debris.floppingFish.Value = debrisState.FloppingFish;
+                    // floppingFish 已在上方根据物品类型正确设置
+                    // （Object-type 鱼类自动 true，其余默认 false）
                     debris.scale.Value = debrisState.Scale;
                     debris.itemQuality = debrisState.ItemQuality;
                     debris.chunksColor.Value = new Color(
@@ -847,7 +870,8 @@ namespace AutoServerPro.Core
                         string itemId = debris.itemId.Value;
                         if (item == null && !string.IsNullOrEmpty(itemId))
                         {
-                            item = ItemRegistry.Create(itemId);
+                            // Object-type 物品：用 Debris 级别的 itemQuality 修正品质
+                            item = ItemRegistry.Create(itemId, 1, debris.itemQuality);
                         }
                         if (item == null) continue;
 
