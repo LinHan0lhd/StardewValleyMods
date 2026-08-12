@@ -46,8 +46,20 @@ namespace AutoServerPro.Core
         [XmlElement("DebrisType")]
         public int DebrisType { get; set; }
 
+        [XmlElement("ChunkType")]
+        public int ChunkType { get; set; }
+
         [XmlElement("ChunkFinalYLevel")]
         public int ChunkFinalYLevel { get; set; }
+
+        [XmlElement("FloppingFish")]
+        public bool FloppingFish { get; set; }
+
+        [XmlElement("Scale")]
+        public float Scale { get; set; }
+
+        [XmlElement("ItemQuality")]
+        public int ItemQuality { get; set; }
 
         // chunksColor 默认是 (0,0,0,0) 透明，必须保存
         [XmlElement("ChunksColorR")]
@@ -61,6 +73,28 @@ namespace AutoServerPro.Core
 
         [XmlElement("ChunksColorA")]
         public int ChunksColorA { get; set; }
+
+        // nonSpriteChunkColor 默认 White，影响 NUMBERS/SPRITECHUNKS/LETTERS 渲染
+        [XmlElement("NonSpriteColorR")]
+        public int NonSpriteColorR { get; set; }
+
+        [XmlElement("NonSpriteColorG")]
+        public int NonSpriteColorG { get; set; }
+
+        [XmlElement("NonSpriteColorB")]
+        public int NonSpriteColorB { get; set; }
+
+        [XmlElement("NonSpriteColorA")]
+        public int NonSpriteColorA { get; set; }
+
+        [XmlElement("SpriteChunkSheetName")]
+        public string SpriteChunkSheetName { get; set; }
+
+        [XmlElement("SizeOfSourceRectSquares")]
+        public int SizeOfSourceRectSquares { get; set; }
+
+        [XmlElement("DebrisMessage")]
+        public string DebrisMessage { get; set; }
 
         [XmlArray("Chunks")]
         [XmlArrayItem("Chunk")]
@@ -77,6 +111,21 @@ namespace AutoServerPro.Core
 
         [XmlElement("RandomOffset")]
         public int RandomOffset { get; set; }
+
+        [XmlElement("XSpriteSheet")]
+        public int XSpriteSheet { get; set; }
+
+        [XmlElement("YSpriteSheet")]
+        public int YSpriteSheet { get; set; }
+
+        [XmlElement("Scale")]
+        public float Scale { get; set; }
+
+        [XmlElement("Alpha")]
+        public float Alpha { get; set; }
+
+        [XmlElement("Rotation")]
+        public float Rotation { get; set; }
     }
 
     [XmlRoot("GameStateSnapshot")]
@@ -538,20 +587,31 @@ namespace AutoServerPro.Core
                     if (debrisState.Stack > 0)
                         item.Stack = debrisState.Stack;
 
-                    // 3. 恢复 Debris 必要属性（其余使用默认值）
+                    // 3. 恢复 Debris 渲染属性（物理/状态字段使用强制默认值）
                     debris.debrisType.Value = (Debris.DebrisType)debrisState.DebrisType;
+                    debris.chunkType.Value = debrisState.ChunkType;
                     debris.chunkFinalYLevel = debrisState.ChunkFinalYLevel;
+                    debris.floppingFish.Value = debrisState.FloppingFish;
+                    debris.scale.Value = debrisState.Scale;
+                    debris.itemQuality = debrisState.ItemQuality;
                     debris.chunksColor.Value = new Color(
                         debrisState.ChunksColorR,
                         debrisState.ChunksColorG,
                         debrisState.ChunksColorB,
                         debrisState.ChunksColorA);
-                    // 使用默认值: scale=1, nonSpriteColor=White, sizeOfSourceRectSquares=8, 等
-                    // 强制设为"可拾取"状态
+                    debris.nonSpriteChunkColor.Value = new Color(
+                        debrisState.NonSpriteColorR,
+                        debrisState.NonSpriteColorG,
+                        debrisState.NonSpriteColorB,
+                        debrisState.NonSpriteColorA);
+                    debris.spriteChunkSheetName.Value = debrisState.SpriteChunkSheetName ?? "";
+                    debris.sizeOfSourceRectSquares.Value = debrisState.SizeOfSourceRectSquares;
+                    debris.debrisMessage.Value = debrisState.DebrisMessage ?? "";
+                    // 强制物理/状态为"可拾取"
                     debris.chunksMoveTowardPlayer = true;
                     debris.timeSinceDoneBouncing = 600f;
 
-                    // 4. 重建 Chunk — 使用默认值即可
+                    // 4. 重建 Chunk — 恢复渲染属性，强制物理状态
                     if (debrisState.Chunks != null && debrisState.Chunks.Count > 0)
                     {
                         foreach (var chunkState in debrisState.Chunks)
@@ -559,11 +619,15 @@ namespace AutoServerPro.Core
                             try
                             {
                                 var pos = new Vector2(chunkState.X, chunkState.Y);
-                                // 构造器已设 alpha=1, xVelocity/yVelocity=0
                                 var chunk = new Chunk(pos, 0f, 0f, chunkState.RandomOffset);
 
-                                // 关键：设为"静止"状态，等待向玩家移动
-                                chunk.scale = 1f;
+                                // 渲染属性
+                                chunk.xSpriteSheet.Value = chunkState.XSpriteSheet;
+                                chunk.ySpriteSheet.Value = chunkState.YSpriteSheet;
+                                chunk.scale = chunkState.Scale;
+                                chunk.alpha = chunkState.Alpha;
+                                chunk.rotation = chunkState.Rotation;
+                                // 强制物理状态为"静止可拾取"
                                 chunk.hasPassedRestingLineOnce.Value = true;
                                 chunk.bounces = 100;
                                 chunk.sinkTimer.Value = int.MaxValue;
@@ -806,11 +870,22 @@ namespace AutoServerPro.Core
                             Stack = stack,
                             Quality = quality,
                             DebrisType = (int)debris.debrisType.Value,
+                            ChunkType = debris.chunkType.Value,
                             ChunkFinalYLevel = debris.chunkFinalYLevel,
+                            FloppingFish = debris.floppingFish.Value,
+                            Scale = debris.scale.Value,
+                            ItemQuality = debris.itemQuality,
                             ChunksColorR = debris.chunksColor.Value.R,
                             ChunksColorG = debris.chunksColor.Value.G,
                             ChunksColorB = debris.chunksColor.Value.B,
                             ChunksColorA = debris.chunksColor.Value.A,
+                            NonSpriteColorR = debris.nonSpriteChunkColor.Value.R,
+                            NonSpriteColorG = debris.nonSpriteChunkColor.Value.G,
+                            NonSpriteColorB = debris.nonSpriteChunkColor.Value.B,
+                            NonSpriteColorA = debris.nonSpriteChunkColor.Value.A,
+                            SpriteChunkSheetName = debris.spriteChunkSheetName.Value ?? "",
+                            SizeOfSourceRectSquares = debris.sizeOfSourceRectSquares.Value,
+                            DebrisMessage = debris.debrisMessage.Value ?? "",
                         };
 
                         if (debris.Chunks != null && debris.Chunks.Count > 0)
@@ -824,10 +899,15 @@ namespace AutoServerPro.Core
                                     X = pos.X,
                                     Y = pos.Y,
                                     RandomOffset = chunk.randomOffset,
+                                    XSpriteSheet = chunk.xSpriteSheet.Value,
+                                    YSpriteSheet = chunk.ySpriteSheet.Value,
+                                    Scale = chunk.scale,
+                                    Alpha = chunk.alpha,
+                                    Rotation = chunk.rotation,
                                 });
                                 chunkCount++;
 
-                                _monitor.Log($"  保存 Chunk: pos=({pos.X:F2},{pos.Y:F2}) random={chunk.randomOffset}", LogLevel.Trace);
+                                _monitor.Log($"  保存 Chunk: pos=({pos.X:F2},{pos.Y:F2}) random={chunk.randomOffset} scale={chunk.scale:F2} alpha={chunk.alpha:F2} rot={chunk.rotation:F2}", LogLevel.Trace);
                             }
                         }
                         else
@@ -837,6 +917,8 @@ namespace AutoServerPro.Core
                                 X = 0,
                                 Y = debris.chunkFinalYLevel,
                                 RandomOffset = 0,
+                                Scale = 1f,
+                                Alpha = 1f,
                             });
                             chunkCount++;
                         }
