@@ -578,36 +578,20 @@ namespace AutoServerPro.Core
                     _monitor.Log($"矿井层级不同（当前={currentLocation.mineLevel}, 保存={mineState.MineLevel}），跳过对象恢复", LogLevel.Debug);
                 }
 
-                // 恢复所有玩家位置（含离线农场工人）
+                // 恢复所有玩家位置到 farmhandData（含离线农场工人）
+                // 游戏会在农场工人加入时通过 ApplyWakeUpPosition 自动恢复位置
+                // 关键：disconnectDay = DaysPlayed（同一天），走 ApplyWakeUpPosition 分支而非 ResetFarmhandState
                 int restoredFarmers = 0;
+                string mineName = currentLocation.NameOrUniqueName;
                 foreach (var farmerPos in mineState.FarmerPositions)
                 {
-                    // 1. 主机玩家
-                    if (Game1.player.UniqueMultiplayerID == farmerPos.FarmerId)
-                    {
-                        Game1.player.Position = new Vector2(farmerPos.X, farmerPos.Y);
-                        Game1.player.mostRecentBed = new Vector2(farmerPos.X, farmerPos.Y);
-                        restoredFarmers++;
-                        continue;
-                    }
+                    var targetPos = new Vector2(farmerPos.X, farmerPos.Y);
 
-                    // 2. 已在线的农场工人
-                    var onlineFarmer = Game1.otherFarmers.Values.FirstOrDefault(f => f.UniqueMultiplayerID == farmerPos.FarmerId);
-                    if (onlineFarmer != null && onlineFarmer.currentLocation == currentLocation)
+                    if (Game1.netWorldState.Value.farmhandData.TryGetValue(farmerPos.FarmerId, out var farmhand))
                     {
-                        onlineFarmer.Position = new Vector2(farmerPos.X, farmerPos.Y);
-                        onlineFarmer.mostRecentBed = new Vector2(farmerPos.X, farmerPos.Y);
-                        restoredFarmers++;
-                        continue;
-                    }
-
-                    // 3. 离线农场工人 — 修改 farmhandData 中的对象
-                    if (Game1.netWorldState.Value.farmhandData.TryGetValue(farmerPos.FarmerId, out var offlineFarmer))
-                    {
-                        offlineFarmer.Position = new Vector2(farmerPos.X, farmerPos.Y);
-                        offlineFarmer.mostRecentBed = new Vector2(farmerPos.X, farmerPos.Y);
-                        offlineFarmer.currentLocation = currentLocation;
-                        offlineFarmer.disconnectLocation.Value = currentLocation.NameOrUniqueName;
+                        farmhand.disconnectDay.Value = (int)Game1.MasterPlayer.stats.DaysPlayed;
+                        farmhand.disconnectLocation.Value = mineName;
+                        farmhand.disconnectPosition.Value = targetPos;
                         restoredFarmers++;
                     }
                 }
