@@ -144,6 +144,19 @@ namespace AutoServerPro.Core
         public string ItemXml { get; set; }
     }
 
+    [XmlRoot("FarmerPositionState")]
+    public class FarmerPositionState
+    {
+        [XmlElement("FarmerId")]
+        public long FarmerId { get; set; }
+
+        [XmlElement("X")]
+        public float X { get; set; }
+
+        [XmlElement("Y")]
+        public float Y { get; set; }
+    }
+
     [XmlRoot("MineState")]
     public class MineState
     {
@@ -153,15 +166,13 @@ namespace AutoServerPro.Core
         [XmlElement("ForceLayout")]
         public int? ForceLayout { get; set; }
 
-        [XmlElement("PlayerX")]
-        public float PlayerX { get; set; }
-
-        [XmlElement("PlayerY")]
-        public float PlayerY { get; set; }
-
         [XmlArray("Objects")]
         [XmlArrayItem("Object")]
         public List<ObjectState> Objects { get; set; } = new();
+
+        [XmlArray("FarmerPositions")]
+        [XmlArrayItem("FarmerPosition")]
+        public List<FarmerPositionState> FarmerPositions { get; set; } = new();
     }
 
     [XmlRoot("GameStateSnapshot")]
@@ -514,7 +525,7 @@ namespace AutoServerPro.Core
                 _monitor.Log($"恢复掉落物失败: {ex.Message}", LogLevel.Warn);
             }
 
-            _monitor.Log("玩家位置由原生存档处理（SyncOnlinePlayerPositions已同步在线位置）", LogLevel.Debug);
+            _monitor.Log("矿井状态恢复完成（多玩家位置已同步）", LogLevel.Debug);
         }
 
         private void RestoreMineState(GameStateSnapshot snapshot)
@@ -531,7 +542,7 @@ namespace AutoServerPro.Core
                 return;
             }
 
-            _monitor.Log($"恢复矿井状态: Level={mineState.MineLevel}, ForceLayout={mineState.ForceLayout}, Objects={mineState.Objects.Count}", LogLevel.Debug);
+            _monitor.Log($"恢复矿井状态: Level={mineState.MineLevel}, ForceLayout={mineState.ForceLayout}, Objects={mineState.Objects.Count}, Farmers={mineState.FarmerPositions.Count}", LogLevel.Debug);
 
             try
             {
@@ -565,13 +576,19 @@ namespace AutoServerPro.Core
                         catch { }
                     }
 
-                    // 恢复玩家位置
-                    if (mineState.PlayerX > 0 && mineState.PlayerY > 0)
+                    // 恢复所有在矿井中的玩家位置（支持联机）
+                    int restoredFarmers = 0;
+                    foreach (var farmerPos in mineState.FarmerPositions)
                     {
-                        Game1.player.Position = new Vector2(mineState.PlayerX, mineState.PlayerY);
+                        var farmer = Game1.getAllFarmers().FirstOrDefault(f => f.UniqueMultiplayerID == farmerPos.FarmerId);
+                        if (farmer != null && farmer.currentLocation == currentLocation)
+                        {
+                            farmer.Position = new Vector2(farmerPos.X, farmerPos.Y);
+                            restoredFarmers++;
+                        }
                     }
 
-                    _monitor.Log($"矿井对象恢复完成: {mineState.Objects.Count}个对象", LogLevel.Debug);
+                    _monitor.Log($"矿井恢复完成: {mineState.Objects.Count}个对象, {restoredFarmers}个玩家位置", LogLevel.Debug);
                 }
                 else
                 {
@@ -1066,10 +1083,22 @@ namespace AutoServerPro.Core
                 snapshot.Mine = new MineState
                 {
                     MineLevel = mine.mineLevel,
-                    ForceLayout = mine.forceLayout,
-                    PlayerX = Game1.player.Position.X,
-                    PlayerY = Game1.player.Position.Y
+                    ForceLayout = mine.forceLayout
                 };
+
+                // 保存所有在矿井中的玩家位置（支持联机）
+                foreach (var farmer in Game1.getAllFarmers())
+                {
+                    if (farmer.currentLocation == mine)
+                    {
+                        snapshot.Mine.FarmerPositions.Add(new FarmerPositionState
+                        {
+                            FarmerId = farmer.UniqueMultiplayerID,
+                            X = farmer.Position.X,
+                            Y = farmer.Position.Y
+                        });
+                    }
+                }
 
                 foreach (var kvp in mine.objects.Pairs.ToList())
                 {
@@ -1093,7 +1122,7 @@ namespace AutoServerPro.Core
                     catch { }
                 }
 
-                _monitor.Log($"保存矿井: Level={snapshot.Mine.MineLevel}, ForceLayout={snapshot.Mine.ForceLayout}, Objects={snapshot.Mine.Objects.Count}", LogLevel.Debug);
+                _monitor.Log($"保存矿井: Level={snapshot.Mine.MineLevel}, ForceLayout={snapshot.Mine.ForceLayout}, Objects={snapshot.Mine.Objects.Count}, Farmers={snapshot.Mine.FarmerPositions.Count}", LogLevel.Debug);
             }
 
             _monitor.Log($"快照创建完成: {debrisCount}掉落物, {chunkCount}物品实例", LogLevel.Debug);
