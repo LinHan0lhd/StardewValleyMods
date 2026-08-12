@@ -134,12 +134,6 @@ namespace AutoServerPro.Core
         [XmlElement("TimeOfDay")]
         public int TimeOfDay { get; set; }
 
-        [XmlElement("Season")]
-        public string Season { get; set; }
-
-        [XmlElement("DayOfMonth")]
-        public int DayOfMonth { get; set; }
-
         [XmlArray("DebrisItems")]
         [XmlArrayItem("DebrisItem")]
         public List<DebrisState> DebrisItems { get; set; } = new();
@@ -391,7 +385,7 @@ namespace AutoServerPro.Core
                     var snapshot = (GameStateSnapshot)SnapshotSerializer.Deserialize(fs);
                     if (snapshot == null) return;
 
-                    _monitor.Log($"加载存档数据 - 时间: {snapshot.Season} {snapshot.DayOfMonth}日 {snapshot.TimeOfDay}:00, 掉落物: {snapshot.DebrisItems.Count}", LogLevel.Info);
+                    _monitor.Log($"加载存档数据 - 时间: {snapshot.TimeOfDay}:00, 掉落物: {snapshot.DebrisItems.Count}", LogLevel.Info);
 
                     _pendingRestoreSnapshot = snapshot;
                     _restoreDelayTicks = 15;
@@ -840,9 +834,7 @@ namespace AutoServerPro.Core
         {
             var snapshot = new GameStateSnapshot
             {
-                TimeOfDay = Game1.timeOfDay,
-                Season = Game1.currentSeason,
-                DayOfMonth = Game1.dayOfMonth
+                TimeOfDay = Game1.timeOfDay
             };
 
             int debrisCount = 0;
