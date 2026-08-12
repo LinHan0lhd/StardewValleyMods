@@ -896,12 +896,12 @@ namespace AutoServerPro.Core
 
             int resetCount = 0;
             int scheduleCount = 0;
+            int noScheduleCount = 0;
             foreach (var npc in Utility.getAllCharacters())
             {
                 try
                 {
-                    // 1. 清除行程路径和寻路控制器（参考 resetForNewDay 逻辑）
-                    npc.ClearSchedule();
+                    // 1. 清除旧的寻路状态
                     npc.queuedSchedulePaths.Clear();
                     npc.lastAttemptedSchedule = -1;
                     npc.currentScheduleDelay = 0f;
@@ -935,14 +935,25 @@ namespace AutoServerPro.Core
                             npc.currentLocation.characters.Add(npc);
                     }
 
-                    // 5. 重新加载日程（TryLoadSchedule 仅在新一天触发，这里手动调用）
-                    if (npc.IsVillager && npc.getMasterScheduleRawData() != null)
+                    // 5. 重新加载日程（核心修复：确保 Schedule 不为 null，NPC 才能移动）
+                    if (npc.IsVillager)
                     {
                         if (npc.TryLoadSchedule())
                         {
                             scheduleCount++;
                             npc.performSpecialScheduleChanges();
                         }
+                        else
+                        {
+                            // 日程加载失败（如无匹配日程），手动启用日程跟随
+                            npc.followSchedule = true;
+                            noScheduleCount++;
+                        }
+                    }
+                    else
+                    {
+                        // 非村民 NPC（宠物、怪物等），确保 followSchedule 为 true
+                        npc.followSchedule = true;
                     }
 
                     resetCount++;
@@ -954,7 +965,7 @@ namespace AutoServerPro.Core
             }
 
             if (resetCount > 0)
-                _monitor.Log($"已重置 {resetCount} 个 NPC 状态，{scheduleCount} 个已重新加载日程", LogLevel.Debug);
+                _monitor.Log($"已重置 {resetCount} 个 NPC 状态，{scheduleCount} 个已加载日程，{noScheduleCount} 个无日程", LogLevel.Debug);
         }
 
         public void AutoBackupCheck()
