@@ -498,6 +498,16 @@ namespace AutoServerPro.Core
 
         private void RestoreSnapshot(GameStateSnapshot snapshot)
         {
+            // 先重置 NPC 状态，确保时间推进时 NPC 能跟随日程
+            try
+            {
+                ResetNpcSchedules();
+            }
+            catch (Exception ex)
+            {
+                _monitor.Log($"预先重置 NPC 状态失败: {ex.Message}", LogLevel.Warn);
+            }
+
             try
             {
                 RestoreTimeByTick(snapshot.TimeOfDay);
@@ -870,9 +880,19 @@ namespace AutoServerPro.Core
             _monitor.Log($"已通过直接修改 farmhandData 同步 {synced} 个在线玩家位置", synced > 0 ? LogLevel.Debug : LogLevel.Trace);
         }
 
+        private static readonly FieldInfo[] NpcResetFields = new[]
+        {
+            typeof(NPC).GetField("isWalkingInSquare", BindingFlags.Instance | BindingFlags.NonPublic),
+            typeof(NPC).GetField("returningToEndPoint", BindingFlags.Instance | BindingFlags.NonPublic),
+            typeof(NPC).GetField("_startedEndOfRouteBehavior", BindingFlags.Instance | BindingFlags.NonPublic),
+            typeof(NPC).GetField("_finishingEndOfRouteBehavior", BindingFlags.Instance | BindingFlags.NonPublic),
+            typeof(NPC).GetField("loadedEndOfRouteBehavior", BindingFlags.Instance | BindingFlags.NonPublic),
+            typeof(NPC).GetField("currentlyDoingEndOfRouteAnimation", BindingFlags.Instance | BindingFlags.NonPublic),
+        };
+
         private void ResetNpcSchedules()
         {
-            _monitor.Log("重置 NPC 行程状态，防止卡死...", LogLevel.Debug);
+            _monitor.Log("重置 NPC 状态（恢复中途保存的行走状态）...", LogLevel.Debug);
 
             int resetCount = 0;
             int scheduleCount = 0;
@@ -880,37 +900,61 @@ namespace AutoServerPro.Core
             {
                 try
                 {
-                    npc.ClearSchedule();  // 清除当前行程
-                    npc.followSchedule = true;  // 重新启用行程跟随
-                    npc.ignoreScheduleToday = false;
+                    // 1. 清除行程路径和寻路控制器（参考 resetForNewDay 逻辑）
+                    npc.ClearSchedule();
+                    npc.queuedSchedulePaths.Clear();
                     npc.lastAttemptedSchedule = -1;
                     npc.currentScheduleDelay = 0f;
                     npc.scheduleDelaySeconds = 0f;
+                    npc.ignoreScheduleToday = false;
                     npc.DirectionsToNewLocation = null;
+                    npc.controller = null;
+                    npc.temporaryController = null;
 
-                    if (npc.temporaryController != null)
-                    {
-                        npc.temporaryController = null;
-                    }
-
+                    // 2. 清除行走/动画状态（通过反射访问 private 字段）
                     npc.Halt();
-                    resetCount++;
-
-                    if (npc.IsVillager)
+                    npc.drawOffset = Vector2.Zero;
+                    npc.faceTowardFarmer = false;
+                    npc.faceTowardFarmerTimer = 0;
+                    foreach (var f in NpcResetFields)
                     {
-                        try
-                        {
-                            if (npc.TryLoadSchedule())
-                                scheduleCount++;
-                        }
-                        catch { }
+                        if (f == null) continue;
+                        if (f.FieldType == typeof(bool)) f.SetValue(npc, false);
+                        else if (f.FieldType == typeof(string)) f.SetValue(npc, null);
                     }
+
+                    // 3. 面向默认方向
+                    npc.faceDirection(npc.DefaultFacingDirection);
+                    npc.previousEndPoint = new Point((int)npc.DefaultPosition.X / 64, (int)npc.DefaultPosition.Y / 64);
+
+                    // 4. 如果 NPC 不在任何位置，放回 home
+                    if (npc.currentLocation == null)
+                    {
+                        npc.currentLocation = npc.getHome() ?? Game1.getFarm();
+                        if (npc.currentLocation != null && !npc.currentLocation.characters.Contains(npc))
+                            npc.currentLocation.characters.Add(npc);
+                    }
+
+                    // 5. 重新加载日程（TryLoadSchedule 仅在新一天触发，这里手动调用）
+                    if (npc.IsVillager && npc.getMasterScheduleRawData() != null)
+                    {
+                        if (npc.TryLoadSchedule())
+                        {
+                            scheduleCount++;
+                            npc.performSpecialScheduleChanges();
+                        }
+                    }
+
+                    resetCount++;
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    _monitor.Log($"  NPC {npc?.Name} 重置失败: {ex.Message}", LogLevel.Trace);
+                }
             }
 
             if (resetCount > 0)
-                _monitor.Log($"已重置 {resetCount} 个 NPC 行程状态，{scheduleCount} 个已重新加载日程", LogLevel.Debug);
+                _monitor.Log($"已重置 {resetCount} 个 NPC 状态，{scheduleCount} 个已重新加载日程", LogLevel.Debug);
         }
 
         public void AutoBackupCheck()
