@@ -140,9 +140,6 @@ namespace AutoServerPro.Core
         [XmlElement("DayOfMonth")]
         public int DayOfMonth { get; set; }
 
-        [XmlElement("MineLowestLevelReached")]
-        public int MineLowestLevelReached { get; set; }
-
         [XmlArray("DebrisItems")]
         [XmlArrayItem("DebrisItem")]
         public List<DebrisState> DebrisItems { get; set; } = new();
@@ -458,11 +455,6 @@ namespace AutoServerPro.Core
             try
             {
                 RestoreTimeByTick(snapshot.TimeOfDay);
-
-                if (snapshot.MineLowestLevelReached > 0)
-                {
-                    MineShaft.lowestLevelReached = snapshot.MineLowestLevelReached;
-                }
 
                 _monitor.Log($"时间已恢复: {Game1.currentSeason} {Game1.dayOfMonth}日 {Game1.timeOfDay}:00", LogLevel.Debug);
             }
@@ -850,8 +842,7 @@ namespace AutoServerPro.Core
             {
                 TimeOfDay = Game1.timeOfDay,
                 Season = Game1.currentSeason,
-                DayOfMonth = Game1.dayOfMonth,
-                MineLowestLevelReached = MineShaft.lowestLevelReached
+                DayOfMonth = Game1.dayOfMonth
             };
 
             int debrisCount = 0;
