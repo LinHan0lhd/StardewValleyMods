@@ -406,18 +406,19 @@ namespace StardewValley.Pathfinding
 				{
 					this.pathToEndPoint.Pop();
 				}
-				// After warping, check if we need to regenerate path
+				// After warping, regenerate path to target location if needed
 				// This handles the case where NPC is restored from a save and needs to continue walking
 				if (this.NPCSchedule)
 				{
-					NPC npc = this.character as NPC;
-					if (npc != null && npc.DirectionsToNewLocation != null)
+					NPC npc2 = this.character as NPC;
+					if (npc2 != null && npc2.DirectionsToNewLocation != null)
 					{
-						Point targetTile = npc.DirectionsToNewLocation.targetTile;
-						// If targetTile is valid and different from current tile and path is too short, regenerate
-						if (targetTile != Point.Zero && targetTile != tile && this.pathToEndPoint.Count < 3)
+						Point targetTile = npc2.DirectionsToNewLocation.targetTile;
+						// Always try to regenerate path after warp if targetTile is valid
+						// This ensures NPC can continue walking to the target location
+						if (targetTile != Point.Zero && targetTile != tile)
 						{
-							Stack<Point> newPath = PathFindController.findPathForNPCSchedules(tile, targetTile, this.location, 30000, npc);
+							Stack<Point> newPath = PathFindController.findPathForNPCSchedules(tile, targetTile, this.location, 30000, npc2);
 							if (newPath != null && newPath.Count > 0)
 							{
 								this.pathToEndPoint = newPath;

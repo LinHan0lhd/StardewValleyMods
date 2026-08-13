@@ -1041,17 +1041,20 @@ namespace AutoServerPro.Core
                 Point warpPoint = location.getWarpPointTo(targetLocation, npc);
                 if (warpPoint == Point.Zero)
                 {
-                    // 如果找不到 warp 点，使用日程的原始路径
-                    warpPoint = directions.route.Peek();
+                    // 如果找不到 warp 点，无法生成路径
+                    _monitor.Log($"  NPC {npc.Name} 找不到从 {location.NameOrUniqueName} 到 {targetLocation} 的 warp 点", LogLevel.Trace);
+                    return false;
                 }
 
                 // 生成从当前位置到 warp 点的新路径
                 // 这样 NPC 能正确走到 warp 点，PathFindController 会自动处理 warp
+                // warp 后，handleWarps 会在目标地图上重新生成路径
                 Stack<Point> newPath = PathFindController.findPathForNPCSchedules(currentTile, warpPoint, location, 30000, npc);
                 if (newPath == null || newPath.Count == 0)
                 {
-                    // 如果新路径生成失败，使用日程的原始路径
-                    newPath = directions.route;
+                    // 路径生成失败
+                    _monitor.Log($"  NPC {npc.Name} 路径生成失败: {currentTile} -> warp({warpPoint}) in {location.NameOrUniqueName}", LogLevel.Trace);
+                    return false;
                 }
 
                 PathFindController.endBehavior endBehavior = null;
@@ -1082,8 +1085,9 @@ namespace AutoServerPro.Core
                 Stack<Point> newPath = PathFindController.findPathForNPCSchedules(currentTile, targetTile, location, 30000, npc);
                 if (newPath == null || newPath.Count == 0)
                 {
-                    // 如果新路径生成失败，使用日程的原始路径
-                    newPath = directions.route;
+                    // 路径生成失败，返回 false
+                    _monitor.Log($"  NPC {npc.Name} 路径生成失败: {currentTile} -> {targetTile} in {location.NameOrUniqueName}", LogLevel.Trace);
+                    return false;
                 }
 
                 PathFindController.endBehavior endBehavior = null;
