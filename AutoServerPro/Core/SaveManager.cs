@@ -987,46 +987,89 @@ namespace AutoServerPro.Core
             if (npc.Schedule == null || npc.Schedule.Count == 0) return false;
 
             var keys = npc.Schedule.Keys.OrderBy(k => k).ToList();
+            string currentLocationName = npc.currentLocation?.NameOrUniqueName ?? "";
+            Point currentTile = npc.TilePoint;
 
-            // 找到当前时间应该执行的行程点
-            // 优先选择 <= 当前时间的最后一个（NPC 应该正在执行的行程）
-            int? currentKey = null;
+            // 步骤 1：找到 NPC 需要执行的下一个行程
+            int? targetKey = null;
+            SchedulePathDescription directions = null;
+
             foreach (var key in keys)
             {
-                if (key <= currentTime)
-                    currentKey = key;
-                else
-                    break;
+                if (!npc.Schedule.TryGetValue(key, out var dir))
+                    continue;
+
+                string targetLoc = dir.targetLocationName ?? "";
+
+                // 如果目标位置就是当前位置，说明此行程已完成
+                if (targetLoc == currentLocationName)
+                    continue;
+
+                targetKey = key;
+                directions = dir;
+                break;
             }
 
-            // 如果没有 <= 当前时间的，选择第一个 >= 当前时间的
-            if (!currentKey.HasValue)
-            {
-                foreach (var key in keys)
-                {
-                    if (key >= currentTime)
-                    {
-                        currentKey = key;
-                        break;
-                    }
-                }
-            }
-
-            if (!currentKey.HasValue || !npc.Schedule.TryGetValue(currentKey.Value, out var directions))
+            if (!targetKey.HasValue || directions == null)
                 return false;
 
-            // 如果行程在当前 location，设置路径
-            if (string.IsNullOrEmpty(directions.targetLocationName) ||
-                npc.currentLocation?.NameOrUniqueName == directions.targetLocationName)
+            string targetLocation = directions.targetLocationName ?? "";
+            bool isCrossLocation = !string.IsNullOrEmpty(targetLocation) && targetLocation != currentLocationName;
+            GameLocation location = npc.currentLocation;
+            if (location == null) return false;
+
+            // 步骤 2：获取目标瓦片
+            Point targetTile = directions.targetTile;
+            if (targetTile == Point.Zero && directions.route.Count > 0)
             {
+                targetTile = directions.route.Peek(); // 栈顶 = 终点
+            }
+
+            // 步骤 3：判断是否跨 location
+            if (isCrossLocation)
+            {
+                // 跨 location 的行程
+                if (targetKey.Value > currentTime)
+                {
+                    // 时间未到，等时间推进时通过 checkSchedule 触发
+                    npc.lastAttemptedSchedule = -1;
+                    return false;
+                }
+
+                // 时间已过：NPC 应该正在执行这个行程
+                // 获取从当前 location 到目标 location 的 warp 点
+                Point warpPoint = location.getWarpPointTo(targetLocation, npc);
+                if (warpPoint == Point.Zero)
+                {
+                    // 如果找不到 warp 点，使用日程的原始路径
+                    warpPoint = directions.route.Peek();
+                }
+
+                // 生成从当前位置到 warp 点的新路径
+                // 这样 NPC 能正确走到 warp 点，PathFindController 会自动处理 warp
+                Stack<Point> newPath = PathFindController.findPathForNPCSchedules(currentTile, warpPoint, location, 30000, npc);
+                if (newPath == null || newPath.Count == 0)
+                {
+                    // 如果新路径生成失败，使用日程的原始路径
+                    newPath = directions.route;
+                }
+
                 PathFindController.endBehavior endBehavior = null;
                 if (GetRouteEndBehaviorMethod != null)
                 {
                     endBehavior = (PathFindController.endBehavior)GetRouteEndBehaviorMethod.Invoke(npc, new object[] { directions.endOfRouteBehavior, directions.endOfRouteMessage });
                 }
 
+                // 设置 DirectionsToNewLocation，让 PathFindController 知道目标位置
                 npc.DirectionsToNewLocation = directions;
-                npc.controller = new PathFindController(directions.route, npc, npc.currentLocation)
+
+                // 将 directions 添加到 queuedSchedulePaths，这样 warp 后 NPC 能继续走到目标位置
+                // queuedSchedulePaths 中的时间设为当前时间（已过），确保立即执行
+                directions.time = currentTime;
+                npc.queuedSchedulePaths.Clear();
+                npc.queuedSchedulePaths.Add(directions);
+
+                npc.controller = new PathFindController(newPath, npc, location)
                 {
                     finalFacingDirection = directions.facingDirection,
                     endBehaviorFunction = endBehavior
@@ -1035,9 +1078,32 @@ namespace AutoServerPro.Core
             }
             else
             {
-                // 行程在另一个 location，等时间推进时通过 checkSchedule 触发
-                npc.lastAttemptedSchedule = -1;
-                return false;
+                // 同 location 的行程
+                // 为 NPC 生成从当前位置到目标位置的新路径
+                // 因为 NPC 可能不在日程路径的起点
+
+                // 生成从当前位置到目标位置的新路径
+                // findPathForNPCSchedules(startPoint, endPoint, ...)
+                Stack<Point> newPath = PathFindController.findPathForNPCSchedules(currentTile, targetTile, location, 30000, npc);
+                if (newPath == null || newPath.Count == 0)
+                {
+                    // 如果新路径生成失败，使用日程的原始路径
+                    newPath = directions.route;
+                }
+
+                PathFindController.endBehavior endBehavior = null;
+                if (GetRouteEndBehaviorMethod != null)
+                {
+                    endBehavior = (PathFindController.endBehavior)GetRouteEndBehaviorMethod.Invoke(npc, new object[] { directions.endOfRouteBehavior, directions.endOfRouteMessage });
+                }
+
+                npc.DirectionsToNewLocation = directions;
+                npc.controller = new PathFindController(newPath, npc, location)
+                {
+                    finalFacingDirection = directions.facingDirection,
+                    endBehaviorFunction = endBehavior
+                };
+                return true;
             }
         }
 
