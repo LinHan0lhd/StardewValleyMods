@@ -881,6 +881,30 @@ namespace AutoServerPro.Core
             _monitor.Log($"已通过直接修改 farmhandData 同步 {synced} 个在线玩家位置", synced > 0 ? LogLevel.Debug : LogLevel.Trace);
         }
 
+        private void SyncNpcPositions()
+        {
+            int synced = 0;
+
+            // 同步 NPC 的当前位置和 location 信息
+            // 确保保存时 NPC 的位置是正确的
+            foreach (var npc in Utility.getAllCharacters())
+            {
+                if (npc == null || !npc.IsVillager) continue;
+
+                // 确保 NPC 的位置和 location 信息是正确的
+                // 游戏原生保存会保存 Character.Position 属性
+                // 这里只需要确保 NPC 的当前位置已被更新
+                if (npc.currentLocation == null)
+                {
+                    npc.currentLocation = npc.getHome() ?? Game1.getFarm();
+                }
+
+                synced++;
+            }
+
+            _monitor.Log($"已同步 {synced} 个 NPC 位置", synced > 0 ? LogLevel.Debug : LogLevel.Trace);
+        }
+
         private static readonly FieldInfo[] NpcResetFields = new[]
         {
             typeof(NPC).GetField("isWalkingInSquare", BindingFlags.Instance | BindingFlags.NonPublic),
@@ -1023,6 +1047,8 @@ namespace AutoServerPro.Core
             if (targetTile == Point.Zero && directions.route.Count > 0)
             {
                 targetTile = directions.route.Peek(); // 栈顶 = 终点
+                // 更新 directions.targetTile，确保 handleWarps 能获取到正确的目标位置
+                directions.targetTile = targetTile;
             }
 
             // 步骤 3：判断是否跨 location
@@ -1096,7 +1122,8 @@ namespace AutoServerPro.Core
                     endBehavior = (PathFindController.endBehavior)GetRouteEndBehaviorMethod.Invoke(npc, new object[] { directions.endOfRouteBehavior, directions.endOfRouteMessage });
                 }
 
-                npc.DirectionsToNewLocation = directions;
+                // 同地图行程不需要设置 DirectionsToNewLocation
+                // 因为它不需要 handleWarps 的路径重新生成逻辑
                 npc.controller = new PathFindController(newPath, npc, location)
                 {
                     finalFacingDirection = directions.facingDirection,
@@ -1412,6 +1439,7 @@ namespace AutoServerPro.Core
             try
             {
                 SyncOnlinePlayerPositions();
+                SyncNpcPositions();
 
                 _monitor.Log($"保存前位置状态: 主机=({Game1.player.position.Value.X}, {Game1.player.position.Value.Y}), " +
                     $"farmhands={Game1.netWorldState.Value.farmhandData.Count()}", LogLevel.Debug);

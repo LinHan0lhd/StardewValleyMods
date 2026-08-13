@@ -414,6 +414,11 @@ namespace StardewValley.Pathfinding
 					if (npc2 != null && npc2.DirectionsToNewLocation != null)
 					{
 						Point targetTile = npc2.DirectionsToNewLocation.targetTile;
+						// If targetTile is Point.Zero, try to get it from the route stack
+						if (targetTile == Point.Zero && npc2.DirectionsToNewLocation.route != null && npc2.DirectionsToNewLocation.route.Count > 0)
+						{
+							targetTile = npc2.DirectionsToNewLocation.route.Peek();
+						}
 						// Always try to regenerate path after warp if targetTile is valid
 						// This ensures NPC can continue walking to the target location
 						if (targetTile != Point.Zero && targetTile != tile)
