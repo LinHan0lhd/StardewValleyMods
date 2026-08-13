@@ -1061,13 +1061,8 @@ namespace AutoServerPro.Core
                 }
 
                 // 设置 DirectionsToNewLocation，让 PathFindController 知道目标位置
+                // handleWarps 会在 warp 后使用这个信息重新生成路径
                 npc.DirectionsToNewLocation = directions;
-
-                // 将 directions 添加到 queuedSchedulePaths，这样 warp 后 NPC 能继续走到目标位置
-                // queuedSchedulePaths 中的时间设为当前时间（已过），确保立即执行
-                directions.time = currentTime;
-                npc.queuedSchedulePaths.Clear();
-                npc.queuedSchedulePaths.Add(directions);
 
                 npc.controller = new PathFindController(newPath, npc, location)
                 {
