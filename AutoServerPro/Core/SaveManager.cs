@@ -461,7 +461,6 @@ namespace AutoServerPro.Core
             {
                 _monitor.Log($"延迟恢复存档数据 (延迟{_restoreDelayTicks + 1}tick已过)", LogLevel.Debug);
                 RestoreSnapshot(_pendingRestoreSnapshot);
-                ResetNpcSchedules();
                 _monitor.Log("存档数据恢复完成", LogLevel.Info);
             }
             catch (Exception ex)
@@ -499,16 +498,8 @@ namespace AutoServerPro.Core
 
         private void RestoreSnapshot(GameStateSnapshot snapshot)
         {
-            // 先重置 NPC 状态，确保时间推进时 NPC 能跟随日程
-            try
-            {
-                ResetNpcSchedules();
-            }
-            catch (Exception ex)
-            {
-                _monitor.Log($"预先重置 NPC 状态失败: {ex.Message}", LogLevel.Warn);
-            }
-
+            // 先恢复时间，使 Game1.timeOfDay 变成存档时的时间
+            // 这样后续的 ResetNpcSchedules 才能基于正确的时间加载日程
             try
             {
                 RestoreTimeByTick(snapshot.TimeOfDay);
@@ -518,6 +509,18 @@ namespace AutoServerPro.Core
             catch (Exception ex)
             {
                 _monitor.Log($"恢复时间数据失败: {ex.Message}", LogLevel.Warn);
+            }
+
+            // 时间恢复后再重置 NPC 状态
+            // 使 NPC 加载正确的日程（TryLoadSchedule 使用当前 season/day 动态计算 key）
+            // 并基于当前时间设置当前行走路径
+            try
+            {
+                ResetNpcSchedules();
+            }
+            catch (Exception ex)
+            {
+                _monitor.Log($"重置 NPC 状态失败: {ex.Message}", LogLevel.Warn);
             }
 
             try
@@ -974,13 +977,16 @@ namespace AutoServerPro.Core
 
         private void ResetNpcSchedules()
         {
-            _monitor.Log("重置 NPC 状态（恢复中途保存的行走状态）...", LogLevel.Debug);
+            _monitor.Log($"重置 NPC 状态（当前时间 {Game1.currentSeason} {Game1.dayOfMonth}日 {Game1.timeOfDay}:00）...", LogLevel.Debug);
 
             int resetCount = 0;
             int scheduleCount = 0;
             int pathSetCount = 0;
             int noScheduleCount = 0;
+            int pathFailCount = 0;
             int currentTime = Game1.timeOfDay;
+            string currentSeason = Game1.currentSeason;
+            int currentDay = Game1.dayOfMonth;
 
             foreach (var npc in Utility.getAllCharacters())
             {
@@ -1008,11 +1014,7 @@ namespace AutoServerPro.Core
                         else if (f.FieldType == typeof(string)) f.SetValue(npc, null);
                     }
 
-                    // 3. 面向默认方向
-                    npc.faceDirection(npc.DefaultFacingDirection);
-                    npc.previousEndPoint = new Point((int)npc.DefaultPosition.X / 64, (int)npc.DefaultPosition.Y / 64);
-
-                    // 4. 如果 NPC 不在任何位置，放回 home
+                    // 3. 如果 NPC 不在任何位置，放回 home
                     if (npc.currentLocation == null)
                     {
                         npc.currentLocation = npc.getHome() ?? Game1.getFarm();
@@ -1020,7 +1022,7 @@ namespace AutoServerPro.Core
                             npc.currentLocation.characters.Add(npc);
                     }
 
-                    // 5. 重新加载日程 + 设置当前路径（核心修复！）
+                    // 4. 重新加载日程 + 设置当前路径（核心修复！）
                     if (npc.IsVillager)
                     {
                         if (npc.TryLoadSchedule())
@@ -1032,12 +1034,25 @@ namespace AutoServerPro.Core
                             // 因为 checkSchedule() 用精确时间点查找，
                             // 但日程是整点的（1000, 1200），NPC 可能在 10:30 保存
                             if (SetCurrentSchedulePath(npc, currentTime))
+                            {
                                 pathSetCount++;
+                            }
+                            else
+                            {
+                                pathFailCount++;
+                                _monitor.Log($"  NPC {npc.Name} 日程已加载(Schedule={npc.Schedule?.Count})但路径设置失败 (时间={currentTime}, 位置={npc.currentLocation?.NameOrUniqueName})", LogLevel.Trace);
+                            }
                         }
                         else
                         {
                             npc.followSchedule = true;
                             noScheduleCount++;
+                            // 诊断信息：分析为什么日程加载失败（情况 A/B）
+                            string dayKey = $"{currentSeason}_{currentDay}";
+                            string dayName = Game1.shortDayNameFromDayOfSeason(currentDay);
+                            _monitor.Log($"  NPC {npc.Name} TryLoadSchedule 失败：当前日期={dayKey}，日期名={dayName}。可能原因：" +
+                                $"日程表 key 过期（情况A）或日程数据缺失（情况B）。" +
+                                $"dayScheduleName={npc.dayScheduleName}", LogLevel.Debug);
                         }
                     }
                     else
@@ -1054,7 +1069,7 @@ namespace AutoServerPro.Core
             }
 
             if (resetCount > 0)
-                _monitor.Log($"已重置 {resetCount} 个 NPC，{scheduleCount} 个已加载日程，{pathSetCount} 个已设置路径，{noScheduleCount} 个无日程", LogLevel.Debug);
+                _monitor.Log($"已重置 {resetCount} 个 NPC，{scheduleCount} 个已加载日程，{pathSetCount} 个已设置路径，{pathFailCount} 个路径失败，{noScheduleCount} 个无日程", LogLevel.Debug);
         }
 
         /// <summary>
@@ -1069,123 +1084,96 @@ namespace AutoServerPro.Core
             string currentLocationName = npc.currentLocation?.NameOrUniqueName ?? "";
             Point currentTile = npc.TilePoint;
 
-            // 步骤 1：找到 NPC 需要执行的下一个行程
-            int? targetKey = null;
-            SchedulePathDescription directions = null;
-
+            // 填充 queuedSchedulePaths：收集所有时间 <= currentTime 且目标位置 != 当前位置 的行程
+            // 然后取最近的一个作为当前控制器
+            var pastSchedules = new List<KeyValuePair<int, SchedulePathDescription>>();
             foreach (var key in keys)
             {
+                if (key > currentTime) break;
                 if (!npc.Schedule.TryGetValue(key, out var dir))
                     continue;
-
                 string targetLoc = dir.targetLocationName ?? "";
-
-                // 如果目标位置就是当前位置，说明此行程已完成
+                // 跳过已完成的行程（目标位置就是当前位置）
                 if (targetLoc == currentLocationName)
                     continue;
-
-                targetKey = key;
-                directions = dir;
-                break;
+                pastSchedules.Add(new KeyValuePair<int, SchedulePathDescription>(key, dir));
             }
 
-            if (!targetKey.HasValue || directions == null)
+            if (pastSchedules.Count == 0)
                 return false;
+
+            // 同步填充 queuedSchedulePaths，让 checkSchedule 能基于时间推进继续执行后续行程
+            npc.queuedSchedulePaths.Clear();
+            foreach (var p in pastSchedules)
+                npc.queuedSchedulePaths.Add(p.Value);
+
+            // 取最近的一个行程作为当前控制器
+            int targetKey = pastSchedules[pastSchedules.Count - 1].Key;
+            SchedulePathDescription directions = pastSchedules[pastSchedules.Count - 1].Value;
 
             string targetLocation = directions.targetLocationName ?? "";
             bool isCrossLocation = !string.IsNullOrEmpty(targetLocation) && targetLocation != currentLocationName;
             GameLocation location = npc.currentLocation;
             if (location == null) return false;
 
-            // 步骤 2：获取目标瓦片
+            // 获取目标瓦片
             Point targetTile = directions.targetTile;
-            if (targetTile == Point.Zero && directions.route.Count > 0)
+            if (targetTile == Point.Zero && directions.route != null && directions.route.Count > 0)
             {
-                targetTile = directions.route.Peek(); // 栈顶 = 终点
-                // 更新 directions.targetTile，确保 handleWarps 能获取到正确的目标位置
+                targetTile = directions.route.Peek();
                 directions.targetTile = targetTile;
             }
 
-            // 步骤 3：判断是否跨 location
+            PathFindController.endBehavior endBehavior = null;
+            if (GetRouteEndBehaviorMethod != null)
+            {
+                endBehavior = (PathFindController.endBehavior)GetRouteEndBehaviorMethod.Invoke(npc, new object[] { directions.endOfRouteBehavior, directions.endOfRouteMessage });
+            }
+
             if (isCrossLocation)
             {
-                // 跨 location 的行程
-                if (targetKey.Value > currentTime)
-                {
-                    // 时间未到，等时间推进时通过 checkSchedule 触发
-                    npc.lastAttemptedSchedule = -1;
-                    return false;
-                }
-
-                // 时间已过：NPC 应该正在执行这个行程
-                // 获取从当前 location 到目标 location 的 warp 点
+                // 跨 location 的行程：生成从当前位置到 warp 点的新路径
                 Point warpPoint = location.getWarpPointTo(targetLocation, npc);
                 if (warpPoint == Point.Zero)
                 {
-                    // 如果找不到 warp 点，无法生成路径
                     _monitor.Log($"  NPC {npc.Name} 找不到从 {location.NameOrUniqueName} 到 {targetLocation} 的 warp 点", LogLevel.Trace);
                     return false;
                 }
 
-                // 生成从当前位置到 warp 点的新路径
-                // 这样 NPC 能正确走到 warp 点，PathFindController 会自动处理 warp
-                // warp 后，handleWarps 会在目标地图上重新生成路径
                 Stack<Point> newPath = PathFindController.findPathForNPCSchedules(currentTile, warpPoint, location, 30000, npc);
                 if (newPath == null || newPath.Count == 0)
                 {
-                    // 路径生成失败
-                    _monitor.Log($"  NPC {npc.Name} 路径生成失败: {currentTile} -> warp({warpPoint}) in {location.NameOrUniqueName}", LogLevel.Trace);
+                    _monitor.Log($"  NPC {npc.Name} 跨地图路径生成失败: {currentTile} -> warp({warpPoint}) in {location.NameOrUniqueName}", LogLevel.Trace);
                     return false;
                 }
 
-                PathFindController.endBehavior endBehavior = null;
-                if (GetRouteEndBehaviorMethod != null)
-                {
-                    endBehavior = (PathFindController.endBehavior)GetRouteEndBehaviorMethod.Invoke(npc, new object[] { directions.endOfRouteBehavior, directions.endOfRouteMessage });
-                }
-
-                // 设置 DirectionsToNewLocation，让 PathFindController 知道目标位置
-                // handleWarps 会在 warp 后使用这个信息重新生成路径
+                // 设置 DirectionsToNewLocation，让 handleWarps 在 warp 后重新生成路径
                 npc.DirectionsToNewLocation = directions;
-
                 npc.controller = new PathFindController(newPath, npc, location)
                 {
                     finalFacingDirection = directions.facingDirection,
                     endBehaviorFunction = endBehavior
                 };
-                return true;
             }
             else
             {
-                // 同 location 的行程
-                // 为 NPC 生成从当前位置到目标位置的新路径
-                // 因为 NPC 可能不在日程路径的起点
-
-                // 生成从当前位置到目标位置的新路径
-                // findPathForNPCSchedules(startPoint, endPoint, ...)
+                // 同 location 的行程：为 NPC 生成从当前位置到目标位置的新路径
                 Stack<Point> newPath = PathFindController.findPathForNPCSchedules(currentTile, targetTile, location, 30000, npc);
                 if (newPath == null || newPath.Count == 0)
                 {
-                    // 路径生成失败，返回 false
-                    _monitor.Log($"  NPC {npc.Name} 路径生成失败: {currentTile} -> {targetTile} in {location.NameOrUniqueName}", LogLevel.Trace);
+                    _monitor.Log($"  NPC {npc.Name} 同地图路径生成失败: {currentTile} -> {targetTile} in {location.NameOrUniqueName}", LogLevel.Trace);
                     return false;
                 }
 
-                PathFindController.endBehavior endBehavior = null;
-                if (GetRouteEndBehaviorMethod != null)
-                {
-                    endBehavior = (PathFindController.endBehavior)GetRouteEndBehaviorMethod.Invoke(npc, new object[] { directions.endOfRouteBehavior, directions.endOfRouteMessage });
-                }
-
-                // 同地图行程不需要设置 DirectionsToNewLocation
-                // 因为它不需要 handleWarps 的路径重新生成逻辑
                 npc.controller = new PathFindController(newPath, npc, location)
                 {
                     finalFacingDirection = directions.facingDirection,
                     endBehaviorFunction = endBehavior
                 };
-                return true;
             }
+
+            _monitor.Log($"  NPC {npc.Name} 设置当前路径: 时间={targetKey}, 目标={targetLocation}@({targetTile.X},{targetTile.Y}), 路径点数={npc.controller?.pathToEndPoint?.Count ?? 0}", LogLevel.Trace);
+            return true;
         }
 
         public void AutoBackupCheck()
