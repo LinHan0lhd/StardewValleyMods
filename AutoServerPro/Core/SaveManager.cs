@@ -884,25 +884,80 @@ namespace AutoServerPro.Core
         private void SyncNpcPositions()
         {
             int synced = 0;
+            int warped = 0;
+            var details = new System.Text.StringBuilder();
 
             // 同步 NPC 的当前位置和 location 信息
-            // 确保保存时 NPC 的位置是正确的
+            // 确保保存时 NPC 的位置和 currentLocation 与实际世界状态一致
             foreach (var npc in Utility.getAllCharacters())
             {
                 if (npc == null || !npc.IsVillager) continue;
 
-                // 确保 NPC 的位置和 location 信息是正确的
-                // 游戏原生保存会保存 Character.Position 属性
-                // 这里只需要确保 NPC 的当前位置已被更新
+                // 确保 NPC 的 location 信息正确
                 if (npc.currentLocation == null)
                 {
                     npc.currentLocation = npc.getHome() ?? Game1.getFarm();
                 }
 
+                // 确保 NPC 在正确的 location.characters 列表中
+                if (npc.currentLocation != null && !npc.currentLocation.characters.Contains(npc))
+                {
+                    npc.currentLocation.characters.Add(npc);
+                }
+
+                // 如果 NPC 当前正站在一个 warp 点上（刚穿过门但尚未完成传送），
+                // 立即执行 warp，确保保存的 location 和位置是一致的
+                if (npc.currentLocation != null)
+                {
+                    try
+                    {
+                        Rectangle nextPos = npc.nextPosition(npc.getDirection());
+                        Warp warp = npc.currentLocation.isCollidingWithWarpOrDoor(nextPos, npc);
+                        if (warp != null && !string.IsNullOrEmpty(warp.TargetName))
+                        {
+                            GameLocation targetLoc = Game1.RequireLocation(warp.TargetName, false);
+                            if (targetLoc != null)
+                            {
+                                // 先从原 location 的 characters 中移除
+                                npc.currentLocation.characters.Remove(npc);
+                                // 加入目标 location
+                                if (!targetLoc.characters.Contains(npc))
+                                    targetLoc.characters.Add(npc);
+                                // 设置新 location
+                                npc.currentLocation = targetLoc;
+                                npc.Position = new Vector2(warp.TargetX * 64, warp.TargetY * 64 - 32);
+                                npc.faceDirection(npc.getDirection());
+                                warped++;
+                                details.Append($"{npc.Name}->{warp.TargetName}({warp.TargetX},{warp.TargetY}) ");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _monitor.Log($"  NPC {npc.Name} warp 同步失败: {ex.Message}", LogLevel.Trace);
+                    }
+                }
+
+                // 强制刷新 Netcode 字段，确保 Position 被标记为 dirty 以便序列化
+                // （NPC 移动时直接修改 position.X / position.Y 可能绕过字段变更事件）
+                try
+                {
+                    Vector2 pos = npc.position.Value;
+                    npc.position.Set(pos);
+                }
+                catch { }
+
                 synced++;
             }
 
-            _monitor.Log($"已同步 {synced} 个 NPC 位置", synced > 0 ? LogLevel.Debug : LogLevel.Trace);
+            if (warped > 0)
+            {
+                _monitor.Log($"已同步 {synced} 个 NPC 位置，其中 {warped} 个执行了补传: {details}", LogLevel.Debug);
+            }
+            else
+            {
+                _monitor.Log($"已同步 {synced} 个 NPC 位置", synced > 0 ? LogLevel.Debug : LogLevel.Trace);
+            }
         }
 
         private static readonly FieldInfo[] NpcResetFields = new[]
