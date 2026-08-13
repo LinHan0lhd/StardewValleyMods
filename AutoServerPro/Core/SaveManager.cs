@@ -190,6 +190,29 @@ namespace AutoServerPro.Core
 
         [XmlElement("MineState")]
         public MineState Mine { get; set; }
+
+        [XmlArray("NpcPositions")]
+        [XmlArrayItem("NpcPosition")]
+        public List<NpcPositionState> NpcPositions { get; set; } = new();
+    }
+
+    [XmlRoot("NpcPositionState")]
+    public class NpcPositionState
+    {
+        [XmlElement("Name")]
+        public string Name { get; set; }
+
+        [XmlElement("LocationName")]
+        public string LocationName { get; set; }
+
+        [XmlElement("X")]
+        public float X { get; set; }
+
+        [XmlElement("Y")]
+        public float Y { get; set; }
+
+        [XmlElement("FacingDirection")]
+        public int FacingDirection { get; set; }
     }
 
     public class SaveManager
