@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("CPXnbExporter")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+a264019705e93884ea2e6342b89b1d636981da5c")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+03ddea075cc6b522555c1631f6666850c211e793")]
 [assembly: System.Reflection.AssemblyProductAttribute("CPXnbExporter")]
 [assembly: System.Reflection.AssemblyTitleAttribute("CPXnbExporter")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
