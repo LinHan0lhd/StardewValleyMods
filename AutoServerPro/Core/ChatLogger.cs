@@ -32,8 +32,7 @@ public class ChatLogger
                 _monitor.Log("无法找到 ChatBox.receiveChatMessage", LogLevel.Warn);
                 return;
             }
-            var postfix = new HarmonyMethod(typeof(ChatLogger), nameof(AfterReceiveChatMessage));
-            _harmony.Patch(original, postfix: postfix);
+            _harmony.Patch(original, postfix: new HarmonyMethod(typeof(ChatLogger), nameof(AfterReceiveChatMessage)));
             _monitor.Log("聊天记录补丁已安装", LogLevel.Debug);
         }
         catch (Exception ex)
@@ -45,7 +44,6 @@ public class ChatLogger
     private static string CleanMessage(string raw)
     {
         if (string.IsNullOrEmpty(raw)) return raw;
-        // 所有表情统一为 [表情] 并压缩连续标签
         string replaced = Regex.Replace(raw, @"\[\d+\]", "[表情]");
         replaced = Regex.Replace(replaced, @"(\[表情\]\s*)+", "[表情] ");
         return replaced.Trim();

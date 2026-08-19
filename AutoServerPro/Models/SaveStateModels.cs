@@ -60,6 +60,7 @@ public class DebrisState
     [XmlElement("TimeSinceDoneBouncing")] public float TimeSinceDoneBouncing;
     [XmlArray("Chunks")][XmlArrayItem("Chunk")] public List<ChunkState> Chunks = new();
 }
+
 [XmlRoot("NpcPositionData")]
 public class NpcPositionData
 {

@@ -31,6 +31,6 @@ public static class ReflectionHelper
 
     public static void SetPropertyValue<T>(object obj, string propertyName, T value)
     {
-        _helper?.Reflection.GetProperty<T>(obj, propertyName)?.SetValue(value);
+        _helper.Reflection.GetProperty<T>(obj, propertyName).SetValue(value);
     }
 }

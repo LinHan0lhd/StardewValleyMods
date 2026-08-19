@@ -22,7 +22,7 @@ public class SavePathManager
         : _config.CustomSavesPath;
 
     public string BackupRootPath => string.IsNullOrWhiteSpace(_config.BackupPath)
-        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "StardewValley", "AutoServerBackups")
+        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "StardewValley", "FarmArchives")
         : _config.BackupPath;
 
     public string TempSavesRootPath => string.IsNullOrWhiteSpace(_config.CustomTempSavesPath)

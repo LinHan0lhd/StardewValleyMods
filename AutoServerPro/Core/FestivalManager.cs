@@ -28,17 +28,13 @@ public class FestivalManager
         [(25, Season.Winter)] = new FestivalInfo { Location = "Town", StartTime = 900, EndTime = 1400, HasCountdown = false }
     };
 
-    public FestivalManager(IMonitor monitor)
-    {
-        _monitor = monitor;
-    }
+    public FestivalManager(IMonitor monitor) => _monitor = monitor;
 
     public bool IsFestivalActive => _currentState?.Active == true;
 
     public void OnTimeChanged()
     {
-        if (!Context.IsWorldReady) return;
-        if (!HasPlayers()) return;
+        if (!Context.IsWorldReady || !HasPlayers()) return;
 
         _gameClockTicks++;
         if (_gameClockTicks < 3) return;
@@ -81,7 +77,6 @@ public class FestivalManager
 
         state.ElapsedSeconds++;
 
-        // 倒计时结束 → 触发节日主流程（复活节 Egg Hunt / 花舞节邀约 / 夏威夷宴会 / 水母节 / 星露谷展览 / 冰雪节）
         if (!state.EventTriggered && info.HasCountdown && state.ElapsedSeconds >= state.TargetCountdownSeconds)
         {
             if (info.NeedsLuauSoup) AddLuauIngredient();
@@ -90,23 +85,18 @@ public class FestivalManager
             state.PostEventSeconds = 0;
         }
 
-        // 星露谷展览（fall16）：forceFestivalContinue 会启动农庄评审
-        // 评审完成后 CurrentEvent 仍然存活，给 10 秒缓冲确保对话/结算走稳后再离开
         if (state.EventTriggered && info.NeedsPostEventLeave)
         {
             state.PostEventSeconds++;
             if (state.PostEventSeconds >= 10) LeaveFestival(true);
         }
 
-        // 无倒计时的节日（fall27 月光水母节 / winter25 星夜盛宴）
-        // 没有 Lewis yes/no 对话，节日内部自带结束条件；仅兜底超时确保不卡死
         if (state.ForceLeaveTimer && state.ElapsedSeconds >= 300)
         {
             LeaveFestival(true);
             return;
         }
 
-        // 兜底超时（真实时间 15 分钟）
         if (state.ElapsedSeconds >= 900)
         {
             _monitor.Log("节日超时 > 强制离开", LogLevel.Warn);

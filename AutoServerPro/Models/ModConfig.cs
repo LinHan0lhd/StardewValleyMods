@@ -2,23 +2,19 @@ namespace AutoServerPro.Models;
 
 public class ModConfig
 {
-    // ===== 基础 =====
     public string Language { get; set; } = "zh";
     public string petname { get; set; } = "Fido";
     public bool EnableSceneSync { get; set; } = true;
     public long SyncPlayerId { get; set; } = 0;
 
-    // ===== 存档路径 =====
     public string CustomSavesPath { get; set; } = "";
     public string BackupPath { get; set; } = "";
     public string CustomTempSavesPath { get; set; } = "";
     public string NewSaveName { get; set; } = "";
 
-    // ===== 自动创建默认值 =====
     public string DefaultFarmName { get; set; } = "联机";
     public string DefaultHostName { get; set; } = "管理员";
 
-    // ===== 新世界创建 =====
     public int FarmType { get; set; } = 0;
     public bool CreateMushroomCave { get; set; } = true;
     public bool UseSeparateWallets { get; set; } = false;
@@ -33,18 +29,15 @@ public class ModConfig
     public bool? SpawnMonstersAtNight { get; set; } = null;
     public int StartingCabins { get; set; } = 1;
 
-    // ===== CPU优化 =====
     public bool EnableCPUOptimization { get; set; } = true;
     public bool SkipDrawing { get; set; } = true;
     public bool DisableAudio { get; set; } = true;
     public bool DisableWeatherParticles { get; set; } = true;
 
-    // ===== 输入控制 =====
     public bool DisableKeyboardInput { get; set; } = true;
     public bool DisableMouseInput { get; set; } = true;
     public bool DisableGamepadInput { get; set; } = true;
 
-    // ===== 备份 =====
     public int AutoBackupDayInterval { get; set; } = 7;
     public bool AutoCleanOldBackup { get; set; } = true;
     public int MaxBackupCount { get; set; } = 5;

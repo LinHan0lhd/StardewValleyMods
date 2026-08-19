@@ -26,8 +26,8 @@ public class SaveAutoLoader
     public bool AutoLoadSave()
     {
         string? saveName = !string.IsNullOrWhiteSpace(_config.NewSaveName)
-        ? _config.NewSaveName
-        : GetLatestSave();
+            ? _config.NewSaveName
+            : GetLatestSave();
 
         if (string.IsNullOrEmpty(saveName))
         {
@@ -125,7 +125,11 @@ public class SaveAutoLoader
             var files = Directory.GetFiles(dirPath, "*", SearchOption.AllDirectories);
             if (files.Length == 0) return null;
             DateTime latest = DateTime.MinValue;
-            foreach (var f in files) { var t = File.GetLastWriteTime(f); if (t > latest) latest = t; }
+            foreach (var f in files)
+            {
+                var t = File.GetLastWriteTime(f);
+                if (t > latest) latest = t;
+            }
             return latest;
         }
         catch { return null; }

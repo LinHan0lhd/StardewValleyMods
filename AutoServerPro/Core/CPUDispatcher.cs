@@ -40,14 +40,9 @@ public class CPUDispatcher
         {
             _harmony = new Harmony("LinHan.AutoServerPro.CPUOptimizer");
 
-            if (_config.SkipDrawing)
-                InstallDrawPatch();
-
-            if (_config.DisableAudio)
-                InstallAudioPatch();
-
-            if (_config.DisableWeatherParticles)
-                InstallWeatherPatch();
+            if (_config.SkipDrawing) InstallDrawPatch();
+            if (_config.DisableAudio) InstallAudioPatch();
+            if (_config.DisableWeatherParticles) InstallWeatherPatch();
 
             InstallInputPatches();
             InstallDayEndPatches();
@@ -62,7 +57,7 @@ public class CPUDispatcher
             if (_config.DisableMouseInput) features.Add("禁用鼠标");
             if (_config.DisableGamepadInput) features.Add("禁用手柄");
             if (features.Count > 0)
-                _monitor.Log($"CPU优化已启用: {string.Join(", ", features)}", LogLevel.Info);
+                _monitor.Log($"CPU优化已启用: {string.Join(" ", features)}", LogLevel.Info);
         }
         catch (Exception ex)
         {
@@ -72,22 +67,18 @@ public class CPUDispatcher
 
     private void InstallDrawPatch()
     {
-        var drawMethod = AccessTools.Method(typeof(Game1), "Draw",
-            new[] { typeof(GameTime) });
+        var drawMethod = AccessTools.Method(typeof(Game1), "Draw", new[] { typeof(GameTime) });
         if (drawMethod == null)
         {
             _monitor.Log("无法找到 Game1.Draw 方法", LogLevel.Warn);
             return;
         }
-
-        var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(DrawPrefix));
-        _harmony.Patch(drawMethod, prefix: prefix);
+        _harmony.Patch(drawMethod, prefix: new HarmonyMethod(typeof(CPUDispatcher), nameof(DrawPrefix)));
     }
 
     private static bool DrawPrefix()
     {
-        if (Game1.game1 != null)
-            Game1.game1.isDrawing = false;
+        if (Game1.game1 != null) Game1.game1.isDrawing = false;
         return false;
     }
 
@@ -102,17 +93,11 @@ public class CPUDispatcher
 
         var audioUpdate = AccessTools.Method(audioType, "Update");
         if (audioUpdate != null)
-        {
-            var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(AudioUpdatePrefix));
-            _harmony.Patch(audioUpdate, prefix: prefix);
-        }
+            _harmony.Patch(audioUpdate, prefix: new HarmonyMethod(typeof(CPUDispatcher), nameof(AudioUpdatePrefix)));
 
         var updateMusic = AccessTools.Method(typeof(Game1), "updateMusic");
         if (updateMusic != null)
-        {
-            var musicPrefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(UpdateMusicPrefix));
-            _harmony.Patch(updateMusic, prefix: musicPrefix);
-        }
+            _harmony.Patch(updateMusic, prefix: new HarmonyMethod(typeof(CPUDispatcher), nameof(UpdateMusicPrefix)));
     }
 
     private static bool AudioUpdatePrefix() => false;
@@ -122,19 +107,13 @@ public class CPUDispatcher
     {
         var rainMethod = AccessTools.Method(typeof(Game1), "updateRaindropPosition");
         if (rainMethod != null)
-        {
-            var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(UpdateRaindropPrefix));
-            _harmony.Patch(rainMethod, prefix: prefix);
-        }
+            _harmony.Patch(rainMethod, prefix: new HarmonyMethod(typeof(CPUDispatcher), nameof(UpdateRaindropPrefix)));
 
         var weatherDebrisType = AccessTools.TypeByName("StardewValley.WeatherDebris");
         var weatherDebris = AccessTools.Method(typeof(Game1), "updateDebrisWeatherForMovement",
             new[] { typeof(List<>).MakeGenericType(weatherDebrisType) });
         if (weatherDebris != null)
-        {
-            var prefix2 = new HarmonyMethod(typeof(CPUDispatcher), nameof(UpdateDebrisWeatherPrefix));
-            _harmony.Patch(weatherDebris, prefix: prefix2);
-        }
+            _harmony.Patch(weatherDebris, prefix: new HarmonyMethod(typeof(CPUDispatcher), nameof(UpdateDebrisWeatherPrefix)));
     }
 
     private static bool UpdateRaindropPrefix() => false;
@@ -146,42 +125,27 @@ public class CPUDispatcher
         {
             var kbMethod = AccessTools.Method(typeof(InputState), "GetKeyboardState");
             if (kbMethod != null)
-            {
-                var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(GetKeyboardStatePrefix));
-                _harmony.Patch(kbMethod, prefix: prefix);
-            }
+                _harmony.Patch(kbMethod, prefix: new HarmonyMethod(typeof(CPUDispatcher), nameof(GetKeyboardStatePrefix)));
             else
-            {
                 _monitor.Log("无法找到 InputState.GetKeyboardState 方法", LogLevel.Warn);
-            }
         }
 
         if (_config.DisableMouseInput)
         {
             var mouseMethod = AccessTools.Method(typeof(InputState), "GetMouseState");
             if (mouseMethod != null)
-            {
-                var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(GetMouseStatePrefix));
-                _harmony.Patch(mouseMethod, prefix: prefix);
-            }
+                _harmony.Patch(mouseMethod, prefix: new HarmonyMethod(typeof(CPUDispatcher), nameof(GetMouseStatePrefix)));
             else
-            {
                 _monitor.Log("无法找到 InputState.GetMouseState 方法", LogLevel.Warn);
-            }
         }
 
         if (_config.DisableGamepadInput)
         {
             var padMethod = AccessTools.Method(typeof(InputState), "GetGamePadState");
             if (padMethod != null)
-            {
-                var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(GetGamePadStatePrefix));
-                _harmony.Patch(padMethod, prefix: prefix);
-            }
+                _harmony.Patch(padMethod, prefix: new HarmonyMethod(typeof(CPUDispatcher), nameof(GetGamePadStatePrefix)));
             else
-            {
                 _monitor.Log("无法找到 InputState.GetGamePadState 方法", LogLevel.Warn);
-            }
         }
     }
 
@@ -208,32 +172,21 @@ public class CPUDispatcher
         _saveGameMenuHarmony = new Harmony("LinHan.AutoServerPro.SaveGameMenu");
         var updateMethod = AccessTools.Method(typeof(SaveGameMenu), "update");
         if (updateMethod != null)
-        {
-            var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(SaveGameMenuUpdatePrefix));
-            _saveGameMenuHarmony.Patch(updateMethod, prefix: prefix);
-        }
+            _saveGameMenuHarmony.Patch(updateMethod, prefix: new HarmonyMethod(typeof(CPUDispatcher), nameof(SaveGameMenuUpdatePrefix)));
         else
-        {
             _monitor.Log("无法找到 SaveGameMenu.update 方法", LogLevel.Warn);
-        }
 
         _saveGameHarmony = new Harmony("LinHan.AutoServerPro.SaveGame");
         var saveMethod = AccessTools.Method(typeof(SaveGame), "Save");
         if (saveMethod != null)
-        {
-            var prefix = new HarmonyMethod(typeof(CPUDispatcher), nameof(SaveGamePrefix));
-            _saveGameHarmony.Patch(saveMethod, prefix: prefix);
-        }
+            _saveGameHarmony.Patch(saveMethod, prefix: new HarmonyMethod(typeof(CPUDispatcher), nameof(SaveGamePrefix)));
         else
-        {
             _monitor.Log("无法找到 SaveGame.Save 方法", LogLevel.Warn);
-        }
     }
 
     private static bool SaveGameMenuUpdatePrefix(SaveGameMenu __instance)
     {
-        if (!__instance.hasDrawn)
-            __instance.hasDrawn = true;
+        if (!__instance.hasDrawn) __instance.hasDrawn = true;
         return true;
     }
 
@@ -263,7 +216,6 @@ public class CPUDispatcher
         }
 
         public int Current => _finished ? 100 : _inner.Current;
-
         object System.Collections.IEnumerator.Current => Current;
 
         public bool MoveNext()

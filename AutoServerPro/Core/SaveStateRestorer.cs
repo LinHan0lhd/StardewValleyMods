@@ -17,7 +17,7 @@ using AutoServerPro.Utils;
 
 namespace AutoServerPro.Core;
 
-    public class SaveStateRestorer
+public class SaveStateRestorer
 {
     private readonly IMonitor _monitor;
     private readonly SavePathManager _pathManager;
@@ -55,14 +55,11 @@ namespace AutoServerPro.Core;
 
     public void RestoreSnapshot(GameStateSnapshot snapshot)
     {
-        // 用 warpCharacter 强制恢复 NPC 到保存时的精确位置
         RestoreNpcPositions(snapshot.NpcPositions);
         SafelySetTime(snapshot.TimeOfDay);
         RestoreDebrisItems(snapshot);
         _monitor.Log("快照恢复完成", LogLevel.Info);
     }
-
-
 
     public void ResumeAllNpcSchedules()
     {
@@ -153,8 +150,6 @@ namespace AutoServerPro.Core;
         Game1.UpdateGameClock(Game1.currentGameTime);
     }
 
-
-
     private void RestoreDebrisItems(GameStateSnapshot snapshot)
     {
         if (snapshot.DebrisItems == null || snapshot.DebrisItems.Count == 0) return;
@@ -225,7 +220,10 @@ namespace AutoServerPro.Core;
                 }
                 else
                 {
-                    debris.Chunks.Add(new Chunk(new Vector2(0, ds.ChunkFinalYLevel), 0f, 0f, 0) { scale = 1f, alpha = 1f, hasPassedRestingLineOnce = { Value = true }, sinkTimer = { Value = int.MaxValue } });
+                    debris.Chunks.Add(new Chunk(new Vector2(0, ds.ChunkFinalYLevel), 0f, 0f, 0)
+                    {
+                        scale = 1f, alpha = 1f, hasPassedRestingLineOnce = { Value = true }, sinkTimer = { Value = int.MaxValue }
+                    });
                 }
 
                 loc.debris.Add(debris); restored++;
@@ -235,9 +233,6 @@ namespace AutoServerPro.Core;
         _monitor.Log($"掉落物恢复: 成功 {restored} 个, 失败 {failed} 个", LogLevel.Debug);
     }
 
-    /// <summary>
-    /// 用 warpCharacter 强制恢复 NPC 到保存时的精确位置
-    /// </summary>
     private void RestoreNpcPositions(List<NpcPositionData> positions)
     {
         if (positions == null || positions.Count == 0) return;
@@ -267,7 +262,7 @@ namespace AutoServerPro.Core;
                     var currentTile = npc.Position / 64f;
                     float dx = Math.Abs(currentTile.X - pos.TileX);
                     float dy = Math.Abs(currentTile.Y - pos.TileY);
-                    if (dx < 0.02f && dy < 0.02f) // 约 1px 以内
+                    if (dx < 0.02f && dy < 0.02f)
                     {
                         skipped++;
                         continue;
@@ -276,7 +271,6 @@ namespace AutoServerPro.Core;
 
                 Game1.warpCharacter(npc, pos.MapName, new Vector2(pos.TileX, pos.TileY));
                 npc.faceDirection(pos.Facing);
-
                 npc.ignoreScheduleToday = true;
                 npc.controller = null;
                 npc.temporaryController = null;

@@ -33,7 +33,7 @@ public class SaveManager
         _autoLoader = new SaveAutoLoader(monitor, config, _pathManager);
         _stateRestorer = new SaveStateRestorer(monitor, _pathManager);
         _backupManager = new SaveBackupManager(monitor, config, _pathManager);
-        _processCoordinator = new SaveProcessCoordinator(monitor, config, _pathManager, festivalManager);
+        _processCoordinator = new SaveProcessCoordinator(monitor, config, _pathManager, festivalManager, _backupManager);
 
         _helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
         _helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
@@ -49,20 +49,17 @@ public class SaveManager
             _stateRestorer.RestoreExtraDataAfterLoad(_autoLoader.CurrentSaveName);
 
         _freezeDelay = 2;
-
     }
 
     private void OnUpdateTicked(object sender, UpdateTickedEventArgs e)
     {
         _processCoordinator.TickFestivalSaveFlow();
 
-
         if (_freezeDelay > 0)
         {
             _freezeDelay--;
             if (_freezeDelay == 0) _stateRestorer.ResumeAllNpcSchedules();
         }
-
     }
 
     public void UpdateConfig(ModConfig config) => _config = config;
@@ -81,7 +78,7 @@ public class SaveManager
     public void TickFestivalSaveFlow() => _processCoordinator.TickFestivalSaveFlow();
 
     public void AutoBackupCheck() => _backupManager.AutoBackupCheck(_autoLoader.CurrentSaveName);
-    public void ManualBackupCommand(string arg, string[] args) => _backupManager.ManualBackupCommand(arg);
+    public void ManualBackupCommand(string arg, string[] _) => _backupManager.ManualBackupCommand(arg);
 
     public void CreateNewWorld(string saveName, string hostName = null) =>
         _processCoordinator.CreateNewWorld(saveName, hostName);

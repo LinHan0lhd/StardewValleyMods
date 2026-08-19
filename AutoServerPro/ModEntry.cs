@@ -51,7 +51,6 @@ public class ModEntry : Mod
 
     private void RegisterCommands()
     {
-        // 同步玩家
         Helper.ConsoleCommands.Add("sync_player", "设置同步玩家ID", (_, args) =>
         {
             if (args.Length < 1 || !long.TryParse(args[0], out long id))
@@ -64,7 +63,6 @@ public class ModEntry : Mod
             Monitor.Log($"已设置优先同步玩家ID: {id}", LogLevel.Info);
         });
 
-        // 重载配置
         Helper.ConsoleCommands.Add("reload_config", "重新加载配置", (_, __) =>
         {
             _config = Helper.ReadConfig<ModConfig>();
@@ -76,22 +74,18 @@ public class ModEntry : Mod
             Monitor.Log("配置文件已重新加载", LogLevel.Info);
         });
 
-        // 停止服务器
         Helper.ConsoleCommands.Add("stop", "停止服务器（先保存临时存档）", (_, __) =>
         {
             _saveManager.ForceSaveAndQuit();
         });
 
-        // 手动备份
         Helper.ConsoleCommands.Add("save_backup", "手动备份当前存档", _saveManager.ManualBackupCommand);
 
-        // 即时保存
         Helper.ConsoleCommands.Add("save_now", "即时保存当前进度", (_, __) =>
         {
             _saveManager.ForceSaveNow(allowFestivalQueue: false);
         });
 
-        // 聊天指令: chat tell "消息" 或 chat <聊天指令> [参数]
         Helper.ConsoleCommands.Add("chat",
             "聊天: chat tell \"消息\" 广播聊天 | chat <聊天指令> [参数] 执行聊天指令",
             (_, args) => HandleChatCommand(args));
@@ -111,7 +105,6 @@ public class ModEntry : Mod
             return;
         }
 
-        // chat tell "消息" — 向所有玩家广播聊天消息
         if (string.Equals(args[0], "tell", StringComparison.OrdinalIgnoreCase))
         {
             if (args.Length < 2)
@@ -131,14 +124,12 @@ public class ModEntry : Mod
             return;
         }
 
-        // chat <聊天指令> [参数] — 执行游戏内聊天指令
         if (Game1.chatBox == null)
         {
             Monitor.Log("聊天框未就绪", LogLevel.Warn);
             return;
         }
 
-        // 记录执行前的消息数，用于提取新产生的输出
         int msgBefore = Game1.chatBox.messages?.Count ?? 0;
         bool handled = ChatCommands.TryHandle(args, Game1.chatBox);
 
@@ -148,7 +139,6 @@ public class ModEntry : Mod
             return;
         }
 
-        // 将新产生的聊天消息输出到控制台
         if (Game1.chatBox.messages != null)
         {
             for (int i = msgBefore; i < Game1.chatBox.messages.Count; i++)
@@ -222,7 +212,6 @@ public class ModEntry : Mod
         }
 
         if (!Context.IsWorldReady) return;
-
 
         _saveManager.TickFestivalSaveFlow();
 

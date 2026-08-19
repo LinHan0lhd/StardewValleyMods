@@ -9,12 +9,9 @@ public class SceneSyncManager
 {
     private ModConfig _config;
     private long _syncSourceId = 0;
-    private Queue<long> _joinOrder = new Queue<long>();
+    private Queue<long> _joinOrder = new();
 
-    public SceneSyncManager(ModConfig config)
-    {
-        _config = config;
-    }
+    public SceneSyncManager(ModConfig config) => _config = config;
 
     public void UpdateConfig(ModConfig config) => _config = config;
 
@@ -36,15 +33,9 @@ public class SceneSyncManager
 
     public void SyncLocation()
     {
-        if (_syncSourceId == 0) return;
-        if (_syncSourceId == 0 || Game1.otherFarmers == null)
-            return;
-
-        if (!Game1.otherFarmers.TryGetValue(_syncSourceId, out var leader))
-            return;
-
-        if (leader == null || !leader.isActive())
-            return;
+        if (_syncSourceId == 0 || Game1.otherFarmers == null) return;
+        if (!Game1.otherFarmers.TryGetValue(_syncSourceId, out var leader)) return;
+        if (leader == null || !leader.isActive()) return;
 
         var loc = leader.currentLocation;
         if (loc == null || Game1.currentLocation == loc) return;

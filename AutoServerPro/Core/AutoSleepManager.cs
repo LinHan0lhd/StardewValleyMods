@@ -37,7 +37,6 @@ public class AutoSleepManager
     public void SetCcDoorUnlocked(bool val) => _ccDoorUnlocked = val;
     public void ResetSleepState() { _goneToSleep = false; _isSleeping = false; _sleepRetryCount = 0; }
 
-    // 宠物名字修正
     public void FixPetName()
     {
         if (!Game1.player.hasPet()) return;
@@ -58,13 +57,11 @@ public class AutoSleepManager
         }
     }
 
-    // 事件跳过（宠物命名、山洞选择）
     public void HandleEventSkipping()
     {
         if (Game1.CurrentEvent == null) return;
         if (_lastSkippedEventId == Game1.CurrentEvent.id) return;
 
-        // 宠物命名事件
         if (Game1.CurrentEvent.id == "1590166" || Game1.CurrentEvent.id == "897405")
         {
             try
@@ -76,7 +73,6 @@ public class AutoSleepManager
             }
             catch { Game1.CurrentEvent.skipEvent(); _lastSkippedEventId = Game1.CurrentEvent.id; }
         }
-        // 山洞选择事件
         else if (Game1.CurrentEvent.id == "65")
         {
             if (Game1.MasterPlayer?.caveChoice != null)
@@ -95,20 +91,13 @@ public class AutoSleepManager
         }
     }
 
-    // 睡觉判断
-    public bool ShouldGoToSleep()
-    {
-        return AllPlayersSleeping() || IsDayEnding();
-    }
+    public bool ShouldGoToSleep() => AllPlayersSleeping() || IsDayEnding();
 
-    private bool AllPlayersSleeping()
-    {
-        return Game1.getOnlineFarmers()?.Where(f => f != Game1.player).All(f => f?.timeWentToBed?.Value >= 1) == true;
-    }
+    private bool AllPlayersSleeping() =>
+        Game1.getOnlineFarmers()?.Where(f => f != Game1.player).All(f => f?.timeWentToBed?.Value >= 1) == true;
 
     private bool IsDayEnding() => Game1.timeOfDay >= MAX_TIME - 1;
 
-    // 核心上床逻辑
     public void GoToBed()
     {
         RemoveHiddenBedIfExists();
@@ -158,20 +147,16 @@ public class AutoSleepManager
         }
     }
 
-    // 隐藏床自动清理
     private void RemoveHiddenBedIfExists()
     {
         var farmhouse = Game1.getLocationFromName("FarmHouse") as FarmHouse;
         if (farmhouse == null) return;
 
-        // 检查是否有任何非隐藏的正常床
         bool hasNormalBed = farmhouse.furniture.OfType<BedFurniture>().Any(b =>
-            !(b.TileLocation.X == 999 && b.TileLocation.Y == 999)
-        );
+            !(b.TileLocation.X == 999 && b.TileLocation.Y == 999));
 
         if (hasNormalBed)
         {
-            // 移除所有隐藏床（位置 (999,999)）
             var hiddenBeds = farmhouse.furniture.OfType<BedFurniture>()
                 .Where(b => b.TileLocation.X == 999 && b.TileLocation.Y == 999)
                 .ToList();
@@ -184,7 +169,6 @@ public class AutoSleepManager
         }
     }
 
-    // 上床操作
     private void AttemptSleepOnBed(BedFurniture bed)
     {
         try

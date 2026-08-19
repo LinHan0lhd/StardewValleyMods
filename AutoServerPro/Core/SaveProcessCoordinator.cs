@@ -22,9 +22,11 @@ public class SaveProcessCoordinator
     private readonly ModConfig _config;
     private readonly SavePathManager _pathManager;
     private readonly FestivalManager _festivalManager;
+    private readonly SaveBackupManager _backupManager;
 
     private IEnumerator<int> _saveCoroutine;
     private bool _isSaving, _waitingForFestivalEnd, _saveRequestedDuringFestival, _pendingSave, _pendingQuit;
+    private string _saveSourcePath;
     private GameStateSnapshot _pendingSnapshot;
 
     public bool IsSavingComplete { get; private set; }
@@ -41,12 +43,13 @@ public class SaveProcessCoordinator
     }
 
     public SaveProcessCoordinator(IMonitor monitor, ModConfig config,
-        SavePathManager pathManager, FestivalManager festivalManager)
+        SavePathManager pathManager, FestivalManager festivalManager, SaveBackupManager backupManager)
     {
         _monitor = monitor;
         _config = config;
         _pathManager = pathManager;
         _festivalManager = festivalManager;
+        _backupManager = backupManager;
     }
 
     public void TickFestivalSaveFlow()
@@ -101,6 +104,7 @@ public class SaveProcessCoordinator
     {
         try
         {
+            _saveSourcePath = _pathManager.CurrentSavesPath;
             SyncOnlinePlayerPositions();
             _pathManager.RedirectSavesToTemp();
             _pendingSnapshot = CreateSnapshot();
@@ -117,7 +121,6 @@ public class SaveProcessCoordinator
             _saveCoroutine = (IEnumerator<int>)GetSaveEnumeratorMethod.Invoke(null, null);
             _isSaving = true;
             IsSavingComplete = false;
-            _monitor.Log($"搜集并保存 {_pendingSnapshot.DebrisItems.Count} 个掉落物", LogLevel.Info);
         }
         catch (Exception ex)
         {
@@ -183,21 +186,11 @@ public class SaveProcessCoordinator
         CleanupSaveState();
         _pathManager.RedirectSavesToOriginal();
 
-        if (!string.IsNullOrEmpty(_pathManager.CurrentSavesPath))
+        if (_saveSourcePath == _pathManager.SavesRootPath)
         {
-            try
-            {
-                string saveName = Constants.SaveFolderName;
-                if (!string.IsNullOrEmpty(saveName))
-                {
-                    string backupRoot = _pathManager.BackupRootPath;
-                    string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                    string dest = Path.Combine(backupRoot, saveName, timestamp);
-                    CopyDirectory(Path.Combine(_pathManager.CurrentSavesPath, saveName), dest);
-                    _monitor.Log($"存档已备份: {dest}", LogLevel.Info);
-                }
-            }
-            catch (Exception ex) { _monitor.Log($"备份失败: {ex.Message}", LogLevel.Warn); }
+            string saveName = Constants.SaveFolderName;
+            if (!string.IsNullOrEmpty(saveName))
+                _backupManager?.ForceBackup(saveName);
         }
 
         if (_pendingQuit) { _pendingQuit = false; Game1.quit = true; }
@@ -306,18 +299,17 @@ public class SaveProcessCoordinator
             }
         }
 
-        // 保存 NPC 位置（浮点 tile 坐标，像素级精度）
         foreach (var npc in Utility.getAllCharacters())
         {
             if (npc.currentLocation == null) continue;
-            var tile = npc.Position / 64f; // 像素坐标 → 浮点 tile 坐标
+            var tile = npc.Position / 64f;
             snapshot.NpcPositions.Add(new NpcPositionData
             {
                 Name = npc.Name,
                 MapName = npc.currentLocation.NameOrUniqueName,
                 TileX = tile.X,
                 TileY = tile.Y,
-                Facing = npc.facingDirection.Value // NetDirection → int
+                Facing = npc.facingDirection.Value
             });
         }
 
@@ -364,14 +356,5 @@ public class SaveProcessCoordinator
             _monitor.Log($"已创建新存档：{saveName}", LogLevel.Info);
         }
         catch (Exception ex) { _monitor.Log($"创建失败: {ex.Message}", LogLevel.Error); }
-    }
-
-    private static void CopyDirectory(string sourceDir, string destDir)
-    {
-        Directory.CreateDirectory(destDir);
-        foreach (var file in Directory.GetFiles(sourceDir))
-            File.Copy(file, Path.Combine(destDir, Path.GetFileName(file)), true);
-        foreach (var dir in Directory.GetDirectories(sourceDir))
-            CopyDirectory(dir, Path.Combine(destDir, Path.GetFileName(dir)));
     }
 }

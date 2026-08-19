@@ -641,7 +641,7 @@ public class ModEntry : Mod
         }
 
         if (resetCount > 0 && logOnReset)
-            Mon.Log($"[无限送礼] 已重置 {farmer.displayName} 的 {resetCount} 位 NPC 送礼数据", LogLevel.Info);
+            Mon.Log($"[无限送礼] 已重置 {farmer.displayName} 的 {resetCount} 位 NPC 送礼数据", LogLevel.Trace);
 
         return resetCount;
     }
@@ -662,7 +662,7 @@ public class ModEntry : Mod
             }
         }
         if (resetCount > 0)
-            Mon.Log($"[无限送礼] 保存前重置 {farmer.displayName} 的 {resetCount} 位 NPC 送礼数据", LogLevel.Debug);
+            Mon.Log($"[无限送礼] 保存前重置 {farmer.displayName} 的 {resetCount} 位 NPC 送礼数据", LogLevel.Trace);
     }
 
     private static int ResetMarkedItemsOnDisconnect(Farmer farmer, bool logOnReset = false)
@@ -696,7 +696,7 @@ public class ModEntry : Mod
         }
 
         if (resetCount > 0 && logOnReset)
-            Mon.Log($"[重置] {farmer.Name} 的 {resetCount} 个特殊物品已复原", LogLevel.Info);
+            Mon.Log($"[重置] {farmer.Name} 的 {resetCount} 个特殊物品已复原", LogLevel.Trace);
 
         return resetCount;
     }
