@@ -26,6 +26,7 @@ public class ModEntry : Mod
 
     private bool _hasAutoLoaded = false;
     private bool _hasAutoCreated = false;
+    private bool _savedAfterAllPlayersOffline = false;
 
     public override void Entry(IModHelper helper)
     {
@@ -237,9 +238,16 @@ public class ModEntry : Mod
         if (!farmhands.Any())
         {
             if (!Game1.paused) { Game1.paused = true; Monitor.Log("全员离线 > 游戏暂停", LogLevel.Trace); }
+            if (_config.SaveWhenAllPlayersOffline && Context.IsMainPlayer && !_savedAfterAllPlayersOffline)
+            {
+                _savedAfterAllPlayersOffline = true;
+                Monitor.Log("全员离线 > 额外保存", LogLevel.Info);
+                _saveManager.ForceSaveNow();
+            }
             return;
         }
         if (Game1.paused) { Game1.paused = false; Monitor.Log("成员在线 > 游戏恢复", LogLevel.Trace); }
+        _savedAfterAllPlayersOffline = false;
 
         if (!Context.IsMainPlayer || !Context.IsMultiplayer) return;
 

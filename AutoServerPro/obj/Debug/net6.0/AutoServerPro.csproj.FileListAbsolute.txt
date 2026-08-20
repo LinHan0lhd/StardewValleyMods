@@ -7,3 +7,12 @@ C:\Users\admin\Documents\StardewValleyMods\AutoServerPro\obj\Debug\net6.0\AutoSe
 C:\Users\admin\Documents\StardewValleyMods\AutoServerPro\obj\Debug\net6.0\AutoServerPro.csproj.CoreCompileInputs.cache
 C:\Users\admin\Documents\StardewValleyMods\AutoServerPro\obj\Debug\net6.0\AutoServerPro.sourcelink.json
 C:\Users\admin\Documents\StardewValleyMods\AutoServerPro\obj\Debug\net6.0\AutoServerPro.dll
+C:\Users\Administrator\Documents\StardewValleyMods\AutoServerPro\bin\Debug\net6.0\AutoServerPro.deps.json
+C:\Users\Administrator\Documents\StardewValleyMods\AutoServerPro\bin\Debug\net6.0\AutoServerPro.dll
+C:\Users\Administrator\Documents\StardewValleyMods\AutoServerPro\obj\Debug\net6.0\AutoServerPro.csproj.AssemblyReference.cache
+C:\Users\Administrator\Documents\StardewValleyMods\AutoServerPro\obj\Debug\net6.0\AutoServerPro.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Administrator\Documents\StardewValleyMods\AutoServerPro\obj\Debug\net6.0\AutoServerPro.AssemblyInfoInputs.cache
+C:\Users\Administrator\Documents\StardewValleyMods\AutoServerPro\obj\Debug\net6.0\AutoServerPro.AssemblyInfo.cs
+C:\Users\Administrator\Documents\StardewValleyMods\AutoServerPro\obj\Debug\net6.0\AutoServerPro.csproj.CoreCompileInputs.cache
+C:\Users\Administrator\Documents\StardewValleyMods\AutoServerPro\obj\Debug\net6.0\AutoServerPro.sourcelink.json
+C:\Users\Administrator\Documents\StardewValleyMods\AutoServerPro\obj\Debug\net6.0\AutoServerPro.dll

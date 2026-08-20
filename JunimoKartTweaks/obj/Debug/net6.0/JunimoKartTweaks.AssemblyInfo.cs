@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("JunimoKartTweaks")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+7fee7cd821bc56d43a8bd89461fefc944416d67b")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+50a3363f7308d1c10f95d6e7b199b793dad38b77")]
 [assembly: System.Reflection.AssemblyProductAttribute("JunimoKartTweaks")]
 [assembly: System.Reflection.AssemblyTitleAttribute("JunimoKartTweaks")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

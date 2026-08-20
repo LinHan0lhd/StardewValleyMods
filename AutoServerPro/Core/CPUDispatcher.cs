@@ -21,7 +21,6 @@ public class CPUDispatcher
     private Harmony _harmony;
     private bool _installed;
     private Harmony _saveGameMenuHarmony;
-    private Harmony _saveGameHarmony;
 
     public CPUDispatcher(IMonitor monitor, ModConfig config)
     {
@@ -176,59 +175,12 @@ public class CPUDispatcher
         else
             _monitor.Log("无法找到 SaveGameMenu.update 方法", LogLevel.Warn);
 
-        _saveGameHarmony = new Harmony("LinHan.AutoServerPro.SaveGame");
-        var saveMethod = AccessTools.Method(typeof(SaveGame), "Save");
-        if (saveMethod != null)
-            _saveGameHarmony.Patch(saveMethod, prefix: new HarmonyMethod(typeof(CPUDispatcher), nameof(SaveGamePrefix)));
-        else
-            _monitor.Log("无法找到 SaveGame.Save 方法", LogLevel.Warn);
     }
 
     private static bool SaveGameMenuUpdatePrefix(SaveGameMenu __instance)
     {
         if (!__instance.hasDrawn) __instance.hasDrawn = true;
         return true;
-    }
-
-    private static bool SaveGamePrefix(ref IEnumerator<int> __result)
-    {
-        SaveGame.IsProcessing = true;
-        var getSaveEnumerator = AccessTools.Method(typeof(SaveGame), "getSaveEnumerator");
-        if (getSaveEnumerator == null)
-        {
-            _staticMonitor?.Log("无法找到 getSaveEnumerator 回退到原始保存方法", LogLevel.Warn);
-            return true;
-        }
-        var original = (IEnumerator<int>)getSaveEnumerator.Invoke(null, null);
-        __result = new SyncSaveWrapper(original);
-        return false;
-    }
-
-    private class SyncSaveWrapper : IEnumerator<int>
-    {
-        private IEnumerator<int> _inner;
-        private bool _finished;
-
-        public SyncSaveWrapper(IEnumerator<int> inner)
-        {
-            _inner = inner;
-            _finished = false;
-        }
-
-        public int Current => _finished ? 100 : _inner.Current;
-        object System.Collections.IEnumerator.Current => Current;
-
-        public bool MoveNext()
-        {
-            if (_finished) return false;
-            if (_inner.MoveNext()) return true;
-            _finished = true;
-            SaveGame.IsProcessing = false;
-            return false;
-        }
-
-        public void Reset() { }
-        public void Dispose() { _inner?.Dispose(); }
     }
 
     public void ReapplySettings()

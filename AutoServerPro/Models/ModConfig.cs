@@ -38,6 +38,7 @@ public class ModConfig
     public bool DisableMouseInput { get; set; } = true;
     public bool DisableGamepadInput { get; set; } = true;
 
+    public bool SaveWhenAllPlayersOffline { get; set; } = true;
     public int AutoBackupDayInterval { get; set; } = 7;
     public bool AutoCleanOldBackup { get; set; } = true;
     public int MaxBackupCount { get; set; } = 5;
