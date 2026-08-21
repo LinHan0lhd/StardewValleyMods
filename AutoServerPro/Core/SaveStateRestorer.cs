@@ -58,7 +58,7 @@ public class SaveStateRestorer
         RestoreNpcPositions(snapshot.NpcPositions);
         SafelySetTime(snapshot.TimeOfDay);
         RestoreDebrisItems(snapshot);
-        _monitor.Log("快照恢复完成", LogLevel.Info);
+        _monitor.Log("快照恢复完成", LogLevel.Trace);
     }
 
     public void ResumeAllNpcSchedules()
@@ -230,7 +230,7 @@ public class SaveStateRestorer
             }
             catch { failed++; }
         }
-        _monitor.Log($"掉落物恢复: 成功 {restored} 个, 失败 {failed} 个", LogLevel.Debug);
+        _monitor.Log($"掉落物恢复: 成功恢复 {restored} 个 | 失败 {failed} 个掉落物", LogLevel.Trace);
     }
 
     private void RestoreNpcPositions(List<NpcPositionData> positions)
@@ -283,6 +283,6 @@ public class SaveStateRestorer
         }
 
         if (restored > 0 || skipped > 0)
-            _monitor?.Log($"NPC 位置恢复: 修正 {restored} 个 跳过 {skipped} 个", LogLevel.Trace);
+            _monitor?.Log($"NPC 位置恢复: 修正 {restored} 个 | 跳过 {skipped} 个 NPC", LogLevel.Trace);
     }
 }

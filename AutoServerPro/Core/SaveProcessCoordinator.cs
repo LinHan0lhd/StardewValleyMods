@@ -11,6 +11,7 @@ using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Extensions;
 using StardewValley.Locations;
+using StardewValley.TerrainFeatures;
 using AutoServerPro.Models;
 using AutoServerPro.Utils;
 
@@ -25,6 +26,8 @@ public class SaveProcessCoordinator
 
     private IEnumerator<int> _saveCoroutine;
     private bool _isSaving, _waitingForFestivalEnd, _saveRequestedDuringFestival, _pendingSave, _pendingQuit;
+    private int _stopWaitTicks;
+    private int _stopTimeoutTicks;
     private GameStateSnapshot _pendingSnapshot;
 
     public bool IsSavingComplete { get; private set; }
@@ -53,6 +56,28 @@ public class SaveProcessCoordinator
 
     public void TickFestivalSaveFlow()
     {
+        if (_stopWaitTicks > 0)
+        {
+            if (HasFallingTree())
+            {
+                _stopTimeoutTicks--;
+                if (_stopTimeoutTicks <= 0)
+                    _stopWaitTicks = 0;
+            }
+            else
+                _stopWaitTicks--;
+
+            if (_stopWaitTicks == 0)
+            {
+                if (SaveGame.IsProcessing)
+                {
+                    _stopWaitTicks = 1;
+                    _monitor.Log("原版保存仍在处理中 > 正在等待并重试中", LogLevel.Debug);
+                }
+                else ForceSaveNow();
+            }
+        }
+
         if (!_waitingForFestivalEnd) return;
         if (_festivalManager.IsFestivalActive)
         {
@@ -129,11 +154,31 @@ public class SaveProcessCoordinator
 
     public void ForceSaveAndQuit()
     {
+        if (Game1.multiplayerMode != 0)
+        {
+            Game1.multiplayerMode = 0;
+            _monitor.Log("停止服务器 > 切换为单人模式", LogLevel.Info);
+        }
         if (!Context.IsWorldReady) { Game1.quit = true; return; }
         if (_isSaving) { _pendingQuit = true; return; }
         _pendingQuit = true;
-        ForceSaveNow();
-        if (!_isSaving && !_pendingSave) Game1.quit = true;
+        _stopWaitTicks = 3;
+        _stopTimeoutTicks = 180;
+        _monitor.Log("正在等待掉落物生成完成...", LogLevel.Info);
+    }
+
+    private static bool HasFallingTree()
+    {
+        foreach (var location in Game1.locations)
+        {
+            if (location?.terrainFeatures == null) continue;
+            foreach (var pair in location.terrainFeatures.Pairs)
+            {
+                if (pair.Value is Tree tree && tree.falling.Value)
+                    return true;
+            }
+        }
+        return false;
     }
 
     private void CleanupSaveState()
@@ -166,7 +211,7 @@ public class SaveProcessCoordinator
         {
             _monitor.Log($"保存失败: {ex.Message}", LogLevel.Error);
             CleanupSaveState();
-            if (_pendingQuit) { Game1.quit = true; _pendingQuit = false; }
+            if (_pendingQuit) RequestQuit();
         }
     }
 
@@ -184,7 +229,15 @@ public class SaveProcessCoordinator
         CleanupSaveState();
         _pathManager.RedirectSavesToOriginal();
 
-        if (_pendingQuit) { _pendingQuit = false; Game1.quit = true; }
+        if (_pendingQuit) RequestQuit();
+    }
+
+    private void RequestQuit()
+    {
+        _pendingQuit = false;
+        Game1.paused = false;
+        Game1.quit = true;
+        _monitor.Log("保存完成 > 解除暂停并退出游戏", LogLevel.Info);
     }
 
     private static void SyncOnlinePlayerPositions()

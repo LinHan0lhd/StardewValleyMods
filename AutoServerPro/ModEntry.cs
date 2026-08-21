@@ -157,7 +157,6 @@ public class ModEntry : Mod
 
     private void BindEvents()
     {
-        Helper.Events.GameLoop.GameLaunched += OnGameLaunched;
         Helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
         Helper.Events.GameLoop.TimeChanged += OnTimeChanged;
         Helper.Events.GameLoop.OneSecondUpdateTicked += OnOneSecondUpdate;
@@ -165,12 +164,6 @@ public class ModEntry : Mod
         Helper.Events.Multiplayer.PeerConnected += OnPeerConnected;
         Helper.Events.Multiplayer.PeerDisconnected += OnPeerDisconnected;
         Helper.Events.GameLoop.DayStarted += OnDayStarted;
-    }
-
-    private void OnGameLaunched(object _, GameLaunchedEventArgs __)
-    {
-        if (_config.EnableCPUOptimization)
-            _cpuDispatcher.ReapplySettings();
     }
 
     private void OnDayStarted(object _, DayStartedEventArgs __)
