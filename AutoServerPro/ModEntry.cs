@@ -26,6 +26,7 @@ public class ModEntry : Mod
 
     private bool _hasAutoLoaded = false;
     private bool _hasAutoCreated = false;
+    private bool _hasPlayerConnected = false;
     private bool _savedAfterAllPlayersOffline = false;
 
     public override void Entry(IModHelper helper)
@@ -238,7 +239,7 @@ public class ModEntry : Mod
         if (!farmhands.Any())
         {
             if (!Game1.paused) { Game1.paused = true; Monitor.Log("全员离线 > 游戏暂停", LogLevel.Trace); }
-            if (_config.SaveWhenAllPlayersOffline && Context.IsMainPlayer && !_savedAfterAllPlayersOffline)
+            if (_config.SaveWhenAllPlayersOffline && Context.IsMainPlayer && _hasPlayerConnected && !_savedAfterAllPlayersOffline)
             {
                 _savedAfterAllPlayersOffline = true;
                 Monitor.Log("全员离线 > 保存进度", LogLevel.Info);
@@ -307,6 +308,7 @@ public class ModEntry : Mod
 
     private void OnPeerConnected(object _, PeerConnectedEventArgs e)
     {
+        _hasPlayerConnected = true;
         string name = "Unknown";
         try { name = Game1.GetPlayer(e.Peer.PlayerID)?.Name ?? name; }
         catch { }
