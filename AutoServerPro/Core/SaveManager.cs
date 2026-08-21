@@ -62,7 +62,14 @@ public class SaveManager
         }
     }
 
-    public void UpdateConfig(ModConfig config) => _config = config;
+    public void UpdateConfig(ModConfig config)
+    {
+        _config = config;
+        _pathManager.UpdateConfig(config);
+        _autoLoader.UpdateConfig(config);
+        _backupManager.UpdateConfig(config);
+        _processCoordinator.UpdateConfig(config);
+    }
 
     public void RedirectSavesToTemp() => _pathManager.RedirectSavesToTemp();
     public void RedirectSavesToOriginal() => _pathManager.RedirectSavesToOriginal();

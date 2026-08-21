@@ -11,7 +11,7 @@ namespace AutoServerPro.Core;
 public class SavePathManager
 {
     private readonly IMonitor _monitor;
-    private readonly ModConfig _config;
+    private ModConfig _config;
     private Harmony? _harmony;
     private static string? _tempSavesPathOverride;
 
@@ -44,6 +44,14 @@ public class SavePathManager
         {
             _monitor.Log($"注册 NPC 补丁失败: {ex.Message}", LogLevel.Warn);
         }
+    }
+
+    public void UpdateConfig(ModConfig config)
+    {
+        bool usingTempPath = string.Equals(CurrentSavesPath, TempSavesRootPath, StringComparison.OrdinalIgnoreCase);
+        _config = config;
+        CurrentSavesPath = usingTempPath ? TempSavesRootPath : SavesRootPath;
+        _tempSavesPathOverride = TempSavesRootPath;
     }
 
     public string ExtraDataPath(string saveName) => Path.Combine(CurrentSavesPath, saveName, "EXTRADATA");

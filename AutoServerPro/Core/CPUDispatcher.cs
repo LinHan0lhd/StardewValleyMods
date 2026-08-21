@@ -185,6 +185,14 @@ public class CPUDispatcher
 
     public void ReapplySettings()
     {
-        if (!_installed) return;
+        if (_installed)
+        {
+            _harmony?.UnpatchAll("LinHan.AutoServerPro.CPUOptimizer");
+            _saveGameMenuHarmony?.UnpatchAll("LinHan.AutoServerPro.SaveGameMenu");
+            _installed = false;
+        }
+
+        if (_config.EnableCPUOptimization)
+            Install();
     }
 }

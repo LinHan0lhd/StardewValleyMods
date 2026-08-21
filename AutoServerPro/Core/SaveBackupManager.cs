@@ -10,7 +10,7 @@ namespace AutoServerPro.Core;
 public class SaveBackupManager
 {
     private readonly IMonitor _monitor;
-    private readonly ModConfig _config;
+    private ModConfig _config;
     private readonly SavePathManager _pathManager;
 
     public SaveBackupManager(IMonitor monitor, ModConfig config, SavePathManager pathManager)
@@ -19,6 +19,8 @@ public class SaveBackupManager
         _config = config;
         _pathManager = pathManager;
     }
+
+    public void UpdateConfig(ModConfig config) => _config = config;
 
     public void AutoBackupCheck(string currentSaveName)
     {

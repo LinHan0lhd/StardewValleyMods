@@ -11,7 +11,7 @@ namespace AutoServerPro.Core;
 public class SaveAutoLoader
 {
     private readonly IMonitor _monitor;
-    private readonly ModConfig _config;
+    private ModConfig _config;
     private readonly SavePathManager _pathManager;
 
     public string? CurrentSaveName { get; private set; }
@@ -22,6 +22,8 @@ public class SaveAutoLoader
         _config = config;
         _pathManager = pathManager;
     }
+
+    public void UpdateConfig(ModConfig config) => _config = config;
 
     public bool AutoLoadSave()
     {

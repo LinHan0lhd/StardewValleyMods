@@ -19,7 +19,7 @@ namespace AutoServerPro.Core;
 public class SaveProcessCoordinator
 {
     private readonly IMonitor _monitor;
-    private readonly ModConfig _config;
+    private ModConfig _config;
     private readonly SavePathManager _pathManager;
     private readonly FestivalManager _festivalManager;
 
@@ -48,6 +48,8 @@ public class SaveProcessCoordinator
         _pathManager = pathManager;
         _festivalManager = festivalManager;
     }
+
+    public void UpdateConfig(ModConfig config) => _config = config;
 
     public void TickFestivalSaveFlow()
     {
