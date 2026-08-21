@@ -80,9 +80,9 @@ public class ModEntry : Mod
             _saveManager.ForceSaveAndQuit();
         });
 
-        Helper.ConsoleCommands.Add("save_backup", "手动备份当前存档", _saveManager.ManualBackupCommand);
+        Helper.ConsoleCommands.Add("save_backup", "备份当前存档", _saveManager.ManualBackupCommand);
 
-        Helper.ConsoleCommands.Add("save_now", "即时保存当前进度", (_, __) =>
+        Helper.ConsoleCommands.Add("save_now", "保存当前进度", (_, __) =>
         {
             _saveManager.ForceSaveNow(allowFestivalQueue: false);
         });
@@ -241,7 +241,7 @@ public class ModEntry : Mod
             if (_config.SaveWhenAllPlayersOffline && Context.IsMainPlayer && !_savedAfterAllPlayersOffline)
             {
                 _savedAfterAllPlayersOffline = true;
-                Monitor.Log("全员离线 > 额外保存", LogLevel.Info);
+                Monitor.Log("全员离线 > 保存进度", LogLevel.Info);
                 _saveManager.ForceSaveNow();
             }
             return;
