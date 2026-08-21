@@ -22,11 +22,9 @@ public class SaveProcessCoordinator
     private readonly ModConfig _config;
     private readonly SavePathManager _pathManager;
     private readonly FestivalManager _festivalManager;
-    private readonly SaveBackupManager _backupManager;
 
     private IEnumerator<int> _saveCoroutine;
     private bool _isSaving, _waitingForFestivalEnd, _saveRequestedDuringFestival, _pendingSave, _pendingQuit;
-    private string _saveSourcePath;
     private GameStateSnapshot _pendingSnapshot;
 
     public bool IsSavingComplete { get; private set; }
@@ -43,13 +41,12 @@ public class SaveProcessCoordinator
     }
 
     public SaveProcessCoordinator(IMonitor monitor, ModConfig config,
-        SavePathManager pathManager, FestivalManager festivalManager, SaveBackupManager backupManager)
+        SavePathManager pathManager, FestivalManager festivalManager)
     {
         _monitor = monitor;
         _config = config;
         _pathManager = pathManager;
         _festivalManager = festivalManager;
-        _backupManager = backupManager;
     }
 
     public void TickFestivalSaveFlow()
@@ -104,7 +101,6 @@ public class SaveProcessCoordinator
     {
         try
         {
-            _saveSourcePath = _pathManager.CurrentSavesPath;
             SyncOnlinePlayerPositions();
             _pathManager.RedirectSavesToTemp();
             _pendingSnapshot = CreateSnapshot();
@@ -185,13 +181,6 @@ public class SaveProcessCoordinator
 
         CleanupSaveState();
         _pathManager.RedirectSavesToOriginal();
-
-        if (_saveSourcePath == _pathManager.SavesRootPath)
-        {
-            string saveName = Constants.SaveFolderName;
-            if (!string.IsNullOrEmpty(saveName))
-                _backupManager?.ForceBackup(saveName);
-        }
 
         if (_pendingQuit) { _pendingQuit = false; Game1.quit = true; }
     }

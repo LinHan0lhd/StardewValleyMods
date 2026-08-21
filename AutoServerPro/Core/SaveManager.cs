@@ -33,7 +33,7 @@ public class SaveManager
         _autoLoader = new SaveAutoLoader(monitor, config, _pathManager);
         _stateRestorer = new SaveStateRestorer(monitor, _pathManager);
         _backupManager = new SaveBackupManager(monitor, config, _pathManager);
-        _processCoordinator = new SaveProcessCoordinator(monitor, config, _pathManager, festivalManager, _backupManager);
+        _processCoordinator = new SaveProcessCoordinator(monitor, config, _pathManager, festivalManager);
 
         _helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
         _helper.Events.GameLoop.UpdateTicked += OnUpdateTicked;
