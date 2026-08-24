@@ -41,7 +41,7 @@ public class SceneSyncManager
         if (loc == null || Game1.currentLocation == loc) return;
 
         string name = loc.Name;
-        if (name.StartsWith("UndergroundMine") || name == "Temp" || loc is FarmHouse || loc is Cabin)
+        if (name == "Temp" || loc is FarmHouse || loc is Cabin)
             return;
 
         Game1.warpFarmer(loc.NameOrUniqueName, 999, 999, false);

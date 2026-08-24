@@ -1,7 +1,7 @@
 {
   "Name": "AutoServerPro",
   "Author": "LinHan",
-  "Version": "5.6.5",
+  "Version": "1.0.0",
   "Description": "A headless server core for Stardew Valley.",
   "UniqueID": "LinHan.AutoServerPro",
   "EntryDll": "AutoServerPro.dll",

@@ -390,15 +390,65 @@ public class SaveProcessCoordinator
     public void CreateNewWorld(string saveName, string hostName = null)
     {
         hostName ??= _config.DefaultHostName;
-        if (Directory.Exists(Path.Combine(_pathManager.CurrentSavesPath, saveName))) { _monitor.Log($"存档已存在", LogLevel.Error); return; }
-        if (LoadForNewGameMethod == null) { _monitor.Log("找不到 loadForNewGame", LogLevel.Error); return; }
+        saveName = string.IsNullOrEmpty(saveName) ? _config.DefaultFarmName : saveName;
+
+        if (Directory.Exists(Path.Combine(_pathManager.CurrentSavesPath, saveName)))
+        {
+            _monitor.Log($"存档已存在", LogLevel.Error);
+            return;
+        }
+        if (LoadForNewGameMethod == null)
+        {
+            _monitor.Log("找不到 loadForNewGame", LogLevel.Error);
+            return;
+        }
         try
         {
+            Game1.player.team.useSeparateWallets.Value = _config.UseSeparateWallets;
+            Game1.whichFarm = Math.Clamp(_config.FarmType, 0, 7);
+            Game1.cabinsSeparate = _config.CabinLayoutNearby;
+            Game1.bundleType = _config.BundlesRemix ? Game1.BundleType.Remixed : Game1.BundleType.Default;
+            Game1.startingGameSeed = _config.RandomSeed;
+            Game1.UseLegacyRandom = _config.UseLegacyRandom;
+            Game1.startingCabins = Math.Max(0, _config.StartingCabins);
+
+            Game1.game1.SetNewGameOption("YearOneCompletable", _config.CommunityCenterYear1);
+            Game1.game1.SetNewGameOption("MineChests", _config.MinesRemix ? Game1.MineChestType.Remixed : Game1.MineChestType.Default);
+            if (_config.SpawnMonstersAtNight.HasValue)
+                Game1.game1.SetNewGameOption("SpawnMonstersAtNight", _config.SpawnMonstersAtNight.Value);
+
+            Game1.multiplayerMode = 2;
+
+            if (Game1.player != null)
+            {
+                Game1.player.Name = string.IsNullOrEmpty(hostName) ? _config.DefaultHostName : hostName;
+                Game1.player.displayName = Game1.player.Name;
+                Game1.player.favoriteThing.Value = "Farming";
+                Game1.player.farmName.Value = saveName;
+                Game1.player.whichPetBreed = Math.Max(0, _config.PetBreed).ToString();
+                Game1.player.difficultyModifier = Math.Clamp(_config.ProfitMargin, 0.25f, 1f);
+                Game1.player.isCustomized.Value = true;
+                Game1.player.ConvertClothingOverrideToClothesItems();
+                Game1.player.caveChoice.Value = _config.CreateMushroomCave ? 1 : 0;
+            }
+
             Game1.SetSaveName(saveName);
             LoadForNewGameMethod.Invoke(Game1.game1, new object[] { false });
-            if (!string.IsNullOrEmpty(hostName) && Game1.player != null) Game1.player.Name = hostName;
-            _monitor.Log($"已创建新存档：{saveName}", LogLevel.Info);
+
+            Game1.saveOnNewDay = true;
+            Game1.player.eventsSeen.Add("60367");
+            Game1.player.currentLocation = Utility.getHomeOfFarmer(Game1.player);
+            Game1.player.Position = new Vector2(9f, 9f) * 64f;
+            Game1.player.isInBed.Value = true;
+            Game1.NewDay(0f);
+            Game1.exitActiveMenu();
+            Game1.setGameMode(3);
+
+            _monitor.Log($"已创建新存档：{saveName}_{Game1.uniqueIDForThisGame}", LogLevel.Info);
         }
-        catch (Exception ex) { _monitor.Log($"创建失败: {ex.Message}", LogLevel.Error); }
+        catch (Exception ex)
+        {
+            _monitor.Log($"创建失败: {ex.Message}", LogLevel.Error);
+        }
     }
 }

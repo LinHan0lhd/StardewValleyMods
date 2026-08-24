@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using System.Xml.Serialization;
+using Netcode;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
 using StardewModdingAPI;
@@ -166,7 +167,7 @@ public class ModEntry : Mod
 
     private static string PlayerName(long id)
     {
-        if (id <= 0) return null;
+        if (id == 0) return null;
         var f = Game1.GetPlayer(id, true);
         if (f != null) return f.Name;
         foreach (var x in Game1.getAllFarmers())
@@ -219,20 +220,24 @@ public class ModEntry : Mod
             if (FavoredPlayerId == 0)
             {
                 if (logError) Mon.Log("[错误] 眷者尚未设置", LogLevel.Warn);
-                return 0;
+                return long.MinValue;
             }
             return FavoredPlayerId;
         }
         if (arg.Equals("admin", StringComparison.OrdinalIgnoreCase))
         {
             long hostId = Game1.player?.UniqueMultiplayerID ?? 0;
-            if (hostId == 0 && logError) Mon.Log("[错误] 主机玩家不可用", LogLevel.Warn);
+            if (hostId == 0)
+            {
+                if (logError) Mon.Log("[错误] 主机玩家不可用", LogLevel.Warn);
+                return long.MinValue;
+            }
             return hostId;
         }
-        if (long.TryParse(arg, out long id) && id > 0)
+        if (long.TryParse(arg, out long id))
             return id;
         if (logError) Mon.Log($"[错误] 无效的玩家ID: {arg}", LogLevel.Warn);
-        return 0;
+        return long.MinValue;
     }
 
     // ─── 眷者管理 ───
@@ -424,7 +429,7 @@ public class ModEntry : Mod
             return;
         }
         long playerId = ResolvePlayerId(args[0]);
-        if (playerId == 0) return;
+        if (playerId == long.MinValue) return;
         var farmer = GetOnlinePlayer(playerId);
         if (farmer == null) return;
 
@@ -457,7 +462,7 @@ public class ModEntry : Mod
         }
 
         long playerId = ResolvePlayerId(args[0]);
-        if (playerId == 0) return;
+        if (playerId == long.MinValue) return;
         var farmer = GetOnlinePlayer(playerId);
         if (farmer == null) return;
 
@@ -502,14 +507,72 @@ public class ModEntry : Mod
     private void SetMoney(string _, string[] args)
     {
         if (!RequireWorldReady() || !RequireHost()) return;
-        int? amount = TryParseIntArg(args, 0, 0);
-        if (amount == null)
+
+        bool sepWallets = Game1.player.team.useSeparateWallets.Value;
+
+        if (args.Length == 0)
         {
-            Mon.Log("用法: mh_money <金额>", LogLevel.Info);
+            Mon.Log("用法: mh_money <金额> | mh_money <玩家ID> <金额>", LogLevel.Info);
+            Mon.Log($"      当前钱包模式: {(sepWallets ? "独立钱包" : "共享钱包")}", LogLevel.Info);
+            Mon.Log($"      玩家ID 可填: 数字ID | ~ (眷者) | admin (主机)", LogLevel.Info);
             return;
         }
-        Game1.player.Money = amount.Value;
-        Mon.Log($"[金钱] 主机金钱已更新为 {amount.Value} 金", LogLevel.Info);
+
+        long targetId;
+        int amountIndex;
+
+        if (args.Length == 1)
+        {
+            targetId = Game1.player.UniqueMultiplayerID;
+            amountIndex = 0;
+        }
+        else
+        {
+            targetId = ResolvePlayerId(args[0]);
+            if (targetId == long.MinValue) return;
+            amountIndex = 1;
+        }
+
+        int? amount = TryParseIntArg(args, amountIndex, 0);
+        if (amount == null)
+        {
+            Mon.Log("用法: mh_money <金额> | mh_money <玩家ID> <金额>", LogLevel.Info);
+            return;
+        }
+
+        if (sepWallets)
+        {
+            var target = GetAnyPlayer(targetId, logError: false);
+
+            if (target != null)
+            {
+                Game1.player.team.SetIndividualMoney(target, amount.Value);
+                Mon.Log($"[金钱] {target.Name} 的独立钱包更新为 {amount.Value} 金", LogLevel.Info);
+            }
+            else
+            {
+                var individualMoney = Game1.player.team.individualMoney;
+                if (!individualMoney.TryGetValue(targetId, out NetIntDelta moneyDelta))
+                {
+                    moneyDelta = new NetIntDelta(amount.Value)
+                    {
+                        Minimum = 0
+                    };
+                    individualMoney[targetId] = moneyDelta;
+                }
+                else
+                {
+                    moneyDelta.Value = amount.Value;
+                }
+                string name = PlayerName(targetId) ?? $"ID:{targetId}";
+                Mon.Log($"[金钱] {name} 的独立钱包更新为 {amount.Value} 金", LogLevel.Info);
+            }
+        }
+        else
+        {
+            Game1.player.team.money.Value = amount.Value;
+            Mon.Log($"[金钱] 全队共享金钱更新为 {amount.Value} 金", LogLevel.Info);
+        }
     }
 
     // 时间
@@ -843,7 +906,7 @@ public class ModEntry : Mod
     private void KickPlayer(string _, string[] args)
     {
         if (!RequireHost()) return;
-        if (args.Length < 1 || !long.TryParse(args[0], out long id) || id <= 0)
+        if (args.Length < 1 || !long.TryParse(args[0], out long id))
         {
             Mon.Log("用法: mh_kick <玩家ID>", LogLevel.Info);
             return;
@@ -870,7 +933,7 @@ public class ModEntry : Mod
         }
 
         long playerId = ResolvePlayerId(args[0]);
-        if (playerId == 0) return;
+        if (playerId == long.MinValue) return;
         var farmer = GetOnlinePlayer(playerId);
         if (farmer == null) return;
 
@@ -1028,7 +1091,7 @@ public class ModEntry : Mod
 
         // 解析可选参数
         bool instant = true;
-        long nearPlayerId = 0;
+        long? nearPlayerId = null;
 
         for (int i = 1; i < args.Length; i++)
         {
@@ -1040,13 +1103,13 @@ public class ModEntry : Mod
             else if (a.Equals("near", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
             {
                 nearPlayerId = ResolvePlayerId(args[++i], logError: false);
-                if (nearPlayerId == 0)
+                if (nearPlayerId == long.MinValue)
                 {
                     Mon.Log($"[错误] 无效的玩家ID: {args[i]}", LogLevel.Warn);
                     return;
                 }
             }
-            else if (long.TryParse(a, out long pid) && pid > 0)
+            else if (long.TryParse(a, out long pid))
             {
                 nearPlayerId = pid;
             }
@@ -1099,9 +1162,9 @@ public class ModEntry : Mod
 
         // 决定搜索起点
         Vector2 center;
-        if (nearPlayerId != 0)
+        if (nearPlayerId.HasValue)
         {
-            Farmer farmer = GetOnlinePlayer(nearPlayerId);
+            Farmer farmer = GetOnlinePlayer(nearPlayerId.Value);
             if (farmer == null) return;
             if (farmer.currentLocation == loc)
                 center = new Vector2((int)farmer.Tile.X, (int)farmer.Tile.Y);
@@ -1293,7 +1356,7 @@ public class ModEntry : Mod
 
         string typeId = args[0];
         bool instant = true;
-        long nearPlayerId = 0;
+        long? nearPlayerId = null;
 
         for (int i = 1; i < args.Length; i++)
         {
@@ -1303,9 +1366,9 @@ public class ModEntry : Mod
             else if (a.Equals("near", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
             {
                 nearPlayerId = ResolvePlayerId(args[++i], logError: false);
-                if (nearPlayerId == 0) return;
+                if (nearPlayerId == long.MinValue) return;
             }
-            else if (long.TryParse(a, out long pid) && pid > 0)
+            else if (long.TryParse(a, out long pid))
                 nearPlayerId = pid;
             else
                 Mon.Log($"[警告] 忽略未知参数: {a}", LogLevel.Warn);
@@ -1333,9 +1396,9 @@ public class ModEntry : Mod
         string displayName = TokenParser.ParseText(data.Name, null, null, null) ?? typeId;
 
         Vector2? nearTile = null;
-        if (nearPlayerId != 0)
+        if (nearPlayerId.HasValue)
         {
-            Farmer farmer = GetOnlinePlayer(nearPlayerId);
+            Farmer farmer = GetOnlinePlayer(nearPlayerId.Value);
             if (farmer == null) return;
             if (farmer.currentLocation == loc)
                 nearTile = new Vector2((int)farmer.Tile.X, (int)farmer.Tile.Y);
@@ -1366,7 +1429,7 @@ public class ModEntry : Mod
         }
 
         long pid = ResolvePlayerId(args[0]);
-        if (pid == 0) return;
+        if (pid == long.MinValue) return;
         Farmer farmer = GetOnlinePlayer(pid);
         if (farmer == null) return;
 
@@ -1605,8 +1668,7 @@ public class ModEntry : Mod
                 {
                     if (args.Length < 2) { Mon.Log("用法: mh_giftwl add <玩家ID>", LogLevel.Warn); return; }
                     long id = ResolvePlayerId(args[1], logError: false);
-                    if (id == 0 && long.TryParse(args[1], out long raw) && raw > 0) id = raw;
-                    if (id == 0) { Mon.Log("[错误] 无效的玩家 ID", LogLevel.Warn); return; }
+                    if (id == long.MinValue) { Mon.Log("[错误] 无效的玩家 ID", LogLevel.Warn); return; }
                     if (!Config.InfiniteGiftsWhitelist.Contains(id))
                         Config.InfiniteGiftsWhitelist.Add(id);
                     SaveConfig();
@@ -1617,7 +1679,7 @@ public class ModEntry : Mod
                 {
                     if (args.Length < 2) { Mon.Log("用法: mh_giftwl remove <玩家ID>", LogLevel.Warn); return; }
                     long id = ResolvePlayerId(args[1], logError: false);
-                    if (id == 0 && long.TryParse(args[1], out long raw) && raw > 0) id = raw;
+                    if (id == long.MinValue) { Mon.Log("[错误] 无效的玩家 ID", LogLevel.Warn); return; }
                     if (Config.InfiniteGiftsWhitelist.Remove(id))
                     {
                         SaveConfig();
@@ -1682,10 +1744,10 @@ public class ModEntry : Mod
 
         // 重置物品
         ResetMarkedItemsOnDisconnect(farmhandRef.Value, logOnReset: true);
-        
+
         // 重置无限送礼数据
         ResetFriendshipForInfiniteGifts(farmhandRef.Value, logOnReset: true);
-        
+
         farmhandRef.MarkDirty();
         farmhandData.MarkDirty();
     }

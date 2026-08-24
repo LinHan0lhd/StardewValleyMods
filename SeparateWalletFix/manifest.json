@@ -1,0 +1,10 @@
+{
+  "Name": "Separate Wallet Fix",
+  "Author": "LinHan",
+  "Version": "1.0.0",
+  "Description": "Prevents farmhands from overriding host's separate wallet setting on join.",
+  "UniqueID": "LinHan.SeparateWalletFix",
+  "EntryDll": "SeparateWalletFix.dll",
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": []
+}

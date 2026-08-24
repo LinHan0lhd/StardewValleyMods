@@ -1,0 +1,9 @@
+C:\Users\Administrator\Documents\StardewValleyMods\SeparateWalletFix\bin\Debug\net6.0\SeparateWalletFix.deps.json
+C:\Users\Administrator\Documents\StardewValleyMods\SeparateWalletFix\bin\Debug\net6.0\SeparateWalletFix.dll
+C:\Users\Administrator\Documents\StardewValleyMods\SeparateWalletFix\obj\Debug\net6.0\SeparateWalletFix.csproj.AssemblyReference.cache
+C:\Users\Administrator\Documents\StardewValleyMods\SeparateWalletFix\obj\Debug\net6.0\SeparateWalletFix.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Administrator\Documents\StardewValleyMods\SeparateWalletFix\obj\Debug\net6.0\SeparateWalletFix.AssemblyInfoInputs.cache
+C:\Users\Administrator\Documents\StardewValleyMods\SeparateWalletFix\obj\Debug\net6.0\SeparateWalletFix.AssemblyInfo.cs
+C:\Users\Administrator\Documents\StardewValleyMods\SeparateWalletFix\obj\Debug\net6.0\SeparateWalletFix.csproj.CoreCompileInputs.cache
+C:\Users\Administrator\Documents\StardewValleyMods\SeparateWalletFix\obj\Debug\net6.0\SeparateWalletFix.sourcelink.json
+C:\Users\Administrator\Documents\StardewValleyMods\SeparateWalletFix\obj\Debug\net6.0\SeparateWalletFix.dll

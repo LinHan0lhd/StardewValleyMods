@@ -33,7 +33,7 @@ public class SaveAutoLoader
 
         if (string.IsNullOrEmpty(saveName))
         {
-            _monitor.Log("未找到存档", LogLevel.Info);
+            _monitor.Log("未找到存档", LogLevel.Trace);
             return false;
         }
 
