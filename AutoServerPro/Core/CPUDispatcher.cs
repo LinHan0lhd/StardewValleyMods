@@ -56,7 +56,7 @@ public class CPUDispatcher
             if (_config.DisableMouseInput) features.Add("禁用鼠标");
             if (_config.DisableGamepadInput) features.Add("禁用手柄");
             if (features.Count > 0)
-                _monitor.Log($"CPU优化已启用: {string.Join(" ", features)}", LogLevel.Info);
+                _monitor.Log($"CPU优化已启用: {string.Join(" ", features)}", LogLevel.Debug);
         }
         catch (Exception ex)
         {

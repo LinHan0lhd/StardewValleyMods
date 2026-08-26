@@ -6,10 +6,10 @@ using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
 using StardewValley.Menus;
+using StardewValley.Triggers;
 using AutoServerPro.Core;
 using AutoServerPro.Utils;
 using AutoServerPro.Models;
-using HarmonyLib;
 
 namespace AutoServerPro;
 
@@ -30,6 +30,8 @@ public class ModEntry : Mod
     private bool _hasPlayerConnected = false;
     private bool _savedAfterAllPlayersOffline = false;
 
+    private bool _hasTeleportedAfterLoad = false;
+
     public override void Entry(IModHelper helper)
     {
         Instance = this;
@@ -39,7 +41,7 @@ public class ModEntry : Mod
         _festivalManager = new FestivalManager(Monitor);
         _saveManager = new SaveManager(Monitor, _config, helper, _festivalManager);
         _sleepManager = new AutoSleepManager(Monitor, _config, helper);
-        _syncManager = new SceneSyncManager(_config);
+        _syncManager = new SceneSyncManager(_config, helper);
         _chatLogger = new ChatLogger(Monitor, ModManifest.UniqueID);
         _cpuDispatcher = new CPUDispatcher(Monitor, _config);
 
@@ -175,6 +177,8 @@ public class ModEntry : Mod
         {
             AutoReadMail();
             _saveManager.AutoBackupCheck();
+            if (_config.EnableSceneSync)
+                _syncManager.TeleportToFarm();
         }
     }
 
@@ -187,6 +191,7 @@ public class ModEntry : Mod
                 SetLanguage();
                 bool hasSave = _saveManager.AutoLoadSave();
                 _hasAutoLoaded = true;
+                _hasTeleportedAfterLoad = false;
 
                 if (!hasSave && !_hasAutoCreated)
                 {
@@ -259,6 +264,11 @@ public class ModEntry : Mod
 
         if (_config.EnableSceneSync && !_festivalManager.IsFestivalActive && !_sleepManager.IsSleepingOrGone)
         {
+            if (!_hasTeleportedAfterLoad)
+            {
+                _hasTeleportedAfterLoad = true;
+                _syncManager.TeleportToFarm();
+            }
             _syncManager.UpdateSyncSource();
             _syncManager.SyncLocation();
         }
@@ -303,18 +313,30 @@ public class ModEntry : Mod
     private void OnPeerConnected(object _, PeerConnectedEventArgs e)
     {
         _hasPlayerConnected = true;
-        string name = "Unknown";
-        try { name = Game1.GetPlayer(e.Peer.PlayerID)?.Name ?? name; }
+        string name = "NewPlayer";
+        try
+        {
+            name = string.IsNullOrEmpty(Game1.GetPlayer(e.Peer.PlayerID)?.Name)
+                ? "NewPlayer"
+                : Game1.GetPlayer(e.Peer.PlayerID).Name;
+        }
         catch { }
+
         _syncManager.AddPlayer(e.Peer.PlayerID);
         Monitor.Log($"{name} [ID:{e.Peer.PlayerID}] 加入", LogLevel.Debug);
     }
 
     private void OnPeerDisconnected(object _, PeerDisconnectedEventArgs e)
     {
-        string name = "Unknown";
-        try { name = Game1.GetPlayer(e.Peer.PlayerID)?.Name ?? name; }
+        string name = "NewPlayer";
+        try
+        {
+            name = string.IsNullOrEmpty(Game1.GetPlayer(e.Peer.PlayerID)?.Name)
+                ? "NewPlayer"
+                : Game1.GetPlayer(e.Peer.PlayerID).Name;
+        }
         catch { }
+
         _syncManager.RemovePlayer(e.Peer.PlayerID);
         Monitor.Log($"{name} [ID:{e.Peer.PlayerID}] 离开", LogLevel.Debug);
     }
@@ -332,11 +354,81 @@ public class ModEntry : Mod
 
     private void AutoReadMail()
     {
+        var mailData = DataLoader.Mail(Game1.content);
+        if (mailData == null) return;
+
         while (Game1.player.mailbox.Count > 0)
         {
-            string id = Game1.player.mailbox[0];
+            string mailId = Game1.player.mailbox[0];
             Game1.player.mailbox.RemoveAt(0);
-            Game1.player.mailReceived.Add(id);
+            if (Game1.player.mailReceived.Contains(mailId)) continue;
+
+            try { ProcessMail(mailId, mailData, Game1.player); }
+            catch (Exception ex) { Monitor.Log($"[邮件] 处理 '{mailId}' 失败: {ex.Message}", LogLevel.Error); }
+
+            Game1.player.mailReceived.Add(mailId);
+        }
+    }
+
+    private void ProcessMail(string mailId, IDictionary<string, string> mailData, Farmer target)
+    {
+        if (mailData == null || !mailData.TryGetValue(mailId, out string mailText) || string.IsNullOrWhiteSpace(mailText)) return;
+
+        foreach (string action in ExtractCommands(mailText, "%action"))
+        {
+            if (!TriggerActionManager.TryRunAction(action, out string error, out Exception ex))
+                Monitor.Log($"[邮件] '{mailId}' 动作失败: {error}", LogLevel.Warn);
+        }
+
+        foreach (string itemCmd in ExtractCommands(mailText, "%item"))
+        {
+            HandleItemCommand(itemCmd, target);
+        }
+
+        if (mailId == "winter_18")
+        {
+            string key = "sawSecretSanta" + Game1.year;
+            if (!target.mailReceived.Contains(key)) target.mailReceived.Add(key);
+        }
+    }
+
+    private IEnumerable<string> ExtractCommands(string text, string prefix)
+    {
+        int searchFrom = 0;
+        while (true)
+        {
+            int start = text.IndexOf(prefix, searchFrom, StringComparison.InvariantCulture);
+            if (start < 0) yield break;
+            int end = text.IndexOf("%%", start, StringComparison.InvariantCulture);
+            if (end < 0) yield break;
+            searchFrom = end + 2;
+            yield return text.Substring(start + prefix.Length, end - start - prefix.Length).Trim();
+        }
+    }
+
+    private void HandleItemCommand(string itemCmd, Farmer target)
+    {
+        int firstSpace = itemCmd.IndexOf(' ');
+        string type = firstSpace >= 0 ? itemCmd.Substring(0, firstSpace).ToLower() : itemCmd.ToLower();
+        string argsStr = firstSpace >= 0 ? itemCmd.Substring(firstSpace + 1) : "";
+        string[] args = argsStr.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+
+        if (string.IsNullOrWhiteSpace(type)) return;
+
+        switch (type)
+        {
+            case "quest":
+                if (args.Length > 0 && !target.mailReceived.Contains("NOQUEST_" + args[0]))
+                    target.addQuest(args[0]);
+                break;
+            case "specialorder":
+                if (args.Length > 0 && !target.mailReceived.Contains("NOSPECIALORDER_" + args[0]))
+                    target.team.AddSpecialOrder(args[0], null, false);
+                break;
+            case "conversationtopic":
+                if (args.Length >= 2 && int.TryParse(args[1], out int days))
+                    target.activeDialogueEvents[args[0]] = days;
+                break;
         }
     }
 }

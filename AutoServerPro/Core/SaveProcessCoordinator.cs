@@ -7,10 +7,12 @@ using System.Linq;
 using System.Reflection;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
+using Netcode;
 using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Extensions;
 using StardewValley.Locations;
+using StardewValley.Network;
 using StardewValley.TerrainFeatures;
 using AutoServerPro.Models;
 using AutoServerPro.Utils;
@@ -128,17 +130,27 @@ public class SaveProcessCoordinator
     {
         try
         {
-            SyncOnlinePlayerPositions();
+            if (Game1.IsMasterGame)
+            {
+                foreach (var kvp in Game1.otherFarmers.Roots)
+                {
+                    long uid = kvp.Key;
+                    NetFarmerRoot farmhandRoot = kvp.Value as NetFarmerRoot;
+                    if (farmhandRoot == null) continue;
+
+                    Farmer farmer = farmhandRoot.Value;
+                    farmer.disconnectLocation.Value = farmer.currentLocation?.NameOrUniqueName ?? "";
+                    farmer.disconnectPosition.Value = farmer.Position;
+
+                    if (Game1.netWorldState.Value.farmhandData.FieldDict.TryGetValue(uid, out NetRef<Farmer> farmhandDataRef))
+                    {
+                        farmhandRoot.CloneInto(farmhandDataRef);
+                    }
+                }
+            }
+
             _pathManager.RedirectSavesToTemp();
             _pendingSnapshot = CreateSnapshot();
-
-            if (GetSaveEnumeratorMethod == null)
-            {
-                _monitor.Log("找不到 getSaveEnumerator", LogLevel.Error);
-                SaveGame.IsProcessing = false;
-                _pendingSnapshot = null;
-                return;
-            }
 
             SaveGame.IsProcessing = true;
             _saveCoroutine = (IEnumerator<int>)GetSaveEnumeratorMethod.Invoke(null, null);
@@ -238,26 +250,6 @@ public class SaveProcessCoordinator
         Game1.paused = false;
         Game1.quit = true;
         _monitor.Log("保存完成 > 解除暂停并退出游戏", LogLevel.Info);
-    }
-
-    private static void SyncOnlinePlayerPositions()
-    {
-        if (Game1.netWorldState?.Value?.farmhandData == null) return;
-        int daysPlayed = (int?)Game1.MasterPlayer?.stats?.DaysPlayed ?? 0;
-        foreach (var farmer in Game1.otherFarmers.Values)
-        {
-            if (farmer == null) continue;
-            try
-            {
-                if (Game1.netWorldState.Value.farmhandData.TryGetValue(farmer.UniqueMultiplayerID, out var fd))
-                {
-                    fd.disconnectPosition.Value = farmer.position.Value;
-                    fd.disconnectLocation.Value = farmer.currentLocation?.NameOrUniqueName ?? "";
-                    fd.disconnectDay.Value = daysPlayed;
-                }
-            }
-            catch { }
-        }
     }
 
     private GameStateSnapshot CreateSnapshot()

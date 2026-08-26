@@ -1,4 +1,6 @@
+using Microsoft.Xna.Framework;
 using StardewModdingAPI;
+using StardewModdingAPI.Events;
 using StardewValley;
 using StardewValley.Locations;
 using AutoServerPro.Models;
@@ -10,13 +12,22 @@ public class SceneSyncManager
     private ModConfig _config;
     private long _syncSourceId = 0;
     private Queue<long> _joinOrder = new();
+    private IModHelper _helper;
 
-    public SceneSyncManager(ModConfig config) => _config = config;
-
+    public SceneSyncManager(ModConfig config, IModHelper helper)
+    {
+        _config = config;
+        _helper = helper;
+    }
     public void UpdateConfig(ModConfig config) => _config = config;
 
     public void AddPlayer(long id) => _joinOrder.Enqueue(id);
     public void RemovePlayer(long id) => _joinOrder = new Queue<long>(_joinOrder.Where(p => p != id));
+
+    public void TeleportToFarm()
+    {
+        Game1.warpFarmer("Farm", 999, 999, false);
+    }
 
     public void UpdateSyncSource()
     {
@@ -44,7 +55,17 @@ public class SceneSyncManager
         if (name == "Temp" || loc is FarmHouse || loc is Cabin)
             return;
 
-        Game1.warpFarmer(loc.NameOrUniqueName, 999, 999, false);
+        Game1.warpFarmer(name, 999, 999, false);
+        EventHandler<UpdateTickedEventArgs>? fix = null;
+        fix = (s, e) =>
+        {
+            if (!Game1.isWarping)
+            {
+                Game1.player.setTileLocation(new Vector2(999, 999));
+                _helper.Events.GameLoop.UpdateTicked -= fix;
+            }
+        };
+        _helper.Events.GameLoop.UpdateTicked += fix;
     }
 
     public bool AnyPlayerInTemp() => Game1.getOnlineFarmers()?.Any(f => f?.currentLocation?.Name == "Temp") == true;
