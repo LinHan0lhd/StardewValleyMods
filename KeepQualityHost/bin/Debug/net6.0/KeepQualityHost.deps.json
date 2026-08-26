@@ -6,19 +6,19 @@
   "compilationOptions": {},
   "targets": {
     ".NETCoreApp,Version=v6.0": {
-      "JunimoKartTweaks/1.0.0": {
+      "KeepQualityHost/1.0.0": {
         "dependencies": {
           "Pathoschild.Stardew.ModBuildConfig": "4.4.0"
         },
         "runtime": {
-          "JunimoKartTweaks.dll": {}
+          "KeepQualityHost.dll": {}
         }
       },
       "Pathoschild.Stardew.ModBuildConfig/4.4.0": {}
     }
   },
   "libraries": {
-    "JunimoKartTweaks/1.0.0": {
+    "KeepQualityHost/1.0.0": {
       "type": "project",
       "serviceable": false,
       "sha512": ""

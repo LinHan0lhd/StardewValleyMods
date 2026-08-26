@@ -1,9 +1,0 @@
-C:\Users\admin\Documents\StardewValleyMods\JunimoKartTweaks\bin\Debug\net6.0\JunimoKartTweaks.deps.json
-C:\Users\admin\Documents\StardewValleyMods\JunimoKartTweaks\bin\Debug\net6.0\JunimoKartTweaks.dll
-C:\Users\admin\Documents\StardewValleyMods\JunimoKartTweaks\obj\Debug\net6.0\JunimoKartTweaks.csproj.AssemblyReference.cache
-C:\Users\admin\Documents\StardewValleyMods\JunimoKartTweaks\obj\Debug\net6.0\JunimoKartTweaks.GeneratedMSBuildEditorConfig.editorconfig
-C:\Users\admin\Documents\StardewValleyMods\JunimoKartTweaks\obj\Debug\net6.0\JunimoKartTweaks.AssemblyInfoInputs.cache
-C:\Users\admin\Documents\StardewValleyMods\JunimoKartTweaks\obj\Debug\net6.0\JunimoKartTweaks.AssemblyInfo.cs
-C:\Users\admin\Documents\StardewValleyMods\JunimoKartTweaks\obj\Debug\net6.0\JunimoKartTweaks.csproj.CoreCompileInputs.cache
-C:\Users\admin\Documents\StardewValleyMods\JunimoKartTweaks\obj\Debug\net6.0\JunimoKartTweaks.sourcelink.json
-C:\Users\admin\Documents\StardewValleyMods\JunimoKartTweaks\obj\Debug\net6.0\JunimoKartTweaks.dll

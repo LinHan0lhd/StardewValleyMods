@@ -1,5 +1,5 @@
 {
-  "Name": "Separate Wallet Fix",
+  "Name": "SeparateWalletFix",
   "Author": "LinHan",
   "Version": "1.0.0",
   "Description": "Prevents farmhands from overriding host's separate wallet setting on join.",

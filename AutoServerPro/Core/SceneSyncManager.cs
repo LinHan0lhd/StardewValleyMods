@@ -51,7 +51,7 @@ public class SceneSyncManager
         var loc = leader.currentLocation;
         if (loc == null || Game1.currentLocation == loc) return;
 
-        string name = loc.Name;
+        string name = loc.NameOrUniqueName;
         if (name == "Temp" || loc is FarmHouse || loc is Cabin)
             return;
 

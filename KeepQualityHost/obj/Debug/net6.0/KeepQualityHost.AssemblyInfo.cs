@@ -10,12 +10,12 @@
 using System;
 using System.Reflection;
 
-[assembly: System.Reflection.AssemblyCompanyAttribute("JunimoKartTweaks")]
+[assembly: System.Reflection.AssemblyCompanyAttribute("KeepQualityHost")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+62343c6d95e9241c317bde057507184c13fe9cfd")]
-[assembly: System.Reflection.AssemblyProductAttribute("JunimoKartTweaks")]
-[assembly: System.Reflection.AssemblyTitleAttribute("JunimoKartTweaks")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+b5c23f43babfb2a406cc4b733249dc89a58875be")]
+[assembly: System.Reflection.AssemblyProductAttribute("KeepQualityHost")]
+[assembly: System.Reflection.AssemblyTitleAttribute("KeepQualityHost")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
 
 // 由 MSBuild WriteCodeFragment 类生成。

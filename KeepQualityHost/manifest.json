@@ -1,0 +1,10 @@
+{
+  "Name": "KeepQualityHost",
+  "Author": "LinHan",
+  "Version": "1.0.0",
+  "Description": "Keeps input quality for artisan goods. Large animal products yield double output. Configurable: disable loom double output.",
+  "UniqueID": "LinHan.KeepQualityHost",
+  "EntryDll": "KeepQualityHost.dll",
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": []
+}

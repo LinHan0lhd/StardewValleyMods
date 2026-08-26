@@ -5,7 +5,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <EnableHarmony>true</EnableHarmony>
-    <NoWarn>IDE0051</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

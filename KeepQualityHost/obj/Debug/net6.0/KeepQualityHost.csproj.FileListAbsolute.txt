@@ -1,0 +1,9 @@
+C:\Users\Administrator\Documents\StardewValleyMods\KeepQualityHost\bin\Debug\net6.0\KeepQualityHost.deps.json
+C:\Users\Administrator\Documents\StardewValleyMods\KeepQualityHost\bin\Debug\net6.0\KeepQualityHost.dll
+C:\Users\Administrator\Documents\StardewValleyMods\KeepQualityHost\obj\Debug\net6.0\KeepQualityHost.csproj.AssemblyReference.cache
+C:\Users\Administrator\Documents\StardewValleyMods\KeepQualityHost\obj\Debug\net6.0\KeepQualityHost.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Administrator\Documents\StardewValleyMods\KeepQualityHost\obj\Debug\net6.0\KeepQualityHost.AssemblyInfoInputs.cache
+C:\Users\Administrator\Documents\StardewValleyMods\KeepQualityHost\obj\Debug\net6.0\KeepQualityHost.AssemblyInfo.cs
+C:\Users\Administrator\Documents\StardewValleyMods\KeepQualityHost\obj\Debug\net6.0\KeepQualityHost.csproj.CoreCompileInputs.cache
+C:\Users\Administrator\Documents\StardewValleyMods\KeepQualityHost\obj\Debug\net6.0\KeepQualityHost.sourcelink.json
+C:\Users\Administrator\Documents\StardewValleyMods\KeepQualityHost\obj\Debug\net6.0\KeepQualityHost.dll
