@@ -2,7 +2,7 @@
 using StardewModdingAPI;
 using StardewValley;
 
-namespace KeepQualityHost
+namespace ArtisanGoodsKeepQuality
 {
     public class ModEntry : Mod
     {
@@ -16,11 +16,6 @@ namespace KeepQualityHost
         }
     }
 
-    public class ModConfig
-    {
-        public bool DisableDoubleOutputOnLoom { get; set; } = false;
-    }
-
     [HarmonyPatch(typeof(StardewValley.Object), nameof(StardewValley.Object.minutesElapsed))]
     public static class MinutesElapsedPatch
     {
@@ -30,7 +25,13 @@ namespace KeepQualityHost
             if (!Game1.IsMasterGame) return;
             if (!__instance.readyForHarvest.Value) return;
             if (__instance.heldObject.Value == null) return;
-            if (__instance.QualifiedItemId == "(BC)163") return; // 木桶
+
+            // 跳过不应该继承品质的机器
+            switch (__instance.QualifiedItemId)
+            {
+                case "(BC)163": return; // 木桶
+                case "(BC)25":  return; // 种子制造机
+            }
 
             var held = __instance.heldObject.Value;
             var input = __instance.lastInputItem.Value;
@@ -44,7 +45,6 @@ namespace KeepQualityHost
             if (isLargeInput && held.Stack == 1)
                 held.Stack = 2;
 
-            // 禁用织布机双倍产出
             if (ModEntry.Config.DisableDoubleOutputOnLoom
                 && __instance.QualifiedItemId == "(BC)17"
                 && held.Stack > 1)
