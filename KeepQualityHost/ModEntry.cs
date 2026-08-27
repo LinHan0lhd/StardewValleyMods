@@ -1,6 +1,7 @@
 ﻿using HarmonyLib;
 using StardewModdingAPI;
 using StardewValley;
+using StardewValley.GameData.Machines;
 
 namespace ArtisanGoodsKeepQuality
 {
@@ -26,7 +27,6 @@ namespace ArtisanGoodsKeepQuality
             if (!__instance.readyForHarvest.Value) return;
             if (__instance.heldObject.Value == null) return;
 
-            // 跳过不应该继承品质的机器
             switch (__instance.QualifiedItemId)
             {
                 case "(BC)163": return; // 木桶
@@ -37,18 +37,37 @@ namespace ArtisanGoodsKeepQuality
             var input = __instance.lastInputItem.Value;
             if (input == null) return;
 
-            bool isLargeInput = held.Quality == 2;
-
             if (input.Quality > 0)
                 held.Quality = input.Quality;
 
-            if (isLargeInput && held.Stack == 1)
+            if (IsLargeQualityRule(__instance) && held.Stack == 1)
                 held.Stack = 2;
 
             if (ModEntry.Config.DisableDoubleOutputOnLoom
                 && __instance.QualifiedItemId == "(BC)17"
                 && held.Stack > 1)
                 held.Stack = 1;
+        }
+
+        private static bool IsLargeQualityRule(StardewValley.Object machine)
+        {
+            string ruleId = machine.lastOutputRuleId.Value;
+            if (string.IsNullOrEmpty(ruleId)) return false;
+
+            MachineData machineData = machine.GetMachineData();
+            if (machineData?.OutputRules == null) return false;
+
+            foreach (MachineOutputRule rule in machineData.OutputRules)
+            {
+                if (rule.Id == ruleId && rule.OutputItem != null)
+                {
+                    foreach (MachineItemOutput output in rule.OutputItem)
+                    {
+                        if (output.Quality == 2) return true;
+                    }
+                }
+            }
+            return false;
         }
     }
 }
