@@ -1,0 +1,9 @@
+C:\Users\Administrator\Documents\StardewValleyMods\ArtisanPond\bin\Debug\net6.0\ArtisanPond.deps.json
+C:\Users\Administrator\Documents\StardewValleyMods\ArtisanPond\bin\Debug\net6.0\ArtisanPond.dll
+C:\Users\Administrator\Documents\StardewValleyMods\ArtisanPond\obj\Debug\net6.0\ArtisanPond.csproj.AssemblyReference.cache
+C:\Users\Administrator\Documents\StardewValleyMods\ArtisanPond\obj\Debug\net6.0\ArtisanPond.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Administrator\Documents\StardewValleyMods\ArtisanPond\obj\Debug\net6.0\ArtisanPond.AssemblyInfoInputs.cache
+C:\Users\Administrator\Documents\StardewValleyMods\ArtisanPond\obj\Debug\net6.0\ArtisanPond.AssemblyInfo.cs
+C:\Users\Administrator\Documents\StardewValleyMods\ArtisanPond\obj\Debug\net6.0\ArtisanPond.csproj.CoreCompileInputs.cache
+C:\Users\Administrator\Documents\StardewValleyMods\ArtisanPond\obj\Debug\net6.0\ArtisanPond.sourcelink.json
+C:\Users\Administrator\Documents\StardewValleyMods\ArtisanPond\obj\Debug\net6.0\ArtisanPond.dll

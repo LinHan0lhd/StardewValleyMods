@@ -6,6 +6,7 @@ using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
 using StardewValley.Menus;
+using StardewValley.Events;
 using StardewValley.Triggers;
 using AutoServerPro.Core;
 using AutoServerPro.Utils;
@@ -220,6 +221,17 @@ public class ModEntry : Mod
 
         _saveManager.UpdateSave();
 
+        if (Game1.farmEvent is QiPlaneEvent qiEvent)
+        {
+            var finalFadeTimer = Helper.Reflection.GetField<float>(qiEvent, "finalFadeTimer");
+            finalFadeTimer.SetValue(5000f);
+        }
+
+        if (_sleepManager.IsSleepingOrGone && Game1.netWorldState?.Value != null && Game1.netWorldState.Value.IsPaused)
+        {
+            Game1.netWorldState.Value.IsPaused = false;
+        }
+
         if (Game1.ticks % 60 != 0) return;
 
         _sleepManager.FixPetName();
@@ -237,7 +249,15 @@ public class ModEntry : Mod
         var farmhands = Game1.otherFarmers?.Values?.Where(f => f?.isActive() == true).ToList() ?? new List<Farmer>();
         if (!farmhands.Any())
         {
-            if (!Game1.paused) { Game1.paused = true; Monitor.Log("全员离线 > 游戏暂停", LogLevel.Trace); }
+            if (_sleepManager.IsSleepingOrGone)
+            {
+                if (Game1.paused) Game1.paused = false;
+            }
+            else if (!Game1.paused)
+            {
+                Game1.paused = true; Monitor.Log("全员离线 > 游戏暂停", LogLevel.Trace);
+            }
+
             if (_config.SaveWhenAllPlayersOffline && Context.IsMainPlayer && _hasPlayerConnected && !_savedAfterAllPlayersOffline)
             {
                 _savedAfterAllPlayersOffline = true;

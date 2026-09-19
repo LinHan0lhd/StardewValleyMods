@@ -10,12 +10,12 @@
 using System;
 using System.Reflection;
 
-[assembly: System.Reflection.AssemblyCompanyAttribute("KeepQualityHost")]
+[assembly: System.Reflection.AssemblyCompanyAttribute("ArtisanPond")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
 [assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+d0b419281f50b716087505190d14640db3a56929")]
-[assembly: System.Reflection.AssemblyProductAttribute("KeepQualityHost")]
-[assembly: System.Reflection.AssemblyTitleAttribute("KeepQualityHost")]
+[assembly: System.Reflection.AssemblyProductAttribute("ArtisanPond")]
+[assembly: System.Reflection.AssemblyTitleAttribute("ArtisanPond")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
 
 // 由 MSBuild WriteCodeFragment 类生成。

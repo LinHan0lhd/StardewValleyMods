@@ -1,0 +1,10 @@
+{
+  "Name": "ArtisanPond",
+  "Author": "LinHan",
+  "Version": "1.0.0",
+  "Description": "Enhances fish ponds with mood, friendship, and quality upgrades.",
+  "UniqueID": "LinHan.ArtisanPond",
+  "EntryDll": "ArtisanPond.dll",
+  "MinimumApiVersion": "3.0.0",
+  "UpdateKeys": []
+}
