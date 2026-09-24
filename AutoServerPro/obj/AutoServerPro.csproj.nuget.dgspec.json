@@ -1,20 +1,20 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\Administrator\\Documents\\StardewValleyMods\\AutoServerPro\\AutoServerPro.csproj": {}
+    "/workspace/AutoServerPro/AutoServerPro.csproj": {}
   },
   "projects": {
-    "C:\\Users\\Administrator\\Documents\\StardewValleyMods\\AutoServerPro\\AutoServerPro.csproj": {
+    "/workspace/AutoServerPro/AutoServerPro.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\Administrator\\Documents\\StardewValleyMods\\AutoServerPro\\AutoServerPro.csproj",
+        "projectUniqueName": "/workspace/AutoServerPro/AutoServerPro.csproj",
         "projectName": "AutoServerPro",
-        "projectPath": "C:\\Users\\Administrator\\Documents\\StardewValleyMods\\AutoServerPro\\AutoServerPro.csproj",
-        "packagesPath": "C:\\Users\\Administrator\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\Administrator\\Documents\\StardewValleyMods\\AutoServerPro\\obj\\",
+        "projectPath": "/workspace/AutoServerPro/AutoServerPro.csproj",
+        "packagesPath": "/root/.nuget/packages/",
+        "outputPath": "/workspace/AutoServerPro/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "C:\\Users\\Administrator\\AppData\\Roaming\\NuGet\\NuGet.Config"
+          "/root/.nuget/NuGet/NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net6.0"
@@ -32,11 +32,6 @@
           "warnAsError": [
             "NU1605"
           ]
-        },
-        "restoreAuditProperties": {
-          "enableAudit": "true",
-          "auditLevel": "low",
-          "auditMode": "direct"
         }
       },
       "frameworks": {
@@ -67,10 +62,6 @@
             {
               "name": "Microsoft.NETCore.App.Ref",
               "version": "[6.0.36, 6.0.36]"
-            },
-            {
-              "name": "Microsoft.WindowsDesktop.App.Ref",
-              "version": "[6.0.36, 6.0.36]"
             }
           ],
           "frameworkReferences": {
@@ -78,7 +69,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.424\\RuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "/usr/lib/dotnet/sdk/8.0.131/RuntimeIdentifierGraph.json"
         }
       }
     }
