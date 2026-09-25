@@ -379,16 +379,10 @@ public class ModEntry : Mod
         else Monitor.Log($"语言 '{_config.Language}' 无效", LogLevel.Warn);
     }
 
-    /// <summary>
-    /// 逐句推进对话而不是直接关闭。
-    /// 用于婚礼等不能 skipEvent 的事件——这类事件的 endBehavior 必须由剧情自然播放到最后才会触发，
-    /// 直接 closeDialogue + skipEvent 会跳过 endBehavior 导致状态不一致（如婚礼后配偶不搬入）。
-    /// </summary>
     private void AdvanceDialogue(DialogueBox db)
     {
         try
         {
-            // 专用服务器上 safetyTimer 为 0，可立即推进；保险起见显式清零。
             db.safetyTimer = 0;
             db.receiveLeftClick(0, 0, false);
         }

@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("AutoServerPro")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+0f37426f8392cea1c1e58bce8ed679b9afe44a27")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+931f8f6c83efc750e4523c277ec07907f505912b")]
 [assembly: System.Reflection.AssemblyProductAttribute("AutoServerPro")]
 [assembly: System.Reflection.AssemblyTitleAttribute("AutoServerPro")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

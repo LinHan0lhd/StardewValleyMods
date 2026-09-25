@@ -62,8 +62,7 @@ public class AutoSleepManager
         if (Game1.CurrentEvent == null) return;
         if (_lastSkippedEventId == Game1.CurrentEvent.id) return;
 
-        // 婚礼事件不能跳过，需要让剧情自然播放到 end wedding，否则配偶不会搬入、婚姻对话不会设置，导致卡住。
-        // 婚礼对话由 ModEntry 中的推进逻辑自动点击完成。
+        // 婚礼事件
         if (Game1.CurrentEvent.isWedding || Game1.CurrentEvent.id == "-2") return;
 
         if (Game1.CurrentEvent.id == "1590166" || Game1.CurrentEvent.id == "897405")
