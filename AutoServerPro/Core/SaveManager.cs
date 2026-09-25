@@ -45,8 +45,7 @@ public class SaveManager
 
         SavePatch.SkipSchedule = true;
 
-        // 加载完成后切回原存档路径，确保睡觉等原版保存写入原目录而非临时目录。
-        // mod 主动保存（ForceSaveNow）会在保存前切到临时目录、保存后切回，不受影响。
+        // 加载完成后切回原存档路径
         _pathManager.RedirectSavesToOriginal();
 
         if (!string.IsNullOrEmpty(_autoLoader.CurrentSaveName))
