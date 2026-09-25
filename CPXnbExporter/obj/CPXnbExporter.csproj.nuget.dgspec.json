@@ -1,20 +1,20 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\admin\\Documents\\StardewValleyMods\\CPXnbExporter\\CPXnbExporter.csproj": {}
+    "C:\\Users\\Administrator\\Documents\\StardewValleyMods\\CPXnbExporter\\CPXnbExporter.csproj": {}
   },
   "projects": {
-    "C:\\Users\\admin\\Documents\\StardewValleyMods\\CPXnbExporter\\CPXnbExporter.csproj": {
+    "C:\\Users\\Administrator\\Documents\\StardewValleyMods\\CPXnbExporter\\CPXnbExporter.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\admin\\Documents\\StardewValleyMods\\CPXnbExporter\\CPXnbExporter.csproj",
+        "projectUniqueName": "C:\\Users\\Administrator\\Documents\\StardewValleyMods\\CPXnbExporter\\CPXnbExporter.csproj",
         "projectName": "CPXnbExporter",
-        "projectPath": "C:\\Users\\admin\\Documents\\StardewValleyMods\\CPXnbExporter\\CPXnbExporter.csproj",
-        "packagesPath": "C:\\Users\\admin\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\admin\\Documents\\StardewValleyMods\\CPXnbExporter\\obj\\",
+        "projectPath": "C:\\Users\\Administrator\\Documents\\StardewValleyMods\\CPXnbExporter\\CPXnbExporter.csproj",
+        "packagesPath": "C:\\Users\\Administrator\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\Administrator\\Documents\\StardewValleyMods\\CPXnbExporter\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "C:\\Users\\admin\\AppData\\Roaming\\NuGet\\NuGet.Config"
+          "C:\\Users\\Administrator\\AppData\\Roaming\\NuGet\\NuGet.Config"
         ],
         "originalTargetFrameworks": [
           "net6.0"
@@ -72,15 +72,15 @@
           "downloadDependencies": [
             {
               "name": "Microsoft.AspNetCore.App.Ref",
-              "version": "[6.0.32, 6.0.32]"
+              "version": "[6.0.36, 6.0.36]"
             },
             {
               "name": "Microsoft.NETCore.App.Ref",
-              "version": "[6.0.32, 6.0.32]"
+              "version": "[6.0.36, 6.0.36]"
             },
             {
               "name": "Microsoft.WindowsDesktop.App.Ref",
-              "version": "[6.0.32, 6.0.32]"
+              "version": "[6.0.36, 6.0.36]"
             }
           ],
           "frameworkReferences": {
@@ -88,7 +88,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.303\\RuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.424\\RuntimeIdentifierGraph.json"
         }
       }
     }

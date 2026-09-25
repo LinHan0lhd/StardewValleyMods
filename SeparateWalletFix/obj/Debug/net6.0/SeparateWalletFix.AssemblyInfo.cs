@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("SeparateWalletFix")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+d0b419281f50b716087505190d14640db3a56929")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+6774ac376589fbc72ec390d9bb1df6b6da8bf8ac")]
 [assembly: System.Reflection.AssemblyProductAttribute("SeparateWalletFix")]
 [assembly: System.Reflection.AssemblyTitleAttribute("SeparateWalletFix")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
