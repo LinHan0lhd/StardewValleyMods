@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("ArtisanPond")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+0f37426f8392cea1c1e58bce8ed679b9afe44a27")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+9891646524e027cce44e1820c0373e2aabf73eea")]
 [assembly: System.Reflection.AssemblyProductAttribute("ArtisanPond")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ArtisanPond")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
