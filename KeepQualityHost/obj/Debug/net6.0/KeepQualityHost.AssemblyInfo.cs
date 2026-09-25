@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("KeepQualityHost")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+6774ac376589fbc72ec390d9bb1df6b6da8bf8ac")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+0f37426f8392cea1c1e58bce8ed679b9afe44a27")]
 [assembly: System.Reflection.AssemblyProductAttribute("KeepQualityHost")]
 [assembly: System.Reflection.AssemblyTitleAttribute("KeepQualityHost")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

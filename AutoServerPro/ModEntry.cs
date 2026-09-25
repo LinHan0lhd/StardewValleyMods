@@ -381,8 +381,8 @@ public class ModEntry : Mod
 
     /// <summary>
     /// 婚礼事件专用：推进对话而不是直接关闭。
-    /// 婚礼剧情需要逐句点击到最后才会触发 end wedding（配偶搬入等），
-    /// 直接 closeDialogue + skipEvent 会跳过 end wedding 导致服务器卡住。
+    /// 婚礼剧情需要逐句点击到最后才会触发 end wedding（配偶搬入等）
+    /// 直接 closeDialogue + skipEvent 会跳过 end wedding 导致服务器卡住
     /// </summary>
     private void AdvanceWeddingDialogue(DialogueBox db)
     {
