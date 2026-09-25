@@ -236,8 +236,15 @@ public class ModEntry : Mod
 
         _sleepManager.FixPetName();
 
+        bool isWeddingEvent = Game1.CurrentEvent != null && (Game1.CurrentEvent.isWedding || Game1.CurrentEvent.id == "-2");
+
         if (Game1.activeClickableMenu is DialogueBox db)
-            db.closeDialogue();
+        {
+            if (isWeddingEvent)
+                AdvanceWeddingDialogue(db);
+            else
+                db.closeDialogue();
+        }
 
         if (Game1.CurrentEvent != null && Context.IsMainPlayer)
         {
@@ -282,7 +289,7 @@ public class ModEntry : Mod
             _sleepManager.SetCcDoorUnlocked(true);
         }
 
-        if (_config.EnableSceneSync && !_festivalManager.IsFestivalActive && !_sleepManager.IsSleepingOrGone)
+        if (_config.EnableSceneSync && !_festivalManager.IsFestivalActive && !_sleepManager.IsSleepingOrGone && !isWeddingEvent)
         {
             if (!_hasTeleportedAfterLoad)
             {
@@ -370,6 +377,32 @@ public class ModEntry : Mod
             Monitor.Log($"设置 {lang} 作为游戏语言", LogLevel.Info);
         }
         else Monitor.Log($"语言 '{_config.Language}' 无效", LogLevel.Warn);
+    }
+
+    /// <summary>
+    /// 婚礼事件专用：推进对话而不是直接关闭。
+    /// 婚礼剧情需要逐句点击到最后才会触发 end wedding（配偶搬入等），
+    /// 直接 closeDialogue + skipEvent 会跳过 end wedding 导致服务器卡住。
+    /// </summary>
+    private void AdvanceWeddingDialogue(DialogueBox db)
+    {
+        try
+        {
+            // 专用服务器上 safetyTimer 为 0，可立即推进；保险起见显式清零。
+            db.safetyTimer = 0;
+
+            // 如果是问题对话，默认选第一个选项。
+            if (db.isQuestion && db.selectedResponse == -1)
+            {
+                db.selectedResponse = 0;
+            }
+
+            db.receiveLeftClick(0, 0, false);
+        }
+        catch (Exception ex)
+        {
+            Monitor.Log($"婚礼对话推进失败: {ex.Message}", LogLevel.Warn);
+        }
     }
 
     private void AutoReadMail()
