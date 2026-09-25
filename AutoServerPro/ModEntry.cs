@@ -390,13 +390,6 @@ public class ModEntry : Mod
         {
             // 专用服务器上 safetyTimer 为 0，可立即推进；保险起见显式清零。
             db.safetyTimer = 0;
-
-            // 如果是问题对话，默认选第一个选项。
-            if (db.isQuestion && db.selectedResponse == -1)
-            {
-                db.selectedResponse = 0;
-            }
-
             db.receiveLeftClick(0, 0, false);
         }
         catch (Exception ex)
