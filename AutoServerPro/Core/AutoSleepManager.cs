@@ -35,7 +35,18 @@ public class AutoSleepManager
     public bool IsSleepingOrGone => _goneToSleep || _isSleeping;
     public bool IsCcDoorUnlocked => _ccDoorUnlocked;
     public void SetCcDoorUnlocked(bool val) => _ccDoorUnlocked = val;
-    public void ResetSleepState() { _goneToSleep = false; _isSleeping = false; _sleepRetryCount = 0; }
+    public void ResetSleepState()
+    {
+        _goneToSleep = false;
+        _isSleeping = false;
+        _sleepRetryCount = 0;
+        // 清除房主的睡觉播报标记，使第二天可以正常触发（原版每天也会重置 team 状态）
+        try
+        {
+            Game1.player.team?.announcedSleepingFarmers?.Clear();
+        }
+        catch { }
+    }
 
     public void FixPetName()
     {
@@ -150,6 +161,16 @@ public class AutoSleepManager
             Point spot = bed.GetBedSpot();
             Game1.player.Position = new Vector2(spot.X * 64f, spot.Y * 64f);
             BedFurniture.ShiftPositionForBed(Game1.player);
+
+            // 房主是机器人，不播报睡觉提示。
+            // startSleep 内部会检查 announcedSleepingFarmers，已存在则跳过播报。
+            // 预先把房主加入列表，即可只抑制房主的播报，不影响其他联机玩家。
+            if (Game1.player.team?.announcedSleepingFarmers != null &&
+                !Game1.player.team.announcedSleepingFarmers.Contains(Game1.player))
+            {
+                Game1.player.team.announcedSleepingFarmers.Add(Game1.player);
+            }
+
             var method = _helper.Reflection.GetMethod(Game1.currentLocation, "startSleep");
             if (method != null)
             {
