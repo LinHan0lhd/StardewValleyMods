@@ -166,15 +166,17 @@ public class CabinGenerator
     }
 
     /// <summary>
-    /// 把暂存在地图外 (999,999) 的小屋搬到真正的空地。
+    /// 玩家上线时调用：把暂存在地图外 (999,999) 的小屋搬到真正的空地。
     /// 不检测玩家 ID（预留 ID 与实际注册 ID 会变化），只要小屋的 owner 已上线就搬。
-    /// 没有空地则留在原地。
+    /// 没有空地则踢出该玩家并销毁小屋。
     /// </summary>
-    public static void MoveReservedCabinsToLand()
+    public static void OnPlayerConnected()
     {
         Farm farm = Game1.getFarm();
         if (farm == null) return;
 
+        // 收集待处理的小屋，避免遍历时修改集合
+        var pending = new List<Building>();
         foreach (var building in farm.buildings)
         {
             if (building == null) continue;
@@ -184,13 +186,25 @@ public class CabinGenerator
             Cabin cabin = building.GetIndoors() as Cabin;
             if (cabin?.owner == null) continue;
 
-            // 玩家已上线才搬；不按 ID 匹配，直接看该小屋的 owner 是否活跃
+            // 玩家已上线才处理；不按 ID 匹配，直接看该小屋的 owner 是否活跃
             if (!cabin.owner.isActive()) continue;
+
+            pending.Add(building);
+        }
+
+        foreach (var building in pending)
+        {
+            Cabin cabin = building.GetIndoors() as Cabin;
+            if (cabin?.owner == null) continue;
 
             Vector2? land = FindUnusedCabinPosition(farm);
             if (land == null)
             {
-                GetMonitor()?.Log("[小屋生成] 玩家已上线但暂无空地，小屋留在地图外", LogLevel.Warn);
+                // 搬不了：踢出玩家并销毁小屋
+                long ownerId = cabin.owner.UniqueMultiplayerID;
+                GetMonitor()?.Log($"[小屋生成] 暂无空地，踢出玩家 {cabin.owner.Name} [ID:{ownerId}] 并销毁小屋", LogLevel.Warn);
+                try { Game1.server?.kick(ownerId); } catch { }
+                farm.destroyStructure(building);
                 continue;
             }
 

@@ -315,7 +315,6 @@ public class ModEntry : Mod
     private void OnOneSecondUpdate(object _, OneSecondUpdateTickedEventArgs __)
     {
         _festivalManager.OnOneSecondUpdate();
-        CabinGenerator.MoveReservedCabinsToLand();
     }
 
     private void OnMenuChanged(object _, MenuChangedEventArgs e)
@@ -355,6 +354,7 @@ public class ModEntry : Mod
 
         _syncManager.AddPlayer(e.Peer.PlayerID);
         Monitor.Log($"{name} [ID:{e.Peer.PlayerID}] 加入", LogLevel.Debug);
+        CabinGenerator.OnPlayerConnected();
     }
 
     private void OnPeerDisconnected(object _, PeerDisconnectedEventArgs e)
