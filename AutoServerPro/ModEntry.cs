@@ -102,8 +102,49 @@ public class ModEntry : Mod
             (_, args) => HandleChatCommand(args));
 
         Helper.ConsoleCommands.Add("movein",
-            "让指定联机玩家搬进主屋: movein <玩家ID或名字>",
+            "让指定联机玩家搬进主屋: movein <玩家ID|名字|admin>  |  movein list",
             (_, args) => OnMoveInConsoleCommand(args));
+    }
+
+    // ─── 玩家解析（参照 MasterHand 风格）───
+
+    /// <summary>取在线玩家，找不到返回 null</summary>
+    private static Farmer GetOnlinePlayer(long id)
+    {
+        return Game1.GetPlayer(id, true);
+    }
+
+    /// <summary>取任意玩家（含离线），找不到返回 null</summary>
+    private static Farmer GetAnyPlayer(long id)
+    {
+        foreach (var f in Game1.getAllFarmers())
+            if (f != null && f.UniqueMultiplayerID == id)
+                return f;
+        return null;
+    }
+
+    /// <summary>按名字取任意玩家</summary>
+    private static Farmer GetPlayerByName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        foreach (var f in Game1.getAllFarmers())
+            if (f != null && string.Equals(f.Name, name, StringComparison.OrdinalIgnoreCase))
+                return f;
+        return null;
+    }
+
+    /// <summary>解析玩家参数：数字ID | admin(房主) | 名字</summary>
+    private static Farmer ResolvePlayer(string arg)
+    {
+        if (arg.Equals("admin", StringComparison.OrdinalIgnoreCase))
+            return Game1.player;
+        if (long.TryParse(arg, out long id))
+        {
+            var f = GetOnlinePlayer(id);
+            if (f != null) return f;
+            return GetAnyPlayer(id);
+        }
+        return GetPlayerByName(arg);
     }
 
     private void OnMoveInConsoleCommand(string[] args)
@@ -116,42 +157,28 @@ public class ModEntry : Mod
 
         if (args.Length < 1)
         {
-            Monitor.Log("用法: movein <玩家ID或名字>", LogLevel.Info);
-            Monitor.Log("示例: movein 255651234  或  movein 小明", LogLevel.Info);
+            Monitor.Log("用法: movein <玩家ID|名字|admin>  |  movein list", LogLevel.Info);
+            Monitor.Log("示例: movein 255651234  |  movein 小明  |  movein admin", LogLevel.Info);
             return;
         }
 
-        string input = args[0];
-        Farmer who = null;
-
-        // 尝试解析为玩家ID
-        if (long.TryParse(input, out long id))
+        // movein list —— 列出所有玩家
+        if (args[0].Equals("list", StringComparison.OrdinalIgnoreCase))
         {
-            who = Game1.getFarmer(id);
+            ListPlayers();
+            return;
         }
 
-        // 按名字查找
+        Farmer who = ResolvePlayer(args[0]);
         if (who == null)
         {
-            foreach (Farmer f in Game1.getAllFarmers())
-            {
-                if (string.Equals(f.Name, input, StringComparison.OrdinalIgnoreCase))
-                {
-                    who = f;
-                    break;
-                }
-            }
-        }
-
-        if (who == null)
-        {
-            Monitor.Log($"找不到玩家: {input}", LogLevel.Warn);
+            Monitor.Log($"找不到玩家: {args[0]}", LogLevel.Warn);
             return;
         }
 
         if (who.IsMainPlayer)
         {
-            Monitor.Log($"玩家 {who.Name} 是主机，已住主屋", LogLevel.Info);
+            Monitor.Log($"{who.Name} 是主机，已住主屋", LogLevel.Info);
             return;
         }
 
@@ -163,6 +190,34 @@ public class ModEntry : Mod
         else
         {
             Monitor.Log($"{who.Name} 搬家失败，请查看日志", LogLevel.Warn);
+        }
+    }
+
+    /// <summary>列出所有玩家（排除主机），标注在线状态和住处</summary>
+    private void ListPlayers()
+    {
+        long hostId = Game1.player?.UniqueMultiplayerID ?? long.MinValue;
+        var all = Game1.getAllFarmers()?
+            .Where(f => f != null && f.UniqueMultiplayerID != hostId)
+            .ToList();
+
+        if (all == null || all.Count == 0)
+        {
+            Monitor.Log("不存在其他玩家", LogLevel.Info);
+            return;
+        }
+
+        var onlineIds = new HashSet<long>(Game1.getOnlineFarmers()
+            .Where(f => f != null)
+            .Select(f => f.UniqueMultiplayerID));
+
+        Monitor.Log($"共 {all.Count} 名玩家（在线 {all.Count(f => onlineIds.Contains(f.UniqueMultiplayerID))}）", LogLevel.Info);
+        foreach (var f in all)
+        {
+            bool online = onlineIds.Contains(f.UniqueMultiplayerID);
+            string home = string.Equals(f.homeLocation.Value, "FarmHouse", StringComparison.OrdinalIgnoreCase)
+                ? "主屋" : f.homeLocation.Value;
+            Monitor.Log($"  {f.Name} [ID: {f.UniqueMultiplayerID}] 住处:{home}{(online ? "" : " (离线)")}", LogLevel.Info);
         }
     }
 
