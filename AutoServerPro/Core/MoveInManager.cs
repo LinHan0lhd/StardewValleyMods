@@ -135,6 +135,15 @@ public class MoveInManager
             _monitor.Log($"主屋等级已提升至 {farmhouse.upgradeLevel}", LogLevel.Info);
         }
 
+        // 同步玩家的 houseUpgradeLevel 与主屋等级，避免玩家后续升级主屋时把主屋降级。
+        // 原版升级逻辑：setMapForUpgradeLevel(player.houseUpgradeLevel)，
+        // 若玩家等级低于主屋当前等级会导致主屋被降级。
+        if (who.houseUpgradeLevel.Value < farmhouse.upgradeLevel)
+        {
+            who.houseUpgradeLevel.Value = farmhouse.upgradeLevel;
+            _monitor.Log($"玩家 {who.Name} 的房屋升级等级已同步至 {who.houseUpgradeLevel.Value}", LogLevel.Info);
+        }
+
         // 切换玩家的家到主屋
         who.homeLocation.Value = "FarmHouse";
 
