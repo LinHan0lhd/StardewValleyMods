@@ -19,6 +19,7 @@ obj/
 .DS_Store
 
 # SMAPI mod package (generated)
+*.zip
 **/bin/Debug/**/*.zip
 **/bin/Release/**/*.zip
 
