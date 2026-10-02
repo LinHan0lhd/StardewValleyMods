@@ -25,6 +25,7 @@ public class ModEntry : Mod
     private SceneSyncManager _syncManager;
     private ChatLogger _chatLogger;
     private CPUDispatcher _cpuDispatcher;
+    private MoveInManager _moveInManager;
 
     private bool _hasAutoLoaded = false;
     private bool _hasAutoCreated = false;
@@ -47,9 +48,12 @@ public class ModEntry : Mod
         _cpuDispatcher = new CPUDispatcher(Monitor, _config);
 
         _chatLogger.Install();
+        ChatSenderTracker.Install(Monitor);
 
         if (_config.EnableCPUOptimization)
             _cpuDispatcher.Install();
+
+        _moveInManager = new MoveInManager(Monitor);
 
         RegisterCommands();
         BindEvents();
@@ -95,6 +99,51 @@ public class ModEntry : Mod
         Helper.ConsoleCommands.Add("chat",
             "聊天: chat tell \"消息\" 广播聊天 | chat <聊天指令> [参数] 执行聊天指令",
             (_, args) => HandleChatCommand(args));
+
+        // 游戏内聊天指令: /movein —— 联机玩家搬进主屋
+        ChatCommands.Register("movein", OnMoveInChatCommand, _ => "搬进主屋（联机玩家专用）", null, mainOnly: false, multiplayerOnly: true);
+    }
+
+    private void OnMoveInChatCommand(string[] command, ChatBox chat)
+    {
+        if (!Context.IsWorldReady)
+        {
+            chat.addErrorMessage("世界未加载，无法执行搬家");
+            return;
+        }
+
+        // 通过聊天发送者追踪获取执行指令的玩家
+        long senderId = ChatSenderTracker.LastSenderId;
+        Farmer who = null;
+
+        if (senderId > 0)
+        {
+            who = Game1.getFarmer(senderId);
+        }
+
+        // 回退：如果追踪失败，尝试用当前玩家
+        if (who == null)
+        {
+            who = Game1.player;
+        }
+
+        if (who == null)
+        {
+            chat.addErrorMessage("无法确定执行指令的玩家");
+            return;
+        }
+
+        if (who.IsMainPlayer)
+        {
+            chat.addErrorMessage("主机已住主屋，无需搬家");
+            return;
+        }
+
+        bool success = _moveInManager.MoveIn(who);
+        if (success)
+        {
+            chat.addInfoMessage($"{who.Name} 已搬进主屋");
+        }
     }
 
     private void HandleChatCommand(string[] args)
