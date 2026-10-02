@@ -146,8 +146,18 @@ public class AutoSleepManager
             return;
         }
 
-        // 没有隐藏床则创建一个
-        _monitor.Log("创建隐藏床供房主使用", LogLevel.Debug);
+        // 隐藏床不存在则创建；若主屋本身为空（刚传送还没加载完），重试最多3次
+        _sleepRetryCount++;
+        if (_sleepRetryCount <= 3)
+        {
+            _monitor.Log($"主屋未就绪/无隐藏床 > 重试 {_sleepRetryCount}/3", LogLevel.Warn);
+            _isSleeping = false;
+            _goneToSleep = false;
+            return;
+        }
+
+        // 3次都失败，创建隐藏备用床
+        _monitor.Log("创建隐藏备用床", LogLevel.Warn);
         hiddenBed = new BedFurniture("2048", new Vector2(999, 999));
         farmhouse.furniture.Add(hiddenBed);
         _sleepRetryCount = 0;
