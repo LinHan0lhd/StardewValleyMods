@@ -1,0 +1,26 @@
+# Build output
+bin/
+obj/
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# NuGet
+*.nupkg
+**/packages/*
+!**/packages/build/
+
+# macOS
+.DS_Store
+
+# SMAPI mod package (generated)
+**/bin/Debug/**/*.zip
+**/bin/Release/**/*.zip
+
+# Logs
+*.log
