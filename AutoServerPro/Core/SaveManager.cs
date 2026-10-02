@@ -54,7 +54,7 @@ public class SaveManager
             _stateRestorer.RestoreExtraDataAfterLoad(_autoLoader.CurrentSaveName);
 
         // 验证联机玩家的 homeLocation 是否正确保留（搬入主屋的玩家应仍为 FarmHouse）。
-        // 真正的保留由 MoveInManager 对 NetWorldState.TryAssignFarmhandHome 的补丁保证。
+        // 真正的保留由 FarmhouseMoveIn 模组对 NetWorldState.TryAssignFarmhandHome 的补丁保证。
         foreach (var f in Game1.getAllFarmers())
         {
             if (f != null && !f.IsMainPlayer &&

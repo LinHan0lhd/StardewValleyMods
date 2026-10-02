@@ -13,7 +13,6 @@ using StardewValley;
 using StardewValley.Buildings;
 using StardewValley.Extensions;
 using StardewValley.GameData.Buildings;
-using StardewValley.Locations;
 using StardewValley.Network;
 using StardewValley.TokenizableStrings;
 
@@ -92,7 +91,6 @@ public class ModEntry : Mod
         helper.ConsoleCommands.Add("mh_build", "自动在农场空地建造建筑 > mh_build <建筑ID> [near <玩家ID>|<玩家ID>] [wait]", BuildBuilding);
         helper.ConsoleCommands.Add("mh_buildat", "以玩家位置建造建筑 > mh_buildat <玩家ID> <偏移x> <偏移y> <建筑ID> [wait]", BuildBuildingAt);
         helper.ConsoleCommands.Add("mh_upgrade", "升级农场已有建筑 > mh_upgrade <目标建筑类型> [near <玩家ID>|<玩家ID>] [wait]", UpgradeBuilding);
-        helper.ConsoleCommands.Add("mh_movein", "让指定联机玩家搬进主屋 > mh_movein <玩家ID|~|admin|名字> | list", MoveInCommand);
 
         // 事件
         helper.Events.GameLoop.SaveLoaded += (_, _) => ApplyInfiniteGiftsToAllWhitelistedFarmers("存档加载");
@@ -420,186 +418,6 @@ public class ModEntry : Mod
             bool online = onlineIds.Contains(f.UniqueMultiplayerID);
             Mon.Log($"  {f.Name} [ID: {f.UniqueMultiplayerID}]{(online ? "" : " (离线)")}", LogLevel.Info);
         }
-    }
-
-    // ─── 搬进主屋 ───
-
-    private static void MoveInCommand(string _, string[] args)
-    {
-        if (!RequireWorldReady()) return;
-
-        if (args.Length == 0)
-        {
-            Mon.Log("用法: mh_movein <玩家ID|~|admin|名字>  |  mh_movein list", LogLevel.Info);
-            Mon.Log("示例: mh_movein 123456  |  mh_movein ~  |  mh_movein 小明", LogLevel.Info);
-            return;
-        }
-
-        if (args[0].Equals("list", StringComparison.OrdinalIgnoreCase))
-        {
-            ListMoveInInfo();
-            return;
-        }
-
-        long id = ResolvePlayerId(args[0], logError: false);
-        Farmer who = null;
-
-        if (id != long.MinValue)
-            who = GetAnyPlayer(id, false) ?? GetOnlinePlayer(id);
-
-        // 名字回退
-        if (who == null)
-            who = GetPlayerByName(args[0], logError: false);
-
-        if (who == null)
-        {
-            Mon.Log($"[错误] 找不到玩家: {args[0]}", LogLevel.Warn);
-            return;
-        }
-
-        if (MoveIn(who))
-            Mon.Log($"[搬家] {who.Name} (ID: {who.UniqueMultiplayerID}) 已搬进主屋", LogLevel.Info);
-    }
-
-    /// <summary>列出所有玩家及其住处</summary>
-    private static void ListMoveInInfo()
-    {
-        long hostId = Game1.player?.UniqueMultiplayerID ?? long.MinValue;
-        var all = Game1.getAllFarmers()?
-            .Where(f => f != null && f.UniqueMultiplayerID != hostId)
-            .ToList();
-        if (all == null || all.Count == 0)
-        {
-            Mon.Log("[搬家] 不存在其他玩家", LogLevel.Info);
-            return;
-        }
-        var onlineIds = new HashSet<long>(Game1.getOnlineFarmers()
-            .Where(f => f != null)
-            .Select(f => f.UniqueMultiplayerID));
-        Mon.Log($"[搬家] 共 {all.Count} 名玩家（在线 {all.Count(f => onlineIds.Contains(f.UniqueMultiplayerID))}）", LogLevel.Info);
-        foreach (var f in all)
-        {
-            bool online = onlineIds.Contains(f.UniqueMultiplayerID);
-            string home = string.Equals(f.homeLocation.Value, "FarmHouse", StringComparison.OrdinalIgnoreCase)
-                ? "主屋" : f.homeLocation.Value;
-            Mon.Log($"  {f.Name} [ID: {f.UniqueMultiplayerID}] 住处:{home}{(online ? "" : " (离线)")}", LogLevel.Info);
-        }
-    }
-
-    /// <summary>
-    /// 让指定联机玩家搬进主屋。已有住客则先将其家具归位并迁回原小屋。
-    /// 主屋与玩家小屋的家具互换，主屋等级取两者最大值。
-    /// </summary>
-    private static bool MoveIn(Farmer who)
-    {
-        if (who == null)
-        {
-            Mon.Log("[搬家] 失败: 玩家为空", LogLevel.Warn);
-            return false;
-        }
-        if (who.IsMainPlayer)
-        {
-            Mon.Log($"[搬家] {who.Name} 是主机，已住主屋", LogLevel.Info);
-            return false;
-        }
-
-        FarmHouse farmhouse = Game1.RequireLocation<FarmHouse>("FarmHouse", false);
-        if (farmhouse == null)
-        {
-            Mon.Log("[搬家] 失败: 找不到主屋", LogLevel.Error);
-            return false;
-        }
-
-        if (string.Equals(who.homeLocation.Value, "FarmHouse", StringComparison.OrdinalIgnoreCase))
-        {
-            Mon.Log($"[搬家] {who.Name} 已经住在主屋", LogLevel.Info);
-            return false;
-        }
-
-        Cabin cabin = Game1.getLocationFromName(who.homeLocation.Value) as Cabin;
-        if (cabin == null)
-        {
-            Mon.Log($"[搬家] 失败: 找不到 {who.Name} 的小屋 ({who.homeLocation.Value})", LogLevel.Warn);
-            return false;
-        }
-
-        // 已有住主屋的联机玩家：先把主屋与其小屋家具交换回来，再迁回原小屋
-        Farmer existing = GetFarmhandLivingInFarmHouse(who);
-        if (existing != null)
-        {
-            Cabin existingCabin = GetCabinOfFarmer(existing);
-            if (existingCabin != null)
-            {
-                SwapFurniture(farmhouse, existingCabin);
-                existing.homeLocation.Value = existingCabin.NameOrUniqueName;
-                Mon.Log($"[搬家] {existing.Name} 已迁回小屋 {existingCabin.NameOrUniqueName}，家具已归位", LogLevel.Info);
-            }
-            else
-            {
-                existing.homeLocation.Value = "FarmHouse";
-            }
-        }
-
-        // 交换主屋与玩家 Cabin 的家具
-        SwapFurniture(farmhouse, cabin);
-
-        // 主屋等级取最大值（不降级）
-        if (cabin.upgradeLevel > farmhouse.upgradeLevel)
-        {
-            farmhouse.upgradeLevel = cabin.upgradeLevel;
-            Mon.Log($"[搬家] 主屋等级提升至 {farmhouse.upgradeLevel}", LogLevel.Info);
-        }
-
-        // 同步玩家 houseUpgradeLevel，避免后续升级时降级主屋
-        if (who.houseUpgradeLevel.Value < farmhouse.upgradeLevel)
-        {
-            who.houseUpgradeLevel.Value = farmhouse.upgradeLevel;
-        }
-
-        who.homeLocation.Value = "FarmHouse";
-        return true;
-    }
-
-    private static Farmer GetFarmhandLivingInFarmHouse(Farmer exclude)
-    {
-        foreach (Farmer f in Game1.getAllFarmers())
-        {
-            if (f == null || f == exclude || f.IsMainPlayer) continue;
-            if (string.Equals(f.homeLocation.Value, "FarmHouse", StringComparison.OrdinalIgnoreCase))
-                return f;
-        }
-        return null;
-    }
-
-    private static Cabin GetCabinOfFarmer(Farmer who)
-    {
-        Farm farm = Game1.getFarm();
-        if (farm != null)
-        {
-            foreach (var b in farm.buildings)
-            {
-                if (b != null && b.isCabin)
-                {
-                    Cabin indoors = b.GetIndoors() as Cabin;
-                    if (indoors != null && indoors.owner == who)
-                        return indoors;
-                }
-            }
-        }
-        string locName = who.homeLocation.Value;
-        if (!string.Equals(locName, "FarmHouse", StringComparison.OrdinalIgnoreCase))
-            return Game1.getLocationFromName(locName) as Cabin;
-        return null;
-    }
-
-    private static void SwapFurniture(FarmHouse farmhouse, Cabin cabin)
-    {
-        var farmFurniture = farmhouse.furniture.ToList();
-        var cabinFurniture = cabin.furniture.ToList();
-        farmhouse.furniture.Clear();
-        cabin.furniture.Clear();
-        foreach (var f in cabinFurniture) farmhouse.furniture.Add(f);
-        foreach (var f in farmFurniture) cabin.furniture.Add(f);
     }
 
     private static void GiveItem(string _, string[] args)

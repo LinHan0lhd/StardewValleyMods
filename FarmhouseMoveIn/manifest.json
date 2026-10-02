@@ -1,0 +1,10 @@
+{
+  "Name": "FarmhouseMoveIn",
+  "Author": "LinHan",
+  "Version": "1.0.0",
+  "Description": "让联机玩家搬进主屋，支持手动切换住客。",
+  "UniqueID": "LinHan.FarmhouseMoveIn",
+  "EntryDll": "FarmhouseMoveIn.dll",
+  "MinimumApiVersion": "4.0.0",
+  "UpdateKeys": []
+}
