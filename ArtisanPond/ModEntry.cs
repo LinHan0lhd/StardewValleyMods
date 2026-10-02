@@ -175,7 +175,11 @@ public class ModEntry : Mod
 
         if (today < nextQuestDay) return;
 
+<<<<<<< HEAD
         pond.neededItem.Value = ItemRegistry.Create("(O)74", 1, 0, false);
+=======
+        pond.neededItem.Value = ItemRegistry.Create("(O)560", 1, 0, false);
+>>>>>>> trae/agent-5xU1Tp
         pond.neededItemCount.Value = 1;
         pond.modData[LegendaryNextQuestDayKey] = (today + interval).ToString();
     }

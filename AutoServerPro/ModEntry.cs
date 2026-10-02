@@ -25,6 +25,8 @@ public class ModEntry : Mod
     private SceneSyncManager _syncManager;
     private ChatLogger _chatLogger;
     private CPUDispatcher _cpuDispatcher;
+    private MoveInManager _moveInManager;
+    private CabinGenerator _cabinGenerator;
 
     private bool _hasAutoLoaded = false;
     private bool _hasAutoCreated = false;
@@ -47,9 +49,13 @@ public class ModEntry : Mod
         _cpuDispatcher = new CPUDispatcher(Monitor, _config);
 
         _chatLogger.Install();
+        ChatSenderTracker.Install(Monitor);
 
         if (_config.EnableCPUOptimization)
             _cpuDispatcher.Install();
+
+        _moveInManager = new MoveInManager(Monitor);
+        _cabinGenerator = new CabinGenerator(Monitor);
 
         RegisterCommands();
         BindEvents();
@@ -95,6 +101,51 @@ public class ModEntry : Mod
         Helper.ConsoleCommands.Add("chat",
             "聊天: chat tell \"消息\" 广播聊天 | chat <聊天指令> [参数] 执行聊天指令",
             (_, args) => HandleChatCommand(args));
+
+        // 游戏内聊天指令: /movein —— 联机玩家搬进主屋
+        ChatCommands.Register("movein", OnMoveInChatCommand, _ => "搬进主屋（联机玩家专用）", null, mainOnly: false, multiplayerOnly: true);
+    }
+
+    private void OnMoveInChatCommand(string[] command, ChatBox chat)
+    {
+        if (!Context.IsWorldReady)
+        {
+            chat.addErrorMessage("世界未加载，无法执行搬家");
+            return;
+        }
+
+        // 通过聊天发送者追踪获取执行指令的玩家
+        long senderId = ChatSenderTracker.LastSenderId;
+        Farmer who = null;
+
+        if (senderId > 0)
+        {
+            who = Game1.getFarmer(senderId);
+        }
+
+        // 回退：如果追踪失败，尝试用当前玩家
+        if (who == null)
+        {
+            who = Game1.player;
+        }
+
+        if (who == null)
+        {
+            chat.addErrorMessage("无法确定执行指令的玩家");
+            return;
+        }
+
+        if (who.IsMainPlayer)
+        {
+            chat.addErrorMessage("主机已住主屋，无需搬家");
+            return;
+        }
+
+        bool success = _moveInManager.MoveIn(who);
+        if (success)
+        {
+            chat.addInfoMessage($"{who.Name} 已搬进主屋");
+        }
     }
 
     private void HandleChatCommand(string[] args)
@@ -241,7 +292,7 @@ public class ModEntry : Mod
         if (Game1.activeClickableMenu is DialogueBox db)
         {
             if (isWeddingEvent)
-                AdvanceDialogue(db);
+                AdvanceWeddingDialogue(db);
             else
                 db.closeDialogue();
         }
@@ -379,16 +430,29 @@ public class ModEntry : Mod
         else Monitor.Log($"语言 '{_config.Language}' 无效", LogLevel.Warn);
     }
 
-    private void AdvanceDialogue(DialogueBox db)
+    /// <summary>
+    /// 婚礼事件专用：推进对话而不是直接关闭。
+    /// 婚礼剧情需要逐句点击到最后才会触发 end wedding（配偶搬入等），
+    /// 直接 closeDialogue + skipEvent 会跳过 end wedding 导致服务器卡住。
+    /// </summary>
+    private void AdvanceWeddingDialogue(DialogueBox db)
     {
         try
         {
+            // 专用服务器上 safetyTimer 为 0，可立即推进；保险起见显式清零。
             db.safetyTimer = 0;
+
+            // 如果是问题对话，默认选第一个选项。
+            if (db.isQuestion && db.selectedResponse == -1)
+            {
+                db.selectedResponse = 0;
+            }
+
             db.receiveLeftClick(0, 0, false);
         }
         catch (Exception ex)
         {
-            Monitor.Log($"对话推进失败: {ex.Message}", LogLevel.Warn);
+            Monitor.Log($"婚礼对话推进失败: {ex.Message}", LogLevel.Warn);
         }
     }
 

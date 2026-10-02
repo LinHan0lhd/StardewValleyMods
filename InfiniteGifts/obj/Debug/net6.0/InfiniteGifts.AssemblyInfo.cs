@@ -13,7 +13,11 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("InfiniteGifts")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
+<<<<<<< HEAD
 [assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c8432f149cc156dfa1fd72acf9578d847184d70c")]
+=======
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+d0b419281f50b716087505190d14640db3a56929")]
+>>>>>>> 162993e2d49a35135fc64277f8f718dd50ed8959
 [assembly: System.Reflection.AssemblyProductAttribute("InfiniteGifts")]
 [assembly: System.Reflection.AssemblyTitleAttribute("InfiniteGifts")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
