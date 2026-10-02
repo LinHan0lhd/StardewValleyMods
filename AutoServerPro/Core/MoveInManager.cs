@@ -70,6 +70,7 @@ public class MoveInManager
 
     /// <summary>
     /// 让指定联机玩家搬进主屋。
+    /// 如果已有其他联机玩家住在主屋，先将其家具归位并迁回原小屋，再执行搬入。
     /// </summary>
     public bool MoveIn(Farmer who)
     {
@@ -92,13 +93,6 @@ public class MoveInManager
             return false;
         }
 
-        Cabin cabin = Game1.getLocationFromName(who.homeLocation.Value) as Cabin;
-        if (cabin == null)
-        {
-            _monitor.Log($"搬家失败: 找不到玩家 {who.Name} 的小屋 ({who.homeLocation.Value})", LogLevel.Warn);
-            return false;
-        }
-
         // 已经住主屋则无需操作
         if (string.Equals(who.homeLocation.Value, "FarmHouse", StringComparison.OrdinalIgnoreCase))
         {
@@ -106,15 +100,24 @@ public class MoveInManager
             return false;
         }
 
-        // 处理已有住主屋的联机玩家：将其迁回自己的 Cabin
+        Cabin cabin = Game1.getLocationFromName(who.homeLocation.Value) as Cabin;
+        if (cabin == null)
+        {
+            _monitor.Log($"搬家失败: 找不到玩家 {who.Name} 的小屋 ({who.homeLocation.Value})", LogLevel.Warn);
+            return false;
+        }
+
+        // 处理已有住主屋的联机玩家：先把主屋与其小屋的家具交换回来，让原住客的家具归位，
+        // 同时主屋恢复为搬家前的家具状态；再把原住客迁回自己的小屋。
         Farmer existing = GetFarmhandLivingInFarmHouse(who);
         if (existing != null)
         {
             Cabin existingCabin = GetCabinOfFarmer(existing);
             if (existingCabin != null)
             {
+                SwapFurniture(farmhouse, existingCabin);
                 existing.homeLocation.Value = existingCabin.NameOrUniqueName;
-                _monitor.Log($"玩家 {existing.Name} 已迁回小屋 {existingCabin.NameOrUniqueName}", LogLevel.Info);
+                _monitor.Log($"玩家 {existing.Name} 已迁回小屋 {existingCabin.NameOrUniqueName}，家具已归位", LogLevel.Info);
             }
             else
             {
@@ -122,7 +125,7 @@ public class MoveInManager
             }
         }
 
-        // 交换主屋与玩家 Cabin 的家具
+        // 交换主屋与玩家 Cabin 的家具（此时主屋内是上一位住客搬入前的家具）
         SwapFurniture(farmhouse, cabin);
 
         // 主屋等级取两者最大值（不降级）
