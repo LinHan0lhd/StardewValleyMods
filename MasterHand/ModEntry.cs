@@ -1343,19 +1343,13 @@ public class ModEntry : Mod
         int h = Math.Max(1, data.Size.Y);
 
         // 决定搜索起点
-        Vector2 center;
+        Vector2? startTile = null;
         if (nearPlayerId.HasValue)
         {
             Farmer farmer = GetOnlinePlayer(nearPlayerId.Value);
             if (farmer == null) return;
             if (farmer.currentLocation == loc)
-                center = new Vector2((int)farmer.Tile.X, (int)farmer.Tile.Y);
-            else
-                center = GetBuildableCenter(loc, data);
-        }
-        else
-        {
-            center = GetBuildableCenter(loc, data);
+                startTile = new Vector2((int)farmer.Tile.X, (int)farmer.Tile.Y);
         }
 
         // Cabin 自动分配风格
@@ -1373,24 +1367,26 @@ public class ModEntry : Mod
             + (forceSkinId != null ? $" [{forceSkinId}]" : "")
             + $" ({typeId}) 大小 {w}x{h} ...", LogLevel.Info);
 
+        // 遍历可建造位置，直接交给 buildStructure 判断能否放置（与联机小屋放置逻辑一致）
         Vector2 found = Vector2.Zero;
         Building built = null;
         bool foundSpot = false;
 
-        // 阶段 1：以起点为中心螺旋搜索
-        const int spiralRadius = 255;
-        foreach (Vector2 tile in EnumerateSpiralTiles(center, spiralRadius))
+        if (startTile.HasValue)
         {
-            if (!IsWithinBuildableRect(loc, tile, w, h)) continue;
-            if (!CanPlaceBuilding(loc, data, tile)) continue;
-            if (TryPlace(loc, typeId, data, forceSkinId, instant, tile, out built, out found))
+            // 从指定玩家附近螺旋搜索
+            const int spiralRadius = 80;
+            foreach (Vector2 tile in EnumerateSpiralTiles(startTile.Value, spiralRadius))
             {
-                foundSpot = true;
-                break;
+                if (TryPlace(loc, typeId, data, forceSkinId, instant, tile, out built, out found))
+                {
+                    foundSpot = true;
+                    break;
+                }
             }
         }
 
-        // 阶段 2：螺旋没覆盖到则对整个可建造矩形做逐格兜底扫描
+        // 没找到则遍历整个可建造矩形
         if (!foundSpot)
         {
             Rectangle rect = loc.GetBuildableRectangle();
@@ -1400,18 +1396,18 @@ public class ModEntry : Mod
                 catch { rect = new Rectangle(0, 0, 255, 255); }
             }
             for (int y = rect.Y; y + h <= rect.Y + rect.Height; y++)
+            {
                 for (int x = rect.X; x + w <= rect.X + rect.Width; x++)
                 {
                     Vector2 tile = new Vector2(x, y);
-                    if (!CanPlaceBuilding(loc, data, tile)) continue;
                     if (TryPlace(loc, typeId, data, forceSkinId, instant, tile, out built, out found))
                     {
                         foundSpot = true;
                         break;
                     }
                 }
-            if (foundSpot)
-                Mon.Log("[建造] 螺旋搜索未命中 & 已在兜底扫描阶段找到空地", LogLevel.Trace);
+                if (foundSpot) break;
+            }
         }
 
         if (!foundSpot)
@@ -1714,20 +1710,6 @@ public class ModEntry : Mod
             + $"偏移 ({offX},{offY}) → ({tileX},{tileY}) 放置 {displayName}"
             + (forceSkinId != null ? $" [{forceSkinId}]" : "")
             + (instant ? " (即时)" : " (工期中)"), LogLevel.Info);
-    }
-
-    private static Vector2 GetBuildableCenter(GameLocation loc, BuildingData data)
-    {
-        Rectangle rect = loc.GetBuildableRectangle();
-        if (rect != Rectangle.Empty && rect.Width > 0 && rect.Height > 0)
-        {
-            int w = Math.Max(1, data.Size.X);
-            int h = Math.Max(1, data.Size.Y);
-            int cx = rect.X + (rect.Width - w) / 2;
-            int cy = rect.Y + (rect.Height - h) / 2;
-            return new Vector2(cx, cy);
-        }
-        return new Vector2(10, 10);
     }
 
     private static bool IsWithinBuildableRect(GameLocation loc, Vector2 tile, int w, int h)
