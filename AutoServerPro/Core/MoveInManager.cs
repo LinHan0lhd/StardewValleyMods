@@ -32,17 +32,26 @@ public class MoveInManager
         try
         {
             _harmony = new Harmony("LinHan.AutoServerPro.MoveIn");
-            var method = AccessTools.Method(typeof(NetWorldState), "TryAssignFarmhandHome");
-            if (method == null)
+
+            // Patch 1: 保留已住主屋玩家的分配
+            var assignMethod = AccessTools.Method(typeof(NetWorldState), "TryAssignFarmhandHome");
+            if (assignMethod != null)
             {
-                _monitor.Log("无法找到 NetWorldState.TryAssignFarmhandHome 方法", LogLevel.Warn);
-                return;
+                var patchInfo = Harmony.GetPatchInfo(assignMethod);
+                bool hasPrefix = patchInfo?.Prefixes?.Any(p => p.owner == "LinHan.AutoServerPro.MoveIn") ?? false;
+                if (!hasPrefix)
+                    _harmony.Patch(assignMethod, prefix: new HarmonyMethod(typeof(MoveInManager), nameof(TryAssignFarmhandHomePrefix)));
             }
 
-            var patchInfo = Harmony.GetPatchInfo(method);
-            bool hasPrefix = patchInfo?.Prefixes?.Any(p => p.owner == "LinHan.AutoServerPro.MoveIn") ?? false;
-            if (!hasPrefix)
-                _harmony.Patch(method, prefix: new HarmonyMethod(typeof(MoveInManager), nameof(TryAssignFarmhandHomePrefix)));
+            // Patch 2: 创建新存档时，第一个农场助手默认住主屋
+            var createFarmhandMethod = AccessTools.Method(typeof(Cabin), "CreateFarmhand");
+            if (createFarmhandMethod != null)
+            {
+                var patchInfo = Harmony.GetPatchInfo(createFarmhandMethod);
+                bool hasPostfix = patchInfo?.Postfixes?.Any(p => p.owner == "LinHan.AutoServerPro.MoveIn") ?? false;
+                if (!hasPostfix)
+                    _harmony.Patch(createFarmhandMethod, postfix: new HarmonyMethod(typeof(MoveInManager), nameof(CreateFarmhandPostfix)));
+            }
         }
         catch (Exception ex)
         {
@@ -67,6 +76,58 @@ public class MoveInManager
 
         return true;
     }
+
+    /// <summary>
+    /// Patch: 创建新存档时，第一个被创建的农场助手默认住主屋。
+    /// 判断依据：当前没有任何联机玩家的 homeLocation 是 FarmHouse。
+    /// </summary>
+    private static void CreateFarmhandPostfix(Cabin __instance)
+    {
+        try
+        {
+            if (!Game1.IsMasterGame || Game1.netWorldState?.Value == null)
+                return;
+
+            Farmer newFarmhand = __instance.owner;
+            if (newFarmhand == null || newFarmhand.IsMainPlayer)
+                return;
+
+            // 检查是否已有联机玩家住主屋
+            bool hasFarmhouseResident = false;
+            foreach (var f in Game1.getAllFarmers())
+            {
+                if (f == null || f.IsMainPlayer) continue;
+                if (string.Equals(f.homeLocation.Value, "FarmHouse", StringComparison.OrdinalIgnoreCase))
+                {
+                    hasFarmhouseResident = true;
+                    break;
+                }
+            }
+
+            if (!hasFarmhouseResident)
+            {
+                // 第一个农场助手住进主屋
+                newFarmhand.homeLocation.Value = "FarmHouse";
+
+                // 同步升级等级，避免后续升级时降级主屋
+                FarmHouse farmhouse = Game1.RequireLocation<FarmHouse>("FarmHouse", false);
+                if (farmhouse != null)
+                {
+                    newFarmhand.houseUpgradeLevel.Value = Math.Max(
+                        newFarmhand.houseUpgradeLevel.Value,
+                        farmhouse.upgradeLevel);
+                }
+
+                GetMonitor()?.Log($"[搬家] 新存档首位农场助手 {newFarmhand.Name} (ID:{newFarmhand.UniqueMultiplayerID}) 默认入住主屋", LogLevel.Info);
+            }
+        }
+        catch (Exception ex)
+        {
+            GetMonitor()?.Log($"[搬家] CreateFarmhandPostfix 异常: {ex.Message}", LogLevel.Error);
+        }
+    }
+
+    private static IMonitor GetMonitor() => ModEntry.Instance?.Monitor;
 
     /// <summary>
     /// 让指定联机玩家搬进主屋。
