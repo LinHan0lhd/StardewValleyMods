@@ -8,6 +8,7 @@ namespace AutoServerPro.Core;
 
 public class SaveManager
 {
+    private readonly IMonitor _monitor;
     private readonly IModHelper _helper;
     private ModConfig _config;
 
@@ -26,6 +27,7 @@ public class SaveManager
 
     public SaveManager(IMonitor monitor, ModConfig config, IModHelper helper, FestivalManager festivalManager)
     {
+        _monitor = monitor;
         _helper = helper;
         _config = config;
 
@@ -45,11 +47,19 @@ public class SaveManager
 
         SavePatch.SkipSchedule = true;
 
-        // 加载完成后切回原存档路径
-        _pathManager.RedirectSavesToOriginal();
-
         if (!string.IsNullOrEmpty(_autoLoader.CurrentSaveName))
             _stateRestorer.RestoreExtraDataAfterLoad(_autoLoader.CurrentSaveName);
+
+        // 验证联机玩家的 homeLocation 是否正确保留（搬入主屋的玩家应仍为 FarmHouse）。
+        // 真正的保留由 MoveInManager 对 NetWorldState.TryAssignFarmhandHome 的补丁保证。
+        foreach (var f in Game1.getAllFarmers())
+        {
+            if (f != null && !f.IsMainPlayer &&
+                string.Equals(f.homeLocation.Value, "FarmHouse", StringComparison.OrdinalIgnoreCase))
+            {
+                _monitor.Log($"[搬家] 存档加载后，{f.Name} 仍住在主屋", LogLevel.Info);
+            }
+        }
 
         _freezeDelay = 2;
     }
