@@ -315,6 +315,7 @@ public class ModEntry : Mod
     private void OnOneSecondUpdate(object _, OneSecondUpdateTickedEventArgs __)
     {
         _festivalManager.OnOneSecondUpdate();
+        CabinGenerator.MoveReservedCabinsToLand();
     }
 
     private void OnMenuChanged(object _, MenuChangedEventArgs e)

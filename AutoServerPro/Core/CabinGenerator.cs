@@ -119,7 +119,7 @@ public class CabinGenerator
             return null;
         }
 
-        // 查找可用位置
+        // 先判断有没有空地，有地才建（但建在地图外不可见处，等玩家上线再搬过去）
         Vector2? position = FindUnusedCabinPosition(farm);
         if (position == null)
         {
@@ -127,8 +127,9 @@ public class CabinGenerator
             return null;
         }
 
-        // 创建小屋建筑（与 BuildStartingCabins 相同的流程）
-        Building cabinBuilding = new Building("Cabin", position.Value);
+        // 建在地图外 (999,999)，不占用可见地块，等玩家真上线后再搬到空地
+        Vector2 hiddenPos = new Vector2(999, 999);
+        Building cabinBuilding = new Building("Cabin", hiddenPos);
         cabinBuilding.magical.Value = true;
         cabinBuilding.daysOfConstructionLeft.Value = 0;
 
@@ -137,7 +138,7 @@ public class CabinGenerator
 
         cabinBuilding.load();
 
-        if (!farm.buildStructure(cabinBuilding, position.Value, Game1.player, true))
+        if (!farm.buildStructure(cabinBuilding, hiddenPos, Game1.player, true))
         {
             GetMonitor()?.Log("[小屋生成] 建造小屋失败", LogLevel.Warn);
             return null;
@@ -160,8 +161,58 @@ public class CabinGenerator
             return null;
         }
 
-        GetMonitor()?.Log($"[小屋生成] 在 ({position.Value.X}, {position.Value.Y}) 创建了小屋，皮肤: {CabinSkins[skinIndex]}", LogLevel.Info);
+        GetMonitor()?.Log($"[小屋生成] 已预留小屋（暂存于地图外，等待玩家上线后搬至空地），皮肤: {CabinSkins[skinIndex]}", LogLevel.Info);
         return newFarmhand;
+    }
+
+    /// <summary>
+    /// 把暂存在地图外 (999,999) 的小屋搬到真正的空地。
+    /// 不检测玩家 ID（预留 ID 与实际注册 ID 会变化），只要小屋的 owner 已上线就搬。
+    /// 没有空地则留在原地。
+    /// </summary>
+    public static void MoveReservedCabinsToLand()
+    {
+        Farm farm = Game1.getFarm();
+        if (farm == null) return;
+
+        foreach (var building in farm.buildings)
+        {
+            if (building == null) continue;
+            if (building.buildingType.Value != "Cabin") continue;
+            if (building.tileX.Value != 999 || building.tileY.Value != 999) continue;
+
+            Cabin cabin = building.GetIndoors() as Cabin;
+            if (cabin?.owner == null) continue;
+
+            // 玩家已上线才搬；不按 ID 匹配，直接看该小屋的 owner 是否活跃
+            if (!cabin.owner.isActive()) continue;
+
+            Vector2? land = FindUnusedCabinPosition(farm);
+            if (land == null)
+            {
+                GetMonitor()?.Log("[小屋生成] 玩家已上线但暂无空地，小屋留在地图外", LogLevel.Warn);
+                continue;
+            }
+
+            building.tileX.Value = (int)land.Value.X;
+            building.tileY.Value = (int)land.Value.Y;
+
+            // 更新室内出口 warp 指向新的门位置
+            GameLocation interior = building.GetIndoors();
+            if (interior != null)
+            {
+                foreach (Warp warp in interior.warps)
+                {
+                    if (warp.TargetName == farm.NameOrUniqueName)
+                    {
+                        warp.TargetX = building.humanDoor.X + building.tileX.Value;
+                        warp.TargetY = building.humanDoor.Y + building.tileY.Value + 1;
+                    }
+                }
+            }
+
+            GetMonitor()?.Log($"[小屋生成] 玩家 {cabin.owner.Name} 上线，小屋搬至 ({land.Value.X}, {land.Value.Y})", LogLevel.Info);
+        }
     }
 
     /// <summary>
