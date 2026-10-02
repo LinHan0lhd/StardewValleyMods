@@ -1,7 +1,10 @@
 #nullable disable
+using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
+using StardewValley.Locations;
+using StardewValley.Objects;
 using AutoServerPro.Models;
 
 namespace AutoServerPro.Core;
@@ -61,7 +64,53 @@ public class SaveManager
             }
         }
 
+        // 处理隐藏床：主屋默认创建，联机小屋清除
+        EnsureHiddenBeds();
+
         _freezeDelay = 2;
+    }
+
+    /// <summary>
+    /// 确保主屋有隐藏床（供机器人房主睡觉），并清除所有联机小屋中的隐藏床。
+    /// </summary>
+    private void EnsureHiddenBeds()
+    {
+        try
+        {
+            var farmhouse = Game1.getLocationFromName("FarmHouse") as FarmHouse;
+            if (farmhouse != null)
+            {
+                bool hasHidden = farmhouse.furniture.OfType<BedFurniture>()
+                    .Any(b => b.TileLocation.X == 999 && b.TileLocation.Y == 999);
+                if (!hasHidden)
+                {
+                    var hidden = new BedFurniture("2048", new Vector2(999, 999));
+                    farmhouse.furniture.Add(hidden);
+                    _monitor.Log("[隐藏床] 主屋已创建隐藏床", LogLevel.Info);
+                }
+            }
+
+            // 清除所有联机小屋中的隐藏床
+            foreach (var loc in Game1.locations)
+            {
+                if (loc is Cabin cabin)
+                {
+                    var hiddenBeds = cabin.furniture.OfType<BedFurniture>()
+                        .Where(b => b.TileLocation.X == 999 && b.TileLocation.Y == 999)
+                        .ToList();
+                    foreach (var hb in hiddenBeds)
+                    {
+                        cabin.furniture.Remove(hb);
+                    }
+                    if (hiddenBeds.Count > 0)
+                        _monitor.Log($"[隐藏床] 已清除小屋 {cabin.NameOrUniqueName} 的 {hiddenBeds.Count} 个隐藏床", LogLevel.Info);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _monitor.Log($"[隐藏床] 处理异常: {ex.Message}", LogLevel.Warn);
+        }
     }
 
     private void OnUpdateTicked(object sender, UpdateTickedEventArgs e)

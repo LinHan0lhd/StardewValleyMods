@@ -104,8 +104,6 @@ public class AutoSleepManager
 
     public void GoToBed()
     {
-        RemoveHiddenBedIfExists();
-
         if (_isSleeping || _goneToSleep) return;
         _goneToSleep = true;
 
@@ -118,59 +116,31 @@ public class AutoSleepManager
 
         _isSleeping = true;
         var farmhouse = Game1.getLocationFromName("FarmHouse") as FarmHouse;
-        var bed = farmhouse?.furniture.OfType<BedFurniture>().FirstOrDefault();
+        if (farmhouse == null)
+        {
+            _monitor.Log("上床失败：找不到主屋", LogLevel.Error);
+            _isSleeping = false;
+            _goneToSleep = false;
+            return;
+        }
 
-        if (bed != null)
+        // 房主（机器人）优先使用隐藏床，不占用正常床
+        var hiddenBed = farmhouse.furniture.OfType<BedFurniture>()
+            .FirstOrDefault(b => b.TileLocation.X == 999 && b.TileLocation.Y == 999);
+
+        if (hiddenBed != null)
         {
             _sleepRetryCount = 0;
-            AttemptSleepOnBed(bed);
+            AttemptSleepOnBed(hiddenBed);
+            return;
         }
-        else
-        {
-            _sleepRetryCount++;
-            if (_sleepRetryCount <= 3)
-            {
-                _monitor.Log($"没有床 > 重试 {_sleepRetryCount}/3", LogLevel.Warn);
-                _isSleeping = false;
-                _goneToSleep = false;
-            }
-            else
-            {
-                _monitor.Log("创建隐藏备用床", LogLevel.Warn);
-                if (farmhouse != null)
-                {
-                    var hidden = new BedFurniture("2048", new Vector2(999, 999));
-                    farmhouse.furniture.Add(hidden);
-                    _sleepRetryCount = 0;
-                    AttemptSleepOnBed(hidden);
-                    return;
-                }
-                _monitor.Log("上床失败：等待强制过天", LogLevel.Error);
-                _sleepRetryCount = 0;
-            }
-        }
-    }
 
-    private void RemoveHiddenBedIfExists()
-    {
-        var farmhouse = Game1.getLocationFromName("FarmHouse") as FarmHouse;
-        if (farmhouse == null) return;
-
-        bool hasNormalBed = farmhouse.furniture.OfType<BedFurniture>().Any(b =>
-            !(b.TileLocation.X == 999 && b.TileLocation.Y == 999));
-
-        if (hasNormalBed)
-        {
-            var hiddenBeds = farmhouse.furniture.OfType<BedFurniture>()
-                .Where(b => b.TileLocation.X == 999 && b.TileLocation.Y == 999)
-                .ToList();
-
-            if (hiddenBeds.Any())
-            {
-                farmhouse.furniture.Remove(hiddenBeds.First());
-                _monitor.Log("移除隐藏备用床", LogLevel.Debug);
-            }
-        }
+        // 没有隐藏床则创建一个
+        _monitor.Log("创建隐藏床供房主使用", LogLevel.Debug);
+        hiddenBed = new BedFurniture("2048", new Vector2(999, 999));
+        farmhouse.furniture.Add(hiddenBed);
+        _sleepRetryCount = 0;
+        AttemptSleepOnBed(hiddenBed);
     }
 
     private void AttemptSleepOnBed(BedFurniture bed)
