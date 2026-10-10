@@ -240,5 +240,14 @@ public class MoveInManager
         cabin.furniture.Clear();
         foreach (var f in cabinFurniture) farmhouse.furniture.Add(f);
         foreach (var f in farmFurniture) cabin.furniture.Add(f);
+
+        // 交换冰箱内容：Cabin.fridge 与 FarmHouse.fridge 各自独立，
+        // 不交换的话搬入者打开主屋冰箱是空的，自己的东西还留在小屋冰箱里
+        var farmFridgeItems = farmhouse.fridge.Value.Items.ToList();
+        var cabinFridgeItems = cabin.fridge.Value.Items.ToList();
+        farmhouse.fridge.Value.Items.Clear();
+        cabin.fridge.Value.Items.Clear();
+        foreach (var item in cabinFridgeItems) farmhouse.fridge.Value.Items.Add(item);
+        foreach (var item in farmFridgeItems) cabin.fridge.Value.Items.Add(item);
     }
 }
