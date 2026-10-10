@@ -40,7 +40,6 @@ public class AutoSleepManager
         _goneToSleep = false;
         _isSleeping = false;
         _sleepRetryCount = 0;
-        // 清除房主的睡觉播报标记，使第二天可以正常触发（原版每天也会重置 team 状态）
         try
         {
             Game1.player.team?.announcedSleepingFarmers?.Clear();
@@ -73,8 +72,7 @@ public class AutoSleepManager
         if (Game1.CurrentEvent == null) return;
         if (_lastSkippedEventId == Game1.CurrentEvent.id) return;
 
-        // 婚礼事件不能跳过，需要让剧情自然播放到 end wedding，否则配偶不会搬入、婚姻对话不会设置，导致卡住。
-        // 婚礼对话由 ModEntry 中的推进逻辑自动点击完成。
+        // 婚礼事件不能跳过
         if (Game1.CurrentEvent.isWedding || Game1.CurrentEvent.id == "-2") return;
 
         if (Game1.CurrentEvent.id == "1590166" || Game1.CurrentEvent.id == "897405")
@@ -135,7 +133,6 @@ public class AutoSleepManager
             return;
         }
 
-        // 房主（机器人）优先使用隐藏床，不占用正常床
         var hiddenBed = farmhouse.furniture.OfType<BedFurniture>()
             .FirstOrDefault(b => b.TileLocation.X == 999 && b.TileLocation.Y == 999);
 
@@ -146,7 +143,7 @@ public class AutoSleepManager
             return;
         }
 
-        // 隐藏床不存在则创建；若主屋本身为空（刚传送还没加载完），重试最多3次
+        // 隐藏床不存在则创建 & 若刚传送还没加载完 | 重试 3 次
         _sleepRetryCount++;
         if (_sleepRetryCount <= 3)
         {
@@ -156,7 +153,7 @@ public class AutoSleepManager
             return;
         }
 
-        // 3次都失败，创建隐藏备用床
+        // 创建隐藏备用床
         _monitor.Log("创建隐藏备用床", LogLevel.Warn);
         hiddenBed = new BedFurniture("2048", new Vector2(999, 999));
         farmhouse.furniture.Add(hiddenBed);
@@ -172,9 +169,6 @@ public class AutoSleepManager
             Game1.player.Position = new Vector2(spot.X * 64f, spot.Y * 64f);
             BedFurniture.ShiftPositionForBed(Game1.player);
 
-            // 房主是机器人，不播报睡觉提示。
-            // startSleep 内部会检查 announcedSleepingFarmers，已存在则跳过播报。
-            // 预先把房主加入列表，即可只抑制房主的播报，不影响其他联机玩家。
             if (Game1.player.team?.announcedSleepingFarmers != null &&
                 !Game1.player.team.announcedSleepingFarmers.Contains(Game1.player))
             {

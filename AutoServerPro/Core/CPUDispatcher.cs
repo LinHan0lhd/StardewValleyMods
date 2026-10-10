@@ -16,7 +16,6 @@ namespace AutoServerPro.Core;
 public class CPUDispatcher
 {
     private readonly IMonitor _monitor;
-    private static IMonitor _staticMonitor;
     private ModConfig _config;
     private Harmony _harmony;
     private bool _installed;
@@ -25,7 +24,6 @@ public class CPUDispatcher
     public CPUDispatcher(IMonitor monitor, ModConfig config)
     {
         _monitor = monitor;
-        _staticMonitor = monitor;
         _config = config;
     }
 

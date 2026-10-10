@@ -382,19 +382,12 @@ public class ModEntry : Mod
         else Monitor.Log($"语言 '{_config.Language}' 无效", LogLevel.Warn);
     }
 
-    /// <summary>
-    /// 婚礼事件专用：推进对话而不是直接关闭。
-    /// 婚礼剧情需要逐句点击到最后才会触发 end wedding（配偶搬入等），
-    /// 直接 closeDialogue + skipEvent 会跳过 end wedding 导致服务器卡住。
-    /// </summary>
     private void AdvanceWeddingDialogue(DialogueBox db)
     {
         try
         {
-            // 专用服务器上 safetyTimer 为 0，可立即推进；保险起见显式清零。
             db.safetyTimer = 0;
 
-            // 如果是问题对话，默认选第一个选项。
             if (db.isQuestion && db.selectedResponse == -1)
             {
                 db.selectedResponse = 0;

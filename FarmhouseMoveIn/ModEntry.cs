@@ -19,7 +19,7 @@ public class ModEntry : Mod
         _moveInManager = new MoveInManager(Monitor);
 
         helper.ConsoleCommands.Add("movein",
-            "让指定联机玩家搬进主屋: movein <玩家ID|名字>  |  movein list",
+            "指定联机玩家搬进主屋: movein <玩家ID|名字>  |  movein list",
             (_, args) => OnMoveInCommand(args));
     }
 
@@ -27,7 +27,7 @@ public class ModEntry : Mod
     {
         if (!Context.IsWorldReady)
         {
-            Monitor.Log("世界未加载，无法执行", LogLevel.Warn);
+            Monitor.Log("世界未加载 > 无法执行", LogLevel.Warn);
             return;
         }
 
@@ -52,7 +52,7 @@ public class ModEntry : Mod
 
         if (who.IsMainPlayer)
         {
-            Monitor.Log($"{who.Name} 是主机，已住主屋", LogLevel.Info);
+            Monitor.Log($"目标 {who.Name} 不可用", LogLevel.Info);
             return;
         }
 
@@ -60,10 +60,9 @@ public class ModEntry : Mod
         if (success)
             Monitor.Log($"{who.Name} (ID: {who.UniqueMultiplayerID}) 已搬进主屋", LogLevel.Info);
         else
-            Monitor.Log($"{who.Name} 搬家失败，请查看日志", LogLevel.Warn);
+            Monitor.Log($"{who.Name} 搬家失败", LogLevel.Warn);
     }
 
-    /// <summary>列出所有玩家（排除主机），标注在线状态和住处</summary>
     private void ListPlayers()
     {
         long hostId = Game1.player?.UniqueMultiplayerID ?? long.MinValue;

@@ -13,7 +13,6 @@ public class SaveManager
 {
     private readonly IMonitor _monitor;
     private readonly IModHelper _helper;
-    private ModConfig _config;
 
     private readonly SavePathManager _pathManager;
     private readonly SaveAutoLoader _autoLoader;
@@ -32,7 +31,6 @@ public class SaveManager
     {
         _monitor = monitor;
         _helper = helper;
-        _config = config;
 
         _pathManager = new SavePathManager(monitor, config);
         _autoLoader = new SaveAutoLoader(monitor, config, _pathManager);
@@ -53,8 +51,8 @@ public class SaveManager
         if (!string.IsNullOrEmpty(_autoLoader.CurrentSaveName))
             _stateRestorer.RestoreExtraDataAfterLoad(_autoLoader.CurrentSaveName);
 
-        // 验证联机玩家的 homeLocation 是否正确保留（搬入主屋的玩家应仍为 FarmHouse）。
-        // 真正的保留由 FarmhouseMoveIn 模组对 NetWorldState.TryAssignFarmhandHome 的补丁保证。
+        // 验证联机玩家的 homeLocation 是否正确保留（搬入主屋的玩家应仍为 FarmHouse）
+        // 真正的保留由 FarmhouseMoveIn 模组对 NetWorldState.TryAssignFarmhandHome 的补丁保证
         foreach (var f in Game1.getAllFarmers())
         {
             if (f != null && !f.IsMainPlayer &&
@@ -64,14 +62,13 @@ public class SaveManager
             }
         }
 
-        // 处理隐藏床：主屋默认创建，联机小屋清除
         EnsureHiddenBeds();
 
         _freezeDelay = 2;
     }
 
     /// <summary>
-    /// 确保主屋有隐藏床（供机器人房主睡觉），并清除所有联机小屋中的隐藏床。
+    /// 确保主屋有隐藏床（供机器人房主睡觉）并清除所有联机小屋中的隐藏床
     /// </summary>
     private void EnsureHiddenBeds()
     {
@@ -86,7 +83,6 @@ public class SaveManager
                 {
                     var hidden = new BedFurniture("2048", new Vector2(999, 999));
                     farmhouse.furniture.Add(hidden);
-                    _monitor.Log("[隐藏床] 主屋已创建隐藏床", LogLevel.Info);
                 }
             }
 
@@ -103,13 +99,13 @@ public class SaveManager
                         cabin.furniture.Remove(hb);
                     }
                     if (hiddenBeds.Count > 0)
-                        _monitor.Log($"[隐藏床] 已清除小屋 {cabin.NameOrUniqueName} 的 {hiddenBeds.Count} 个隐藏床", LogLevel.Info);
+                        _monitor.Log($"已清除小屋 {cabin.NameOrUniqueName} 的 {hiddenBeds.Count} 个隐藏床", LogLevel.Info);
                 }
             }
         }
         catch (Exception ex)
         {
-            _monitor.Log($"[隐藏床] 处理异常: {ex.Message}", LogLevel.Warn);
+            _monitor.Log($"隐藏床处理异常: {ex.Message}", LogLevel.Warn);
         }
     }
 
@@ -126,7 +122,6 @@ public class SaveManager
 
     public void UpdateConfig(ModConfig config)
     {
-        _config = config;
         _pathManager.UpdateConfig(config);
         _autoLoader.UpdateConfig(config);
         _backupManager.UpdateConfig(config);

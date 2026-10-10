@@ -15,9 +15,9 @@ using StardewValley.Network;
 namespace AutoServerPro.Core;
 
 /// <summary>
-/// 动态生成联机小屋。
-/// 当玩家通过 IP 连接且没有可用空位时，自动在农场的预设小屋位置创建新小屋。
-/// 如果没有可用位置则玩家无法加入（列表为空，相当于踢掉）。
+/// 动态生成联机小屋
+/// 当玩家通过 IP 连接且没有可用空位时
+/// 自动在农场的预设小屋位置创建新小屋
 /// </summary>
 public class CabinGenerator
 {
@@ -48,7 +48,6 @@ public class CabinGenerator
                 return;
             }
             _harmony.Patch(method, prefix: new HarmonyMethod(typeof(CabinGenerator), nameof(SendAvailableFarmhandsPrefix)));
-            _monitor.Log("小屋动态生成补丁已安装", LogLevel.Info);
         }
         catch (Exception ex)
         {
@@ -58,10 +57,6 @@ public class CabinGenerator
 
     private static IMonitor GetMonitor() => ModEntry.Instance?.Monitor;
 
-    /// <summary>
-    /// 在 sendAvailableFarmhands 执行前检查是否有可用空位。
-    /// 如果没有，尝试动态创建小屋。创建后原方法会自然地将新农场助手加入列表。
-    /// </summary>
     private static void SendAvailableFarmhandsPrefix(GameServer __instance)
     {
         var monitor = GetMonitor();
@@ -84,27 +79,20 @@ public class CabinGenerator
 
             if (!hasAvailableSlot)
             {
-                monitor?.Log("[小屋生成] 无可用空位，尝试动态创建小屋...", LogLevel.Debug);
+                monitor?.Log("尝试动态创建联机小屋...", LogLevel.Debug);
                 Farmer newFarmhand = CreateCabinAndFarmhand();
-                if (newFarmhand != null)
+                if (newFarmhand == null)
                 {
-                    monitor?.Log($"[小屋生成] 已创建小屋，新农场助手 ID: {newFarmhand.UniqueMultiplayerID}", LogLevel.Info);
-                }
-                else
-                {
-                    monitor?.Log("[小屋生成] 农场无可用位置，无法创建小屋", LogLevel.Warn);
+                    monitor?.Log("农场无可用位置 > 无法创建联机小屋", LogLevel.Warn);
                 }
             }
         }
         catch (Exception ex)
         {
-            monitor?.Log($"[小屋生成] 补丁异常: {ex.Message}", LogLevel.Error);
+            monitor?.Log($"联机小屋生成异常: {ex.Message}", LogLevel.Error);
         }
     }
 
-    /// <summary>
-    /// 在农场上创建一个新小屋并注册农场助手。
-    /// </summary>
     private static Farmer CreateCabinAndFarmhand()
     {
         Farm farm = Game1.getFarm();
@@ -115,7 +103,6 @@ public class CabinGenerator
         int currentFarmhands = Game1.netWorldState.Value.farmhandData.FieldDict.Count;
         if (currentFarmhands >= maxFarmhands)
         {
-            GetMonitor()?.Log($"[小屋生成] 已达玩家上限 ({currentFarmhands}/{maxFarmhands})", LogLevel.Warn);
             return null;
         }
 
@@ -123,11 +110,11 @@ public class CabinGenerator
         Vector2? position = FindUnusedCabinPosition(farm);
         if (position == null)
         {
-            GetMonitor()?.Log("[小屋生成] 未找到可用的小屋位置", LogLevel.Warn);
+            GetMonitor()?.Log("未找到可用的联机小屋位置", LogLevel.Warn);
             return null;
         }
 
-        // 创建小屋建筑（与 BuildStartingCabins 相同的流程）
+        // 创建小屋建筑
         Building cabinBuilding = new Building("Cabin", position.Value);
         cabinBuilding.magical.Value = true;
         cabinBuilding.daysOfConstructionLeft.Value = 0;
@@ -139,28 +126,27 @@ public class CabinGenerator
 
         if (!farm.buildStructure(cabinBuilding, position.Value, Game1.player, true))
         {
-            GetMonitor()?.Log("[小屋生成] 建造小屋失败", LogLevel.Warn);
+            GetMonitor()?.Log("建造小屋失败", LogLevel.Warn);
             return null;
         }
 
         Cabin cabin = cabinBuilding.GetIndoors() as Cabin;
         if (cabin == null)
         {
-            GetMonitor()?.Log("[小屋生成] 小屋内部为空", LogLevel.Warn);
+            GetMonitor()?.Log("小屋内部为空", LogLevel.Warn);
             return null;
         }
 
-        // 为小屋创建农场助手（会自动加入 farmhandData）
         cabin.CreateFarmhand();
 
         Farmer newFarmhand = cabin.owner;
         if (newFarmhand == null)
         {
-            GetMonitor()?.Log("[小屋生成] 农场助手创建失败", LogLevel.Warn);
+            GetMonitor()?.Log("联机玩家创建失败", LogLevel.Warn);
             return null;
         }
 
-        GetMonitor()?.Log($"[小屋生成] 在 ({position.Value.X}, {position.Value.Y}) 创建了小屋，皮肤: {CabinSkins[skinIndex]}", LogLevel.Info);
+        GetMonitor()?.Log($"联机小屋在 ({position.Value.X}, {position.Value.Y}) 生成，皮肤: {CabinSkins[skinIndex]}", LogLevel.Info);
         return newFarmhand;
     }
 
@@ -202,7 +188,7 @@ public class CabinGenerator
         }
         catch (Exception ex)
         {
-            GetMonitor()?.Log($"[小屋生成] 获取地图尺寸失败: {ex.Message}", LogLevel.Warn);
+            GetMonitor()?.Log($"联机小屋生成 > 获取地图尺寸失败: {ex.Message}", LogLevel.Warn);
         }
 
         if (mapWidth == 0 || mapHeight == 0) return null;
