@@ -7,6 +7,7 @@ using StardewValley;
 using StardewValley.Buildings;
 using StardewValley.Locations;
 using StardewValley.Network;
+using StardewValley.Objects;
 
 namespace FarmhouseMoveIn;
 
@@ -52,6 +53,13 @@ public class MoveInManager
                 if (!hasPostfix)
                     _harmony.Patch(createFarmhandMethod, postfix: new HarmonyMethod(typeof(MoveInManager), nameof(CreateFarmhandPostfix)));
             }
+
+            // Patch 3: 让住主屋的 farmhand 被判定为房屋归属者，
+            // 否则打开新手礼包盒/邮箱时显示"别人的"
+            var ownedProp = AccessTools.Property(typeof(FarmHouse), "IsOwnedByCurrentPlayer");
+            var ownedGetter = ownedProp?.GetGetMethod(nonPublic: true);
+            if (ownedGetter != null && (Harmony.GetPatchInfo(ownedGetter)?.Postfixes?.Any(p => p.owner == "LinHan.FarmhouseMoveIn") ?? false) == false)
+                _harmony.Patch(ownedGetter, postfix: new HarmonyMethod(typeof(MoveInManager), nameof(IsOwnedByCurrentPlayerPostfix)));
         }
         catch (Exception ex)
         {
@@ -127,6 +135,24 @@ public class MoveInManager
     private static IMonitor GetMonitor() => ModEntry.Instance?.Monitor;
 
     /// <summary>
+    /// Patch: 当前玩家住主屋时，把 IsOwnedByCurrentPlayer 判为 true。
+    /// 解决联机玩家在主屋打开新手礼包盒/邮箱时显示"别人的"。
+    /// </summary>
+    private static void IsOwnedByCurrentPlayerPostfix(FarmHouse __instance, ref bool __result)
+    {
+        if (__result) return;
+        try
+        {
+            // 实例必须就是当前玩家住的那间主屋
+            if (!__instance.NameOrUniqueName.Equals("FarmHouse", StringComparison.OrdinalIgnoreCase))
+                return;
+            if (string.Equals(Game1.player?.homeLocation?.Value, "FarmHouse", StringComparison.OrdinalIgnoreCase))
+                __result = true;
+        }
+        catch { }
+    }
+
+    /// <summary>
     /// 让指定联机玩家搬进主屋。已有住客则先将其家具归位并迁回原小屋。
     /// 主屋与玩家小屋的家具互换，主屋等级取两者最大值。
     /// </summary>
@@ -182,6 +208,9 @@ public class MoveInManager
 
         // 交换主屋与玩家 Cabin 的家具
         SwapFurniture(farmhouse, cabin);
+
+        // 把小屋里的新手礼包盒移到主屋
+        MoveStarterGiftBox(cabin, farmhouse);
 
         // 主屋等级取最大值（不降级）
         if (cabin.upgradeLevel > farmhouse.upgradeLevel)
@@ -249,5 +278,44 @@ public class MoveInManager
         cabin.fridge.Value.Items.Clear();
         foreach (var item in cabinFridgeItems) farmhouse.fridge.Value.Items.Add(item);
         foreach (var item in farmFridgeItems) cabin.fridge.Value.Items.Add(item);
+    }
+
+    /// <summary>
+    /// 把小屋里的新手礼包盒（15个防风草种子）移到主屋。
+    /// 主屋已有未开的礼包盒则不动（主人还没开自己的）。
+    /// </summary>
+    private void MoveStarterGiftBox(Cabin cabin, FarmHouse farmhouse)
+    {
+        try
+        {
+            // 找 Cabin 里的新手礼包盒及其位置
+            Vector2 cabinGiftTile = Vector2.Zero;
+            Chest cabinGiftBox = null;
+            foreach (var kvp in cabin.objects.Pairs)
+            {
+                if (kvp.Value is Chest c && c.giftbox.Value && c.giftboxIsStarterGift.Value)
+                {
+                    cabinGiftTile = kvp.Key;
+                    cabinGiftBox = c;
+                    break;
+                }
+            }
+            if (cabinGiftBox == null) return;
+
+            // 主屋已有新手礼包盒则保留主屋的
+            foreach (var kvp in farmhouse.objects.Pairs)
+            {
+                if (kvp.Value is Chest c && c.giftbox.Value && c.giftboxIsStarterGift.Value)
+                    return;
+            }
+
+            cabin.objects.Remove(cabinGiftTile);
+            farmhouse.objects[cabinGiftTile] = cabinGiftBox;
+            _monitor.Log($"[迁主屋] 已把新手礼包盒从小屋移到主屋 (位置 {cabinGiftTile})", LogLevel.Debug);
+        }
+        catch (Exception ex)
+        {
+            _monitor.Log($"[迁主屋] 移动新手礼包盒失败: {ex.Message}", LogLevel.Error);
+        }
     }
 }
