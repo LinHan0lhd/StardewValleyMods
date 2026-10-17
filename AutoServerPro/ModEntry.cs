@@ -427,7 +427,6 @@ public class ModEntry : Mod
         _syncManager.AddPlayer(e.Peer.PlayerID);
         Monitor.Log($"{name} [ID:{e.Peer.PlayerID}] 加入", LogLevel.Debug);
         CabinGenerator.OnPlayerConnected();
-        _moveInManager.OnPlayerConnected();
     }
 
     private void OnPeerDisconnected(object _, PeerDisconnectedEventArgs e)

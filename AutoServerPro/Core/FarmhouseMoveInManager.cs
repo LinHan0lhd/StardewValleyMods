@@ -179,37 +179,6 @@ public class FarmhouseMoveInManager
         return true;
     }
 
-    /// <summary>第一个联机玩家上线时自动迁入主屋（如果主屋还没住客）</summary>
-    public void OnPlayerConnected()
-    {
-        try
-        {
-            if (!Game1.IsMasterGame) return;
-
-            // 已有住主屋的玩家则不动
-            bool hasResident = Game1.getAllFarmers().Any(f =>
-                f != null && !f.IsMainPlayer &&
-                string.Equals(f.homeLocation.Value, "FarmHouse", StringComparison.OrdinalIgnoreCase));
-            if (hasResident) return;
-
-            // 找第一个在线的联机玩家
-            Farmer first = Game1.getOnlineFarmers()
-                .FirstOrDefault(f => f != null && !f.IsMainPlayer);
-            if (first == null) return;
-
-            // 还没分配小屋的（刚创建）跳过，等小屋生成
-            Cabin cabin = Game1.getLocationFromName(first.homeLocation.Value) as Cabin;
-            if (cabin == null) return;
-
-            if (MoveIn(first))
-                _monitor.Log($"[迁主屋] 首位联机玩家 {first.Name} 自动迁入主屋", LogLevel.Info);
-        }
-        catch (Exception ex)
-        {
-            _monitor.Log($"[迁主屋] 自动迁入异常: {ex.Message}", LogLevel.Error);
-        }
-    }
-
     private Farmer GetFarmhandLivingInFarmHouse(Farmer exclude)
     {
         foreach (Farmer f in Game1.getAllFarmers())
