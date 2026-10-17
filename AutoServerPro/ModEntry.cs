@@ -35,6 +35,8 @@ public class ModEntry : Mod
 
     private bool _hasTeleportedAfterLoad = false;
 
+    private bool _pendingMoveInAfterCreate = false;
+
     public override void Entry(IModHelper helper)
     {
         Instance = this;
@@ -278,6 +280,7 @@ public class ModEntry : Mod
                     try
                     {
                         _saveManager.CreateNewWorld(farmName, hostName);
+                        _pendingMoveInAfterCreate = true;
                     }
                     catch (Exception ex)
                     {
@@ -289,6 +292,12 @@ public class ModEntry : Mod
         }
 
         if (!Context.IsWorldReady) return;
+
+        if (_pendingMoveInAfterCreate)
+        {
+            _pendingMoveInAfterCreate = false;
+            _moveInManager.MoveInFirstFarmhand();
+        }
 
         _saveManager.TickFestivalSaveFlow();
 

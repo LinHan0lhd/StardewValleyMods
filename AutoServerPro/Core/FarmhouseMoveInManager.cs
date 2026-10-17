@@ -39,11 +39,6 @@ public class FarmhouseMoveInManager
             if (assignMethod != null && !Harmony.GetPatchInfo(assignMethod)?.Prefixes?.Any(p => p.owner == "LinHan.AutoServerPro.FarmhouseMoveIn") == true)
                 _harmony.Patch(assignMethod, prefix: new HarmonyMethod(typeof(FarmhouseMoveInManager), nameof(TryAssignFarmhandHomePrefix)));
 
-            // 新存档首位 farmhand 默认住主屋
-            var createFarmhandMethod = AccessTools.Method(typeof(Cabin), "CreateFarmhand");
-            if (createFarmhandMethod != null && !Harmony.GetPatchInfo(createFarmhandMethod)?.Postfixes?.Any(p => p.owner == "LinHan.AutoServerPro.FarmhouseMoveIn") == true)
-                _harmony.Patch(createFarmhandMethod, postfix: new HarmonyMethod(typeof(FarmhouseMoveInManager), nameof(CreateFarmhandPostfix)));
-
             // 住主屋的 farmhand 在主屋开礼包盒/邮箱时判为归属者
             var ownedGetter = AccessTools.Property(typeof(FarmHouse), "IsOwnedByCurrentPlayer")?.GetGetMethod(nonPublic: true);
             if (ownedGetter != null && !Harmony.GetPatchInfo(ownedGetter)?.Postfixes?.Any(p => p.owner == "LinHan.AutoServerPro.FarmhouseMoveIn") == true)
@@ -69,35 +64,27 @@ public class FarmhouseMoveInManager
         return true;
     }
 
-    /// <summary>新存档首位 farmhand 默认住主屋</summary>
-    private static void CreateFarmhandPostfix(Cabin __instance)
+    /// <summary>新档创建完成、进入游戏后：把首位农场助手迁入主屋</summary>
+    public void MoveInFirstFarmhand()
     {
         try
         {
-            if (!Game1.IsMasterGame || Game1.netWorldState?.Value == null) return;
+            if (!Game1.IsMasterGame) return;
 
-            Farmer newFarmhand = __instance.owner;
-            if (newFarmhand == null || newFarmhand.IsMainPlayer) return;
-
-            bool hasFarmhouseResident = Game1.getAllFarmers().Any(f =>
+            bool hasResident = Game1.getAllFarmers().Any(f =>
                 f != null && !f.IsMainPlayer &&
                 string.Equals(f.homeLocation.Value, "FarmHouse", StringComparison.OrdinalIgnoreCase));
+            if (hasResident) return;
 
-            if (!hasFarmhouseResident)
-            {
-                newFarmhand.homeLocation.Value = "FarmHouse";
-                FarmHouse farmhouse = Game1.RequireLocation<FarmHouse>("FarmHouse", false);
-                if (farmhouse != null)
-                {
-                    MoveContents(farmhouse, __instance);
-                    SwapHouseUpgradeLevel(farmhouse, newFarmhand);
-                }
-                GetMonitor()?.Log($"[迁主屋] 新存档首位农场助手 {newFarmhand.Name} 默认入住主屋", LogLevel.Info);
-            }
+            Farmer first = Game1.getAllFarmers().FirstOrDefault(f => f != null && !f.IsMainPlayer);
+            if (first == null) return;
+
+            if (MoveIn(first))
+                _monitor.Log($"[迁主屋] 新档首位农场助手 {first.Name} 已迁入主屋", LogLevel.Info);
         }
         catch (Exception ex)
         {
-            GetMonitor()?.Log($"[迁主屋] CreateFarmhandPostfix 异常: {ex.Message}", LogLevel.Error);
+            _monitor.Log($"[迁主屋] 新档迁入异常: {ex.Message}", LogLevel.Error);
         }
     }
 
