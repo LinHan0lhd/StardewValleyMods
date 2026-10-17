@@ -245,14 +245,14 @@ public class FarmhouseMoveInManager
     /// <summary>交换主屋与玩家的房屋等级</summary>
     private static void SwapHouseUpgradeLevel(FarmHouse farmhouse, Farmer farmer)
     {
-        int farmLevel = farmhouse.synchronizedDisplayedLevel.Value;
-        int farmerLevel = farmer.houseUpgradeLevel.Value;
+        int farmLevel = farmhouse.upgradeLevel;
+        int farmerLevel = farmer.HouseUpgradeLevel;
         if (farmLevel == farmerLevel) return;
 
-        farmhouse.synchronizedDisplayedLevel.Value = farmerLevel;
-        farmhouse.currentlyDisplayedUpgradeLevel = farmerLevel;
-        farmhouse.updateMap();
-        farmer.houseUpgradeLevel.Value = farmLevel;
+        // setMapForUpgradeLevel 是原版公开接口：内部会同步写入 upgradeLevel(归属者)、
+        // 私有 currentlyDisplayedUpgradeLevel 与 synchronizedDisplayedLevel，并刷新地图
+        farmhouse.setMapForUpgradeLevel(farmerLevel);
+        farmer.HouseUpgradeLevel = farmLevel;
 
         GetMonitor()?.Log($"[迁主屋] 等级交换：主屋 {farmLevel}->{farmerLevel}，{farmer.Name} {farmerLevel}->{farmLevel}", LogLevel.Debug);
     }
