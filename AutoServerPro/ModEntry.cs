@@ -26,6 +26,7 @@ public class ModEntry : Mod
     private ChatLogger _chatLogger;
     private CPUDispatcher _cpuDispatcher;
     private CabinGenerator _cabinGenerator;
+    private FarmhouseMoveInManager _moveInManager;
 
     private bool _hasAutoLoaded = false;
     private bool _hasAutoCreated = false;
@@ -53,6 +54,7 @@ public class ModEntry : Mod
             _cpuDispatcher.Install();
 
         _cabinGenerator = new CabinGenerator(Monitor);
+        _moveInManager = new FarmhouseMoveInManager(Monitor);
 
         RegisterCommands();
         BindEvents();
@@ -98,6 +100,76 @@ public class ModEntry : Mod
         Helper.ConsoleCommands.Add("chat",
             "聊天: chat tell \"消息\" 广播聊天 | chat <聊天指令> [参数] 执行聊天指令",
             (_, args) => HandleChatCommand(args));
+
+        Helper.ConsoleCommands.Add("movein",
+            "指定联机玩家搬进主屋: movein <玩家ID>  |  movein list",
+            (_, args) => HandleMoveInCommand(args));
+    }
+
+    private void HandleMoveInCommand(string[] args)
+    {
+        if (!Context.IsWorldReady)
+        {
+            Monitor.Log("世界未加载 > 无法执行", LogLevel.Warn);
+            return;
+        }
+
+        if (args.Length < 1)
+        {
+            Monitor.Log("用法: movein <玩家ID>  |  movein list", LogLevel.Info);
+            return;
+        }
+
+        if (args[0].Equals("list", StringComparison.OrdinalIgnoreCase))
+        {
+            ListMoveInPlayers();
+            return;
+        }
+
+        if (!long.TryParse(args[0], out long id))
+        {
+            Monitor.Log("用法: movein <玩家ID>（数字）", LogLevel.Info);
+            return;
+        }
+
+        Farmer who = null;
+        foreach (var f in Game1.getAllFarmers())
+            if (f != null && f.UniqueMultiplayerID == id) { who = f; break; }
+
+        if (who == null)
+        {
+            Monitor.Log($"找不到玩家 ID: {id}", LogLevel.Warn);
+            return;
+        }
+
+        if (who.IsMainPlayer)
+        {
+            Monitor.Log("主机已住主屋", LogLevel.Info);
+            return;
+        }
+
+        if (_moveInManager.MoveIn(who))
+            Monitor.Log($"{who.Name} (ID:{id}) 已搬进主屋", LogLevel.Info);
+        else
+            Monitor.Log($"{who.Name} 搬家失败", LogLevel.Warn);
+    }
+
+    private void ListMoveInPlayers()
+    {
+        var all = Game1.getAllFarmers()?.Where(f => f != null && !f.IsMainPlayer).ToList();
+        if (all == null || all.Count == 0)
+        {
+            Monitor.Log("无其他玩家", LogLevel.Info);
+            return;
+        }
+
+        Monitor.Log($"共 {all.Count} 名玩家", LogLevel.Info);
+        foreach (var f in all)
+        {
+            string home = string.Equals(f.homeLocation.Value, "FarmHouse", StringComparison.OrdinalIgnoreCase)
+                ? "主屋" : f.homeLocation.Value;
+            Monitor.Log($"  {f.Name} [ID:{f.UniqueMultiplayerID}] 住处:{home}", LogLevel.Info);
+        }
     }
 
     private void HandleChatCommand(string[] args)
@@ -355,6 +427,7 @@ public class ModEntry : Mod
         _syncManager.AddPlayer(e.Peer.PlayerID);
         Monitor.Log($"{name} [ID:{e.Peer.PlayerID}] 加入", LogLevel.Debug);
         CabinGenerator.OnPlayerConnected();
+        _moveInManager.OnPlayerConnected();
     }
 
     private void OnPeerDisconnected(object _, PeerDisconnectedEventArgs e)
