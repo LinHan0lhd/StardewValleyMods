@@ -160,6 +160,23 @@ public class FarmhouseMoveInManager
         SwapHouseUpgradeLevel(farmhouse, who);
 
         who.homeLocation.Value = "FarmHouse";
+
+        // 主屋住客不再被任何小屋 farmhandReference 引用，
+        // 存档加载时会被当作“孤儿农场助手”删除，标记为已定制以保留
+        who.isCustomized.Value = true;
+
+        // 原小屋补一个新农场助手：小屋需要有归属者，否则等于少一个可用空位
+        try
+        {
+            cabin.farmhandReference.Value = null;
+            cabin.CreateFarmhand();
+            _monitor.Log($"[迁主屋] 原小屋 {cabin.NameOrUniqueName} 已补一名新农场助手", LogLevel.Info);
+        }
+        catch (Exception ex)
+        {
+            _monitor.Log($"[迁主屋] 原小屋补助手失败: {ex.Message}", LogLevel.Error);
+        }
+
         return true;
     }
 
