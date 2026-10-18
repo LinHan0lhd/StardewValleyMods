@@ -12,7 +12,7 @@ namespace AutoServerPro.Core;
 
 /// <summary>
 /// 联机玩家迁入主屋管理。
-/// - 新存档首位 farmhand 默认住主屋
+/// - 首位上线联机玩家迁入主屋
 /// - 已住主屋的玩家不被重新分配回小屋
 /// - movein 指令手动切换住客
 /// - 主屋与小屋交换家具/冰箱/objects，交换房屋等级
@@ -64,8 +64,8 @@ public class FarmhouseMoveInManager
         return true;
     }
 
-    /// <summary>新档创建完成、进入游戏后：把首位农场助手迁入主屋</summary>
-    public void MoveInFirstFarmhand()
+    /// <summary>有联机玩家在线且主屋无人时，把首位在线联机玩家迁入主屋</summary>
+    public void TryMoveFirstOnlinePlayerIntoFarmhouse()
     {
         try
         {
@@ -76,15 +76,16 @@ public class FarmhouseMoveInManager
                 string.Equals(f.homeLocation.Value, "FarmHouse", StringComparison.OrdinalIgnoreCase));
             if (hasResident) return;
 
-            Farmer first = Game1.getAllFarmers().FirstOrDefault(f => f != null && !f.IsMainPlayer);
+            Farmer first = Game1.otherFarmers?.Values?
+                .FirstOrDefault(f => f != null && !f.IsMainPlayer && f.isActive());
             if (first == null) return;
 
             if (MoveIn(first))
-                _monitor.Log($"[迁主屋] 新档首位农场助手 {first.Name} 已迁入主屋", LogLevel.Info);
+                _monitor.Log($"[迁主屋] 首位联机玩家 {first.Name} 已迁入主屋", LogLevel.Info);
         }
         catch (Exception ex)
         {
-            _monitor.Log($"[迁主屋] 新档迁入异常: {ex.Message}", LogLevel.Error);
+            _monitor.Log($"[迁主屋] 上线迁入异常: {ex.Message}", LogLevel.Error);
         }
     }
 

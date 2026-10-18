@@ -35,7 +35,7 @@ public class ModEntry : Mod
 
     private bool _hasTeleportedAfterLoad = false;
 
-    private bool _pendingMoveInAfterCreate = false;
+    private bool _pendingMoveInOnJoin = false;
 
     public override void Entry(IModHelper helper)
     {
@@ -280,7 +280,6 @@ public class ModEntry : Mod
                     try
                     {
                         _saveManager.CreateNewWorld(farmName, hostName);
-                        _pendingMoveInAfterCreate = true;
                     }
                     catch (Exception ex)
                     {
@@ -293,10 +292,11 @@ public class ModEntry : Mod
 
         if (!Context.IsWorldReady) return;
 
-        if (_pendingMoveInAfterCreate)
+        // 有玩家刚加入、且其已在线：若主屋无人则把首位在线联机玩家迁入主屋
+        if (_pendingMoveInOnJoin && Game1.otherFarmers?.Values?.Any(f => f != null && !f.IsMainPlayer && f.isActive()) == true)
         {
-            _pendingMoveInAfterCreate = false;
-            _moveInManager.MoveInFirstFarmhand();
+            _pendingMoveInOnJoin = false;
+            _moveInManager.TryMoveFirstOnlinePlayerIntoFarmhouse();
         }
 
         _saveManager.TickFestivalSaveFlow();
@@ -436,6 +436,7 @@ public class ModEntry : Mod
         _syncManager.AddPlayer(e.Peer.PlayerID);
         Monitor.Log($"{name} [ID:{e.Peer.PlayerID}] 加入", LogLevel.Debug);
         CabinGenerator.OnPlayerConnected();
+        _pendingMoveInOnJoin = true;
     }
 
     private void OnPeerDisconnected(object _, PeerDisconnectedEventArgs e)
