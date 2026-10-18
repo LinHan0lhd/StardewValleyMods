@@ -4,7 +4,6 @@ using System.Linq;
 using HarmonyLib;
 using StardewModdingAPI;
 using StardewValley;
-using StardewValley.Buildings;
 using StardewValley.Locations;
 using StardewValley.Network;
 
@@ -15,7 +14,7 @@ namespace AutoServerPro.Core;
 /// - 首位上线联机玩家迁入主屋，并成为主屋“真正的归属者”
 /// - 已住主屋的玩家不被重新分配回小屋
 /// - movein 指令手动切换住客
-/// - 主屋与小屋交换家具/冰箱/objects，主屋等级取二者较高值
+/// - 主屋与小屋交换家具/冰箱/objects，不手动改房屋等级（等级跟随新住客）
 /// - 迁出的小屋补一个未认领农场助手，作为加入界面的可选空位
 /// </summary>
 public class FarmhouseMoveInManager
@@ -54,8 +53,6 @@ public class FarmhouseMoveInManager
             _monitor.Log($"安装迁主屋补丁失败: {ex.Message}", LogLevel.Error);
         }
     }
-
-    private static IMonitor GetMonitor() => ModEntry.Instance?.Monitor;
 
     /// <summary>已住主屋的 farmhand 跳过原版 Cabin 分配</summary>
     private static bool TryAssignFarmhandHomePrefix(Farmer farmhand, ref bool __result)
@@ -168,39 +165,49 @@ public class FarmhouseMoveInManager
             return false;
         }
 
-        // 已有住主屋的联机玩家：让 existing 接手本次腾出的小屋，who 直接搬入主屋。
+        // 记录主屋当前等级（owner 现在还是主机，等于主屋现有显示等级）
+        int houseLevelBefore = farmhouse.upgradeLevel;
+
+        // 是否已有其他联机玩家住主屋（需要落脚到本次腾出的小屋）
         Farmer existing = GetFarmhandLivingInFarmHouse(who);
-        if (existing != null && existing != cabin.owner)
-        {
-            SwapFurniture(farmhouse, cabin);
-            SetCabinOwner(cabin, existing);   // 腾出的小屋改归 existing，不再补助手
-            SyncHouseLevel(farmhouse, who);
-            who.homeLocation.Value = "FarmHouse";
-            who.isCustomized.Value = true;
-            _monitor.Log($"[迁主屋] {existing.Name} 已迁回小屋 {cabin.NameOrUniqueName}，{who.Name} 迁入主屋", LogLevel.Info);
-            return true;
-        }
 
-        // 常规：主屋与玩家小屋交换家具/冰箱/objects，主屋取二者较高的房屋等级
-        SyncHouseLevel(farmhouse, who);
-        SwapFurniture(farmhouse, cabin);
-
+        // who 正式住进主屋：owner 补丁使其成为主屋真正归属者
         who.homeLocation.Value = "FarmHouse";
         // 主屋住客不再被任何小屋 farmhandReference 引用，存档加载时会被当作
         // “孤儿农场助手”删除，标记为已定制以保留
         who.isCustomized.Value = true;
 
-        // 腾出的小屋补一个未认领农场助手：加入界面靠 farmhandData 里的场助手
-        // 才显示可选空位，无主人的小屋不会出现在列表里
-        try
+        // 主屋等级跟随新归属者：owner 改写后 farmhouse.upgradeLevel 已是 who 的等级，
+        // 仅当它与主屋现有显示等级不一致时刷新地图，使其一致（相等则不碰）
+        if (who.HouseUpgradeLevel != houseLevelBefore)
         {
-            cabin.farmhandReference.Value = null;
-            cabin.CreateFarmhand();
-            _monitor.Log($"[迁主屋] 原小屋 {cabin.NameOrUniqueName} 已补一名未认领农场助手，可作为新玩家空位", LogLevel.Info);
+            farmhouse.setMapForUpgradeLevel(who.HouseUpgradeLevel);
+            _monitor.Log($"[迁主屋] 主屋等级跟随 {who.Name}: {houseLevelBefore}->{who.HouseUpgradeLevel}", LogLevel.Info);
         }
-        catch (Exception ex)
+
+        // 交换主屋与 who 小屋的家具/冰箱/objects
+        SwapFurniture(farmhouse, cabin);
+
+        if (existing != null && existing != cabin.owner)
         {
-            _monitor.Log($"[迁主屋] 原小屋补助手失败: {ex.Message}", LogLevel.Error);
+            // 腾出的小屋改归 existing，不再补助手
+            SetCabinOwner(cabin, existing);
+            _monitor.Log($"[迁主屋] {existing.Name} 已迁回小屋 {cabin.NameOrUniqueName}，{who.Name} 迁入主屋", LogLevel.Info);
+        }
+        else
+        {
+            // 腾出的小屋补一个未认领农场助手：加入界面靠 farmhandData 里的场助手
+            // 才显示可选空位，无主人的小屋不会出现在列表里
+            try
+            {
+                cabin.farmhandReference.Value = null;
+                cabin.CreateFarmhand();
+                _monitor.Log($"[迁主屋] 原小屋 {cabin.NameOrUniqueName} 已补一名未认领农场助手，可作为新玩家空位", LogLevel.Info);
+            }
+            catch (Exception ex)
+            {
+                _monitor.Log($"[迁主屋] 原小屋补助手失败: {ex.Message}", LogLevel.Error);
+            }
         }
 
         return true;
@@ -217,54 +224,12 @@ public class FarmhouseMoveInManager
         return null;
     }
 
-    private Cabin GetCabinOfFarmer(Farmer who)
-    {
-        Farm farm = Game1.getFarm();
-        if (farm != null)
-        {
-            foreach (var b in farm.buildings)
-            {
-                if (b != null && b.isCabin)
-                {
-                    Cabin indoors = b.GetIndoors() as Cabin;
-                    if (indoors != null && indoors.owner == who)
-                        return indoors;
-                }
-            }
-        }
-        string locName = who.homeLocation.Value;
-        if (!string.Equals(locName, "FarmHouse", StringComparison.OrdinalIgnoreCase))
-            return Game1.getLocationFromName(locName) as Cabin;
-        return null;
-    }
-
     /// <summary>把小屋归属改给指定玩家（不复用 AssignFarmhand，避免误删该小屋原有农场助手数据）</summary>
     private static void SetCabinOwner(Cabin cabin, Farmer farmer)
     {
         cabin.farmhandReference.Value = farmer;
         farmer.homeLocation.Value = cabin.NameOrUniqueName;
         farmer.isCustomized.Value = true;
-    }
-
-    /// <summary>
-    /// 主屋等级取主屋当前等级与玩家等级的较高值（不降级），并同步到玩家，
-    /// 使 owner 改写后 farmhouse.upgradeLevel(= owner.HouseUpgradeLevel) 与地图一致。
-    /// </summary>
-    private static void SyncHouseLevel(FarmHouse farmhouse, Farmer farmer)
-    {
-        int houseLevel = farmhouse.upgradeLevel;
-        int target = Math.Max(houseLevel, farmer.HouseUpgradeLevel);
-        if (target > houseLevel)
-        {
-            farmer.HouseUpgradeLevel = target;
-            // owner 此时仍是主机，setMapForUpgradeLevel 会写入主机等级并刷新主屋地图
-            farmhouse.setMapForUpgradeLevel(target);
-            GetMonitor()?.Log($"[迁主屋] 主屋等级提升 {houseLevel}->{target}", LogLevel.Debug);
-        }
-        else
-        {
-            farmer.HouseUpgradeLevel = houseLevel;
-        }
     }
 
     /// <summary>交换两边的家具/冰箱/objects</summary>
