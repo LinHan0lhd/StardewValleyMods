@@ -137,7 +137,6 @@ public class FarmhouseMoveInManager
 
         // 已有住主屋的联机玩家：交换主屋与其小屋内容，existing 搬回原小屋
         Farmer existing = GetFarmhandLivingInFarmHouse(who);
-        bool hadExisting = existing != null;
         if (existing != null)
         {
             Cabin existingCabin = GetCabinOfFarmer(existing);
@@ -154,11 +153,9 @@ public class FarmhouseMoveInManager
             }
         }
 
-        // 新玩家搬入：已有住客则交换，否则清空主屋
-        if (hadExisting)
-            SwapFurniture(farmhouse, cabin);
-        else
-            MoveContents(farmhouse, cabin);
+        // 与主屋交换家具/冰箱/objects：主屋得到该玩家的内容，
+        // 原小屋保留主屋原有内容，避免迁出后小屋空无一物
+        SwapFurniture(farmhouse, cabin);
 
         SwapHouseUpgradeLevel(farmhouse, who);
 
@@ -211,25 +208,6 @@ public class FarmhouseMoveInManager
         farmer.HouseUpgradeLevel = farmLevel;
 
         GetMonitor()?.Log($"[迁主屋] 等级交换：主屋 {farmLevel}->{farmerLevel}，{farmer.Name} {farmerLevel}->{farmLevel}", LogLevel.Debug);
-    }
-
-    /// <summary>把 from 的家具/冰箱/objects 搬到 to，清空 to，from 留空</summary>
-    private static void MoveContents(FarmHouse to, FarmHouse from)
-    {
-        var fromFurniture = from.furniture.ToList();
-        to.furniture.Clear();
-        from.furniture.Clear();
-        foreach (var f in fromFurniture) to.furniture.Add(f);
-
-        var fromFridgeItems = from.fridge.Value.Items.ToList();
-        to.fridge.Value.Items.Clear();
-        from.fridge.Value.Items.Clear();
-        foreach (var item in fromFridgeItems) to.fridge.Value.Items.Add(item);
-
-        var fromObjects = from.objects.Pairs.ToList();
-        to.objects.Clear();
-        from.objects.Clear();
-        foreach (var kvp in fromObjects) to.objects[kvp.Key] = kvp.Value;
     }
 
     /// <summary>交换两边的家具/冰箱/objects</summary>
