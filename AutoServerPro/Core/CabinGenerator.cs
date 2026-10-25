@@ -152,11 +152,19 @@ public class CabinGenerator
     }
 
     /// <summary>
-    /// 玩家上线时调用：把暂存在地图外 (999,999) 的小屋搬到真正的空地。
-    /// 不检测玩家 ID（预留 ID 与实际注册 ID 会变化），只要小屋的 owner 已上线就搬。
-    /// 没有空地则踢出该玩家并销毁小屋。
+    /// 玩家上线时调用（保留）：尝试把暂存在地图外 (999,999) 的小屋搬到真正的空地。
     /// </summary>
     public static void OnPlayerConnected()
+    {
+        TryRelocatePendingCabins();
+    }
+
+    /// <summary>
+    /// 每秒调用：把暂存在地图外 (999,999) 的小屋搬到真正的空地。
+    /// 不检测玩家 ID（预留 ID 与实际注册 ID 会变化），只要小屋的 owner 已真正上线就搬。
+    /// 没有空地则踢出该玩家并销毁小屋。
+    /// </summary>
+    public static void TryRelocatePendingCabins()
     {
         Farm farm = Game1.getFarm();
         if (farm == null) return;
@@ -172,7 +180,7 @@ public class CabinGenerator
             Cabin cabin = building.GetIndoors() as Cabin;
             if (cabin?.owner == null) continue;
 
-            // 玩家已上线才处理；不按 ID 匹配，直接看该小屋的 owner 是否活跃
+            // 玩家已真正加入（在 otherFarmers 里）才处理
             if (!cabin.owner.isActive()) continue;
 
             pending.Add(building);
@@ -212,6 +220,43 @@ public class CabinGenerator
             }
 
             GetMonitor()?.Log($"[小屋生成] 玩家 {cabin.owner.Name} 上线，小屋搬至 ({land.Value.X}, {land.Value.Y})", LogLevel.Info);
+        }
+    }
+
+    /// <summary>
+    /// 每秒调用：清理“建好后一直没人认领”的隐藏小屋（还停在 999,999、owner 未绑定玩家）。
+    /// 只在没有任何连接时执行，避免误删正在加入界面选择角色的小屋。
+    /// 销毁建筑会连带删除其农场助手数据。
+    /// </summary>
+    public static void CleanupAbandonedCabins()
+    {
+        Farm farm = Game1.getFarm();
+        if (farm == null) return;
+
+        // 还有连接（包括正在选角色的玩家）时不动
+        if (Game1.server != null && Game1.server.connectionsCount > 0) return;
+
+        var abandoned = new List<Building>();
+        foreach (var building in farm.buildings)
+        {
+            if (building == null) continue;
+            if (building.buildingType.Value != "Cabin") continue;
+            if (building.tileX.Value != 999 || building.tileY.Value != 999) continue;
+
+            Cabin cabin = building.GetIndoors() as Cabin;
+            Farmer owner = cabin?.owner;
+            if (owner != null && owner.isActive()) continue; // 正在使用
+            if (owner != null && !string.IsNullOrEmpty(owner.userID.Value)) continue; // 已绑定玩家，留给本人
+
+            abandoned.Add(building);
+        }
+
+        foreach (var building in abandoned)
+        {
+            Cabin cabin = building.GetIndoors() as Cabin;
+            string ownerName = cabin?.owner?.Name ?? "无";
+            farm.destroyStructure(building);
+            GetMonitor()?.Log($"[小屋生成] 已清理未认领的隐藏小屋（owner: {ownerName}）", LogLevel.Info);
         }
     }
 

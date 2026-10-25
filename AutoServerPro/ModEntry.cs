@@ -318,6 +318,10 @@ public class ModEntry : Mod
 
         if (Game1.ticks % 60 != 0) return;
 
+        // 隐藏小屋：owner 真正上线后搬回空地；无任何连接时清理一直没人认领的隐藏小屋
+        CabinGenerator.TryRelocatePendingCabins();
+        CabinGenerator.CleanupAbandonedCabins();
+
         _sleepManager.FixPetName();
 
         bool isWeddingEvent = Game1.CurrentEvent != null && (Game1.CurrentEvent.isWedding || Game1.CurrentEvent.id == "-2");
