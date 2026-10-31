@@ -152,25 +152,23 @@ public class CabinGenerator
     }
 
     /// <summary>
-    /// 玩家上线时调用（保留）：尝试把暂存在地图外 (999,999) 的小屋搬到真正的空地。
+    /// 玩家上线时调用：先判定是不是新玩家（是否拥有本模组预留在 (999,999) 的隐藏小屋），
+    /// 是的话再检查有没有这样的房子，有就搬到真正的空地。
     /// </summary>
-    public static void OnPlayerConnected()
-    {
-        TryRelocatePendingCabins();
-    }
-
-    /// <summary>
-    /// 每秒调用：把暂存在地图外 (999,999) 的小屋搬到真正的空地。
-    /// 不检测玩家 ID（预留 ID 与实际注册 ID 会变化），只要小屋的 owner 已真正上线就搬。
-    /// 没有空地则踢出该玩家并销毁小屋。
-    /// </summary>
-    public static void TryRelocatePendingCabins()
+    public static void OnPlayerOnline(Farmer farmer)
     {
         Farm farm = Game1.getFarm();
-        if (farm == null) return;
+        if (farm == null || farmer == null || farmer.IsMainPlayer) return;
 
-        // 收集待处理的小屋，避免遍历时修改集合
-        var pending = new List<Building>();
+        Building hidden = FindHiddenCabinOwnedBy(farm, farmer);
+        if (hidden == null) return; // 不是新玩家（没有预留给他的隐藏小屋）
+
+        RelocateCabin(farm, hidden);
+    }
+
+    /// <summary>查找停在 (999,999)、owner 为该玩家的隐藏小屋。</summary>
+    private static Building FindHiddenCabinOwnedBy(Farm farm, Farmer farmer)
+    {
         foreach (var building in farm.buildings)
         {
             if (building == null) continue;
@@ -179,48 +177,47 @@ public class CabinGenerator
 
             Cabin cabin = building.GetIndoors() as Cabin;
             if (cabin?.owner == null) continue;
+            if (cabin.owner.UniqueMultiplayerID != farmer.UniqueMultiplayerID) continue;
 
-            // 玩家已真正加入（在 otherFarmers 里）才处理
-            if (!cabin.owner.isActive()) continue;
+            return building;
+        }
+        return null;
+    }
 
-            pending.Add(building);
+    /// <summary>把隐藏小屋搬到真正的空地；没有空地则踢出玩家并销毁小屋。</summary>
+    private static void RelocateCabin(Farm farm, Building building)
+    {
+        Cabin cabin = building.GetIndoors() as Cabin;
+        if (cabin?.owner == null) return;
+
+        Vector2? land = FindUnusedCabinPosition(farm);
+        if (land == null)
+        {
+            long ownerId = cabin.owner.UniqueMultiplayerID;
+            GetMonitor()?.Log($"[小屋生成] 暂无空地，踢出玩家 {cabin.owner.Name} [ID:{ownerId}] 并销毁小屋", LogLevel.Warn);
+            try { Game1.server?.kick(ownerId); } catch { }
+            farm.destroyStructure(building);
+            return;
         }
 
-        foreach (var building in pending)
+        building.tileX.Value = (int)land.Value.X;
+        building.tileY.Value = (int)land.Value.Y;
+
+        // 更新室内出口 warp 指向新的门位置
+        GameLocation interior = building.GetIndoors();
+        if (interior != null)
         {
-            Cabin cabin = building.GetIndoors() as Cabin;
-            if (cabin?.owner == null) continue;
-
-            Vector2? land = FindUnusedCabinPosition(farm);
-            if (land == null)
+            foreach (Warp warp in interior.warps)
             {
-                // 搬不了：踢出玩家并销毁小屋
-                long ownerId = cabin.owner.UniqueMultiplayerID;
-                GetMonitor()?.Log($"[小屋生成] 暂无空地，踢出玩家 {cabin.owner.Name} [ID:{ownerId}] 并销毁小屋", LogLevel.Warn);
-                try { Game1.server?.kick(ownerId); } catch { }
-                farm.destroyStructure(building);
-                continue;
-            }
-
-            building.tileX.Value = (int)land.Value.X;
-            building.tileY.Value = (int)land.Value.Y;
-
-            // 更新室内出口 warp 指向新的门位置
-            GameLocation interior = building.GetIndoors();
-            if (interior != null)
-            {
-                foreach (Warp warp in interior.warps)
+                if (warp.TargetName == farm.NameOrUniqueName)
                 {
-                    if (warp.TargetName == farm.NameOrUniqueName)
-                    {
-                        warp.TargetX = building.humanDoor.X + building.tileX.Value;
-                        warp.TargetY = building.humanDoor.Y + building.tileY.Value + 1;
-                    }
+                    warp.TargetX = building.humanDoor.X + building.tileX.Value;
+                    warp.TargetY = building.humanDoor.Y + building.tileY.Value + 1;
                 }
             }
-
-            GetMonitor()?.Log($"[小屋生成] 玩家 {cabin.owner.Name} 上线，小屋搬至 ({land.Value.X}, {land.Value.Y})", LogLevel.Info);
         }
+
+        GetMonitor()?.Log($"[小屋生成] 新玩家 {cabin.owner.Name} 上线，小屋搬至 ({land.Value.X}, {land.Value.Y})", LogLevel.Info);
     }
 
     /// <summary>

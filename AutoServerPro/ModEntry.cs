@@ -37,6 +37,9 @@ public class ModEntry : Mod
 
     private bool _pendingMoveInOnJoin = false;
 
+    // 上一次统计到的在线农场助手 ID，用于识别“刚上线的玩家”
+    private readonly HashSet<long> _knownActiveFarmhands = new HashSet<long>();
+
     public override void Entry(IModHelper helper)
     {
         Instance = this;
@@ -292,6 +295,9 @@ public class ModEntry : Mod
 
         if (!Context.IsWorldReady) return;
 
+        // 识别刚上线的玩家：新玩家若拥有隐藏小屋，立即搬回空地（须在迁主屋之前）
+        DetectNewlyOnlineFarmhands();
+
         // 有玩家刚加入、且其已在线：若主屋无人则把首位在线联机玩家迁入主屋
         if (_pendingMoveInOnJoin && Game1.otherFarmers?.Values?.Any(f => f != null && !f.IsMainPlayer && f.isActive()) == true)
         {
@@ -318,8 +324,7 @@ public class ModEntry : Mod
 
         if (Game1.ticks % 60 != 0) return;
 
-        // 隐藏小屋：owner 真正上线后搬回空地；无任何连接时清理一直没人认领的隐藏小屋
-        CabinGenerator.TryRelocatePendingCabins();
+        // 隐藏小屋：无任何连接时清理一直没人认领的隐藏小屋
         CabinGenerator.CleanupAbandonedCabins();
 
         _sleepManager.FixPetName();
@@ -425,6 +430,30 @@ public class ModEntry : Mod
         _festivalManager.HandleFestivalEndDialog(e);
     }
 
+    /// <summary>识别刚上线的农场助手，并通知小屋生成器（新玩家需要把隐藏小屋搬回空地）。</summary>
+    private void DetectNewlyOnlineFarmhands()
+    {
+        var current = new HashSet<long>();
+        if (Game1.otherFarmers != null)
+        {
+            foreach (var farmer in Game1.otherFarmers.Values)
+            {
+                if (farmer == null || farmer.IsMainPlayer || !farmer.isActive()) continue;
+                current.Add(farmer.UniqueMultiplayerID);
+            }
+        }
+
+        foreach (long id in current)
+        {
+            if (_knownActiveFarmhands.Contains(id)) continue;
+            if (Game1.otherFarmers.TryGetValue(id, out Farmer farmer))
+                CabinGenerator.OnPlayerOnline(farmer);
+        }
+
+        _knownActiveFarmhands.Clear();
+        _knownActiveFarmhands.UnionWith(current);
+    }
+
     private void OnPeerConnected(object _, PeerConnectedEventArgs e)
     {
         _hasPlayerConnected = true;
@@ -439,7 +468,6 @@ public class ModEntry : Mod
 
         _syncManager.AddPlayer(e.Peer.PlayerID);
         Monitor.Log($"{name} [ID:{e.Peer.PlayerID}] 加入", LogLevel.Debug);
-        CabinGenerator.OnPlayerConnected();
         _pendingMoveInOnJoin = true;
     }
 
