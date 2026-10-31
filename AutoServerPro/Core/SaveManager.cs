@@ -51,14 +51,13 @@ public class SaveManager
         if (!string.IsNullOrEmpty(_autoLoader.CurrentSaveName))
             _stateRestorer.RestoreExtraDataAfterLoad(_autoLoader.CurrentSaveName);
 
-        // 验证联机玩家的 homeLocation 是否正确保留（搬入主屋的玩家应仍为 FarmHouse）
-        // 真正的保留由 FarmhouseMoveIn 模组对 NetWorldState.TryAssignFarmhandHome 的补丁保证
+        // 存档加载后 检查是否有联机玩家异常住在主屋
         foreach (var f in Game1.getAllFarmers())
         {
             if (f != null && !f.IsMainPlayer &&
                 string.Equals(f.homeLocation.Value, "FarmHouse", StringComparison.OrdinalIgnoreCase))
             {
-                _monitor.Log($"[搬家] 存档加载后，{f.Name} 仍住在主屋", LogLevel.Info);
+                _monitor.Log($"[存档] {f.Name} 的 homeLocation 异常为 FarmHouse", LogLevel.Warn);
             }
         }
 
