@@ -1,7 +1,6 @@
 #nullable disable
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
@@ -36,6 +35,8 @@ public class ModEntry : Mod
 
     // 上一次统计到的在线农场助手 ID 用来识别刚上线的玩家
     private readonly HashSet<long> _knownActiveFarmhands = new HashSet<long>();
+    // 本帧在线集合 复用避免每帧分配
+    private readonly HashSet<long> _currentActiveFarmhands = new HashSet<long>();
 
     public override void Entry(IModHelper helper)
     {
@@ -265,8 +266,15 @@ public class ModEntry : Mod
             _sleepManager.HandleEventSkipping();
         }
 
-        var farmhands = Game1.otherFarmers?.Values?.Where(f => f?.isActive() == true).ToList() ?? new List<Farmer>();
-        if (!farmhands.Any())
+        bool anyActiveFarmhand = false;
+        if (Game1.otherFarmers != null)
+        {
+            foreach (var f in Game1.otherFarmers.Values)
+            {
+                if (f?.isActive() == true) { anyActiveFarmhand = true; break; }
+            }
+        }
+        if (!anyActiveFarmhand)
         {
             if (_sleepManager.IsSleepingOrGone)
             {
@@ -352,25 +360,25 @@ public class ModEntry : Mod
     /// <summary>识别刚上线的农场助手 通知小屋生成器搬隐藏小屋</summary>
     private void DetectNewlyOnlineFarmhands()
     {
-        var current = new HashSet<long>();
+        _currentActiveFarmhands.Clear();
         if (Game1.otherFarmers != null)
         {
             foreach (var farmer in Game1.otherFarmers.Values)
             {
                 if (farmer == null || farmer.IsMainPlayer || !farmer.isActive()) continue;
-                current.Add(farmer.UniqueMultiplayerID);
+                _currentActiveFarmhands.Add(farmer.UniqueMultiplayerID);
             }
         }
 
-        foreach (long id in current)
+        foreach (long id in _currentActiveFarmhands)
         {
             if (_knownActiveFarmhands.Contains(id)) continue;
             if (Game1.otherFarmers.TryGetValue(id, out Farmer farmer))
                 CabinGenerator.OnPlayerOnline(farmer);
         }
 
-        _knownActiveFarmhands.Clear();
-        _knownActiveFarmhands.UnionWith(current);
+        // 交换两个集合 下帧 _currentActiveFarmhands 复用旧快照内存 无需 Clear+Union
+        (_knownActiveFarmhands, _currentActiveFarmhands) = (_currentActiveFarmhands, _knownActiveFarmhands);
     }
 
     private void OnPeerConnected(object _, PeerConnectedEventArgs e)
