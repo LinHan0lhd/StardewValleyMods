@@ -146,7 +146,7 @@ public class CabinGenerator
             return null;
         }
 
-        GetMonitor()?.Log($"联机小屋在 ({position.Value.X}, {position.Value.Y}) 生成，皮肤: {CabinSkins[skinIndex]}", LogLevel.Info);
+        GetMonitor()?.Log($"联机小屋（{CabinSkins[skinIndex]}）在 ({position.Value.X}, {position.Value.Y}) 生成", LogLevel.Info);
         return newFarmhand;
     }
 
