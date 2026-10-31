@@ -16,8 +16,7 @@ namespace AutoServerPro.Core;
 
 /// <summary>
 /// 动态生成联机小屋
-/// 当玩家通过 IP 连接且没有可用空位时
-/// 自动在农场的预设小屋位置创建新小屋
+/// 玩家连接时没有空位就自动建房
 /// </summary>
 public class CabinGenerator
 {
@@ -106,7 +105,7 @@ public class CabinGenerator
             return null;
         }
 
-        // 先判断有没有空地，有地才建（但建在地图外不可见处，等玩家上线再搬过去）
+        // 有没有空地 有地才建 但先建在地图外 等玩家上线再搬
         Vector2? position = FindUnusedCabinPosition(farm);
         if (position == null)
         {
@@ -114,7 +113,7 @@ public class CabinGenerator
             return null;
         }
 
-        // 建在地图外 (999,999)，不占用可见地块，等玩家真上线后再搬到空地
+        // 建在 999 999 不占可见地块
         Vector2 hiddenPos = new Vector2(999, 999);
         Building cabinBuilding = new Building("Cabin", hiddenPos);
         cabinBuilding.magical.Value = true;
@@ -152,8 +151,8 @@ public class CabinGenerator
     }
 
     /// <summary>
-    /// 玩家上线时调用：先判定是不是新玩家（是否拥有本模组预留在 (999,999) 的隐藏小屋），
-    /// 是的话再检查有没有这样的房子，有就搬到真正的空地。
+    /// 玩家上线时调用
+    /// 先判断是否新玩家 是的话把 999 隐藏小屋搬到空地
     /// </summary>
     public static void OnPlayerOnline(Farmer farmer)
     {
@@ -161,12 +160,12 @@ public class CabinGenerator
         if (farm == null || farmer == null || farmer.IsMainPlayer) return;
 
         Building hidden = FindHiddenCabinOwnedBy(farm, farmer);
-        if (hidden == null) return; // 不是新玩家（没有预留给他的隐藏小屋）
+        if (hidden == null) return; // 不是新玩家 没有预留给他的隐藏小屋
 
         RelocateCabin(farm, hidden);
     }
 
-    /// <summary>查找停在 (999,999)、owner 为该玩家的隐藏小屋。</summary>
+    /// <summary>查找停在 999 且 owner 是该玩家的隐藏小屋</summary>
     private static Building FindHiddenCabinOwnedBy(Farm farm, Farmer farmer)
     {
         foreach (var building in farm.buildings)
@@ -184,7 +183,7 @@ public class CabinGenerator
         return null;
     }
 
-    /// <summary>把隐藏小屋搬到真正的空地；没有空地则踢出玩家并销毁小屋。</summary>
+    /// <summary>把隐藏小屋搬到空地 没空地则踢人并销毁</summary>
     private static void RelocateCabin(Farm farm, Building building)
     {
         Cabin cabin = building.GetIndoors() as Cabin;
@@ -203,7 +202,7 @@ public class CabinGenerator
         building.tileX.Value = (int)land.Value.X;
         building.tileY.Value = (int)land.Value.Y;
 
-        // 更新室内出口 warp 指向新的门位置
+        // 更新室内出口 warp
         GameLocation interior = building.GetIndoors();
         if (interior != null)
         {
@@ -221,16 +220,15 @@ public class CabinGenerator
     }
 
     /// <summary>
-    /// 每秒调用：清理“建好后一直没人认领”的隐藏小屋（还停在 999,999、owner 未绑定玩家）。
-    /// 只在没有任何连接时执行，避免误删正在加入界面选择角色的小屋。
-    /// 销毁建筑会连带删除其农场助手数据。
+    /// 每秒调用 清理一直没人认领的隐藏小屋
+    /// 只在没有任何连接时执行 避免误删正在选角色的
     /// </summary>
     public static void CleanupAbandonedCabins()
     {
         Farm farm = Game1.getFarm();
         if (farm == null) return;
 
-        // 还有连接（包括正在选角色的玩家）时不动
+        // 还有连接时不动 包括正在选角色的玩家
         if (Game1.server != null && Game1.server.connectionsCount > 0) return;
 
         var abandoned = new List<Building>();
@@ -243,7 +241,7 @@ public class CabinGenerator
             Cabin cabin = building.GetIndoors() as Cabin;
             Farmer owner = cabin?.owner;
             if (owner != null && owner.isActive()) continue; // 正在使用
-            if (owner != null && !string.IsNullOrEmpty(owner.userID.Value)) continue; // 已绑定玩家，留给本人
+            if (owner != null && !string.IsNullOrEmpty(owner.userID.Value)) continue; // 已绑定玩家 留给本人
 
             abandoned.Add(building);
         }

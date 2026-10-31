@@ -37,7 +37,7 @@ public class ModEntry : Mod
 
     private bool _pendingMoveInOnJoin = false;
 
-    // 上一次统计到的在线农场助手 ID，用于识别“刚上线的玩家”
+    // 上一次统计到的在线农场助手 ID 用来识别刚上线的玩家
     private readonly HashSet<long> _knownActiveFarmhands = new HashSet<long>();
 
     public override void Entry(IModHelper helper)
@@ -295,7 +295,7 @@ public class ModEntry : Mod
 
         if (!Context.IsWorldReady) return;
 
-        // 识别刚上线的玩家：新玩家若拥有隐藏小屋，立即搬回空地（须在迁主屋之前）
+        // 识别刚上线的玩家 新玩家若拥有隐藏小屋就搬回空地 必须在迁主屋之前
         DetectNewlyOnlineFarmhands();
 
         // 有玩家刚加入、且其已在线：若主屋无人则把首位在线联机玩家迁入主屋
@@ -324,7 +324,7 @@ public class ModEntry : Mod
 
         if (Game1.ticks % 60 != 0) return;
 
-        // 隐藏小屋：无任何连接时清理一直没人认领的隐藏小屋
+        // 无任何连接时清理一直没人认领的隐藏小屋
         CabinGenerator.CleanupAbandonedCabins();
 
         _sleepManager.FixPetName();
@@ -430,7 +430,7 @@ public class ModEntry : Mod
         _festivalManager.HandleFestivalEndDialog(e);
     }
 
-    /// <summary>识别刚上线的农场助手，并通知小屋生成器（新玩家需要把隐藏小屋搬回空地）。</summary>
+    /// <summary>识别刚上线的农场助手 通知小屋生成器搬隐藏小屋</summary>
     private void DetectNewlyOnlineFarmhands()
     {
         var current = new HashSet<long>();

@@ -10,12 +10,11 @@ using StardewValley.Network;
 namespace AutoServerPro.Core;
 
 /// <summary>
-/// 联机玩家迁入主屋管理。
-/// - 首位上线联机玩家迁入主屋，并成为主屋“真正的归属者”
-/// - 已住主屋的玩家不被重新分配回小屋
-/// - movein 指令手动切换住客
-/// - 主屋与小屋交换家具/冰箱/objects，不手动改房屋等级（等级跟随新住客）
-/// - 迁出的小屋补一个未认领农场助手，作为加入界面的可选空位
+/// 联机玩家迁入主屋
+/// 首位上线联机玩家迁入主屋并成为主屋归属者
+/// 已住主屋的玩家不被重新分配回小屋
+/// 主屋与小屋交换家具 冰箱 objects 房屋等级跟随新住客
+/// 迁出的小屋补一个未认领农场助手 作为可选空位
 /// </summary>
 public class FarmhouseMoveInManager
 {
@@ -41,9 +40,9 @@ public class FarmhouseMoveInManager
             if (assignMethod != null && !Harmony.GetPatchInfo(assignMethod)?.Prefixes?.Any(p => p.owner == HarmonyOwner) == true)
                 _harmony.Patch(assignMethod, prefix: new HarmonyMethod(typeof(FarmhouseMoveInManager), nameof(TryAssignFarmhandHomePrefix)));
 
-            // 核心：让住主屋的联机玩家成为主屋真正的 owner。
-            // 原版 FarmHouse.owner 永远返回 Game1.MasterPlayer(主机)，所以住主屋的联机玩家
-            // 在礼包盒 / 邮箱 / 房屋等级 / OwnerId 等处都不被认作归属者。改写 owner 后一次性解决。
+            // 让住主屋的联机玩家成为主屋真正的 owner
+            // 原版 owner 永远返回主机 住主屋玩家不被认作归属者
+            // 改写后礼包盒 邮箱 房屋等级 都正常
             var ownerGetter = AccessTools.Property(typeof(FarmHouse), "owner")?.GetGetMethod();
             if (ownerGetter != null && !Harmony.GetPatchInfo(ownerGetter)?.Postfixes?.Any(p => p.owner == HarmonyOwner) == true)
                 _harmony.Patch(ownerGetter, postfix: new HarmonyMethod(typeof(FarmhouseMoveInManager), nameof(FarmHouseOwnerPostfix)));
@@ -67,9 +66,8 @@ public class FarmhouseMoveInManager
     }
 
     /// <summary>
-    /// 主屋 owner 改写：住主屋的联机玩家(在线)存在时，owner 返回该玩家，
-    /// 否则维持原版(Game1.MasterPlayer)。
-    /// 只处理主屋("FarmHouse")，Cabin 的 owner 由 Cabin 重写，不受影响。
+    /// 主屋 owner 改写 住主屋的联机玩家存在时返回该玩家
+    /// 否则维持原版主机 只处理主屋 Cabin 的 owner 不受影响
     /// </summary>
     private static void FarmHouseOwnerPostfix(FarmHouse __instance, ref Farmer __result)
     {
@@ -84,7 +82,7 @@ public class FarmhouseMoveInManager
         catch { }
     }
 
-    /// <summary>取住在主屋的联机玩家：优先本地玩家(客户端侧)，其次任一在线的非主机玩家</summary>
+    /// <summary>取住主屋的联机玩家 优先本地玩家 其次任意一住主屋的农场助手</summary>
     private static Farmer GetFarmHouseResident()
     {
         Farmer local = Game1.player;
@@ -106,7 +104,7 @@ public class FarmhouseMoveInManager
         return null;
     }
 
-    /// <summary>有联机玩家在线且主屋无人时，把首位在线联机玩家迁入主屋</summary>
+    /// <summary>主屋无人时 把首位在线联机玩家迁入主屋</summary>
     public void TryMoveFirstOnlinePlayerIntoFarmhouse()
     {
         try
@@ -165,39 +163,35 @@ public class FarmhouseMoveInManager
             return false;
         }
 
-        // 记录主屋当前等级（owner 现在还是主机，等于主屋现有显示等级）
+        // 记录迁入前的主屋等级
         int houseLevelBefore = farmhouse.upgradeLevel;
 
-        // 是否已有其他联机玩家住主屋（需要落脚到本次腾出的小屋）
+        // 是否已有其他联机玩家住主屋 需要落脚到本次腾出的小屋
         Farmer existing = GetFarmhandLivingInFarmHouse(who);
 
-        // who 正式住进主屋：owner 补丁使其成为主屋真正归属者
+        // who 住进主屋 标记已定制 避免存档加载时被当孤儿农场助手删掉
         who.homeLocation.Value = "FarmHouse";
-        // 主屋住客不再被任何小屋 farmhandReference 引用，存档加载时会被当作
-        // “孤儿农场助手”删除，标记为已定制以保留
         who.isCustomized.Value = true;
 
-        // 主屋等级跟随新归属者：owner 改写后 farmhouse.upgradeLevel 已是 who 的等级，
-        // 仅当它与主屋现有显示等级不一致时刷新地图，使其一致（相等则不碰）
+        // 等级跟随新住客 和主屋现有显示等级不一致时刷新地图
         if (who.HouseUpgradeLevel != houseLevelBefore)
         {
             farmhouse.setMapForUpgradeLevel(who.HouseUpgradeLevel);
             _monitor.Log($"[迁主屋] 主屋等级跟随 {who.Name}: {houseLevelBefore}->{who.HouseUpgradeLevel}", LogLevel.Info);
         }
 
-        // 交换主屋与 who 小屋的家具/冰箱/objects
+        // 交换主屋与 who 小屋的家具 冰箱 objects
         SwapFurniture(farmhouse, cabin);
 
         if (existing != null && existing != cabin.owner)
         {
-            // 腾出的小屋改归 existing，不再补助手
+            // 腾出的小屋改归 existing 不再补助手
             SetCabinOwner(cabin, existing);
             _monitor.Log($"[迁主屋] {existing.Name} 已迁回小屋 {cabin.NameOrUniqueName}，{who.Name} 迁入主屋", LogLevel.Info);
         }
         else
         {
-            // 腾出的小屋补一个未认领农场助手：加入界面靠 farmhandData 里的场助手
-            // 才显示可选空位，无主人的小屋不会出现在列表里
+            // 腾出的小屋补一个未认领农场助手 加入界面才有可选空位
             try
             {
                 cabin.farmhandReference.Value = null;
@@ -224,7 +218,7 @@ public class FarmhouseMoveInManager
         return null;
     }
 
-    /// <summary>把小屋归属改给指定玩家（不复用 AssignFarmhand，避免误删该小屋原有农场助手数据）</summary>
+    /// <summary>把小屋归属改给指定玩家 不调 AssignFarmhand 避免误删原有农场助手</summary>
     private static void SetCabinOwner(Cabin cabin, Farmer farmer)
     {
         cabin.farmhandReference.Value = farmer;
@@ -232,7 +226,7 @@ public class FarmhouseMoveInManager
         farmer.isCustomized.Value = true;
     }
 
-    /// <summary>交换两边的家具/冰箱/objects</summary>
+    /// <summary>交换两边的家具 冰箱 objects</summary>
     private static void SwapFurniture(FarmHouse a, FarmHouse b)
     {
         var aFurniture = a.furniture.ToList();
