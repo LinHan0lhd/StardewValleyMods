@@ -34,9 +34,9 @@ public class ModEntry : Mod
     private bool _hasTeleportedAfterLoad = false;
 
     // 上一次统计到的在线农场助手 ID 用来识别刚上线的玩家
-    private readonly HashSet<long> _knownActiveFarmhands = new HashSet<long>();
-    // 本帧在线集合 复用避免每帧分配
-    private readonly HashSet<long> _currentActiveFarmhands = new HashSet<long>();
+    private HashSet<long> _knownActiveFarmhands = new HashSet<long>();
+    // 本帧在线集合 复用避免每帧分配 与快照交换使用
+    private HashSet<long> _currentActiveFarmhands = new HashSet<long>();
 
     public override void Entry(IModHelper helper)
     {
