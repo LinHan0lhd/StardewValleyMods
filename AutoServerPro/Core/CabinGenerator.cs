@@ -9,8 +9,11 @@ using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Buildings;
+using StardewValley.Characters;
 using StardewValley.Locations;
 using StardewValley.Network;
+using StardewValley.Objects;
+using StardewValley.TerrainFeatures;
 
 namespace AutoServerPro.Core;
 
@@ -28,11 +31,6 @@ public class CabinGenerator
         "Log Cabin", "Plank Cabin", "Stone Cabin",
         "Rustic Cabin", "Trailer Cabin", "Neighbor Cabin", "Beach Cabin"
     };
-
-    // 判定空地时算占位的类别 不含玩家和动物 避免路过被误判
-    private const CollisionMask BlockingMask =
-        CollisionMask.Buildings | CollisionMask.Objects | CollisionMask.Furniture |
-        CollisionMask.TerrainFeatures | CollisionMask.Flooring | CollisionMask.LocationSpecific;
 
     public CabinGenerator(IMonitor monitor)
     {
@@ -219,6 +217,12 @@ public class CabinGenerator
             return;
         }
 
+        // 清掉选址处的系统杂物 玩家物品不动
+        ClearSystemDebrisInFootprint(farm, land.Value, building.tilesWide.Value, building.tilesHigh.Value, building.humanDoor.X, building.humanDoor.Y);
+
+        // 把选址处的玩家踢出并改离线位置 动物 NPC 挪到墙边
+        EvictCharactersInFootprint(farm, land.Value, building.tilesWide.Value, building.tilesHigh.Value);
+
         building.tileX.Value = (int)land.Value.X;
         building.tileY.Value = (int)land.Value.Y;
 
@@ -332,7 +336,7 @@ public class CabinGenerator
                 if (!int.TryParse(order, out int orderNum)) continue;
 
                 Vector2 pos = new Vector2(x, y);
-                if (!IsFootprintClear(farm, pos, width, height, doorX, doorY)) continue;
+                if (!IsFootprintFreeOfPlayerItems(farm, pos, width, height, doorX, doorY)) continue;
 
                 candidates.Add((pos, orderNum));
             }
@@ -359,9 +363,9 @@ public class CabinGenerator
                 Vector2 anchor = new Vector2(x, y);
 
                 // 先看锚点 快速排除大部分格子
-                if (!IsTileCompletelyEmpty(farm, anchor, true)) continue;
+                if (!IsTileFreeOfPlayerItems(farm, anchor, true)) continue;
 
-                if (!IsFootprintClear(farm, anchor, width, height, doorX, doorY, true)) continue;
+                if (!IsFootprintFreeOfPlayerItems(farm, anchor, width, height, doorX, doorY, true)) continue;
                 if (CoversWarpOrDoor(farm, anchor, width, height)) continue;
                 return anchor;
             }
@@ -369,33 +373,34 @@ public class CabinGenerator
         return null;
     }
 
-    /// <summary>建筑范围加门口格必须完全空地</summary>
-    private static bool IsFootprintClear(Farm farm, Vector2 anchor, int width, int height, int doorX, int doorY, bool requireBuildable = false)
+    /// <summary>建筑范围加门口格都不能有玩家放置的物品 系统杂物可清</summary>
+    private static bool IsFootprintFreeOfPlayerItems(Farm farm, Vector2 anchor, int width, int height, int doorX, int doorY, bool requireBuildable = false)
     {
         for (int x = 0; x < width; x++)
         {
             for (int y = 0; y < height; y++)
             {
                 Vector2 tile = new Vector2(anchor.X + x, anchor.Y + y);
-                if (!IsTileCompletelyEmpty(farm, tile, requireBuildable)) return false;
+                if (!IsTileFreeOfPlayerItems(farm, tile, requireBuildable)) return false;
             }
         }
 
-        // 门口格要能站人 只要求可通行且无遮挡
+        // 门口格要能站人 只要求可通行且无玩家物品
         if (doorX < 0 || doorY < 0) return true;
 
         Vector2 doorTile = new Vector2(anchor.X + doorX, anchor.Y + doorY + 1);
         if (!farm.isTileOnMap(doorTile)) return false;
         if (!farm.isTilePassable(doorTile)) return false;
 
-        return !farm.IsTileOccupiedBy(doorTile, BlockingMask, CollisionMask.None, false);
+        return !HasPlayerItemAtTile(farm, doorTile);
     }
 
     /// <summary>
-    /// 单格是否完全空地
-    /// 排除杂草 石头 树枝 树木 草 耕种土 地板 家具 树桩 灌木 建筑 水面
+    /// 单格是否没有玩家物品
+    /// 玩家物品包括 家具 耕地 地板 果树 巨型作物 制作物品 玩家丢的材料
+    /// 系统杂物 杂草 石头 树枝 草 树 灌木 树桩 不算 会在搬迁时清掉
     /// </summary>
-    private static bool IsTileCompletelyEmpty(Farm farm, Vector2 tile, bool requireBuildable)
+    private static bool IsTileFreeOfPlayerItems(Farm farm, Vector2 tile, bool requireBuildable)
     {
         if (!farm.isTileOnMap(tile)) return false;
 
@@ -405,13 +410,69 @@ public class CabinGenerator
         // 禁止建造的图块
         if (!farm.isTilePlaceable(tile, false)) return false;
 
-        // 杂草 石头 树 草 耕种土 树桩 灌木 建筑 等都不能有
-        if (farm.IsTileOccupiedBy(tile, BlockingMask, CollisionMask.None, false)) return false;
+        // 不能有已有建筑
+        foreach (var b in farm.buildings)
+        {
+            if (b != null && b.occupiesTile(tile)) return false;
+        }
+
+        // 玩家放的物体
+        if (farm.objects.TryGetValue(tile, out var obj) && IsPlayerPlacedObject(obj)) return false;
+
+        // 玩家地形 耕地 地板 果树 巨型作物
+        if (farm.terrainFeatures.TryGetValue(tile, out var tf) && IsPlayerTerrainFeature(tf)) return false;
+
+        // 玩家大型地形
+        foreach (var ltf in farm.largeTerrainFeatures)
+        {
+            if (ltf != null && ltf.Tile == tile && IsPlayerLargeTerrainFeature(ltf)) return false;
+        }
+
+        // 家具
+        foreach (var f in farm.furniture)
+        {
+            if (f != null && f.TileLocation == tile) return false;
+        }
 
         // 全农场扫描时只挑可建造的农田格
         if (requireBuildable && !IsBuildableTile(farm, tile)) return false;
 
         return true;
+    }
+
+    /// <summary>门口格有没有玩家物品</summary>
+    private static bool HasPlayerItemAtTile(Farm farm, Vector2 tile)
+    {
+        if (farm.objects.TryGetValue(tile, out var obj) && IsPlayerPlacedObject(obj)) return true;
+        if (farm.terrainFeatures.TryGetValue(tile, out var tf) && IsPlayerTerrainFeature(tf)) return true;
+        foreach (var ltf in farm.largeTerrainFeatures)
+            if (ltf != null && ltf.Tile == tile && IsPlayerLargeTerrainFeature(ltf)) return true;
+        foreach (var f in farm.furniture)
+            if (f != null && f.TileLocation == tile) return true;
+        return false;
+    }
+
+    /// <summary>是不是玩家放置的物体 系统生成的杂草石头树枝觅食物不算</summary>
+    private static bool IsPlayerPlacedObject(StardewValley.Object o)
+    {
+        if (o == null) return false;
+        if (o is Furniture) return true;
+        if (o.bigCraftable.Value) return true;
+        if (o.IsWeeds() || o.IsBreakableStone() || o.IsTwig()) return false;
+        if (o.isSpawnedObject.Value) return false; // 系统刷新的觅食物
+        return true;
+    }
+
+    /// <summary>是不是玩家弄的地形 耕地 地板 果树 巨型作物都保留</summary>
+    private static bool IsPlayerTerrainFeature(TerrainFeature tf)
+    {
+        return tf is HoeDirt || tf is Flooring || tf is FruitTree || tf is GiantCrop;
+    }
+
+    /// <summary>灌木是系统的 其他大型地形保留</summary>
+    private static bool IsPlayerLargeTerrainFeature(LargeTerrainFeature ltf)
+    {
+        return !(ltf is Bush);
     }
 
     /// <summary>图块是否可建造 对齐原版 isBuildable 判定</summary>
@@ -450,5 +511,112 @@ public class CabinGenerator
     private static bool IsInsideFootprint(int x, int y, Vector2 anchor, int width, int height)
     {
         return x >= anchor.X && x < anchor.X + width && y >= anchor.Y && y < anchor.Y + height;
+    }
+
+    /// <summary>清除 5x3 范围和门口格里的系统杂物 玩家物品不动</summary>
+    private static void ClearSystemDebrisInFootprint(Farm farm, Vector2 anchor, int width, int height, int doorX, int doorY)
+    {
+        for (int x = 0; x < width; x++)
+        {
+            for (int y = 0; y < height; y++)
+            {
+                ClearSystemDebrisAtTile(farm, new Vector2(anchor.X + x, anchor.Y + y));
+            }
+        }
+
+        if (doorX >= 0 && doorY >= 0)
+            ClearSystemDebrisAtTile(farm, new Vector2(anchor.X + doorX, anchor.Y + doorY + 1));
+    }
+
+    /// <summary>单格清除系统杂物</summary>
+    private static void ClearSystemDebrisAtTile(Farm farm, Vector2 tile)
+    {
+        // 系统物体 杂草 石头 树枝 觅食物
+        if (farm.objects.TryGetValue(tile, out var obj))
+        {
+            if (!IsPlayerPlacedObject(obj))
+                farm.objects.Remove(tile);
+        }
+
+        // 系统地形 草 树
+        if (farm.terrainFeatures.TryGetValue(tile, out var tf))
+        {
+            if (tf is Grass || tf is Tree)
+                farm.terrainFeatures.Remove(tile);
+        }
+
+        // 灌木
+        for (int i = farm.largeTerrainFeatures.Count - 1; i >= 0; i--)
+        {
+            var ltf = farm.largeTerrainFeatures[i];
+            if (ltf != null && ltf.Tile == tile && ltf is Bush)
+                farm.largeTerrainFeatures.RemoveAt(i);
+        }
+
+        // 树桩 圆木 巨石
+        for (int i = farm.resourceClumps.Count - 1; i >= 0; i--)
+        {
+            var rc = farm.resourceClumps[i];
+            if (rc != null && rc.Tile == tile)
+                farm.resourceClumps.RemoveAt(i);
+        }
+    }
+
+    /// <summary>
+    /// 把目标范围里的角色处理掉
+    /// 玩家 踢出并把离线位置设到小屋墙边 避免上线卡在屋里
+    /// 动物 NPC 直接挪到墙边
+    /// </summary>
+    private static void EvictCharactersInFootprint(Farm farm, Vector2 anchor, int width, int height)
+    {
+        Vector2 fallbackTile = FindAdjacentOpenTile(farm, anchor, width, height);
+        Vector2 fallbackPos = fallbackTile * 64f;
+
+        bool Inside(Vector2 tile) =>
+            tile.X >= anchor.X && tile.X < anchor.X + width && tile.Y >= anchor.Y && tile.Y < anchor.Y + height;
+
+        // NPC 动物 挪到墙边
+        foreach (var c in farm.characters)
+        {
+            if (c == null) continue;
+            if (Inside(c.Tile))
+            {
+                try { c.Position = fallbackPos; } catch { }
+            }
+        }
+
+        // 联机玩家 踢出并改离线位置 避免下次上线卡在屋里
+        if (Game1.otherFarmers != null)
+        {
+            foreach (var f in Game1.otherFarmers.Values)
+            {
+                if (f == null) continue;
+                if (Inside(f.Tile))
+                {
+                    long id = f.UniqueMultiplayerID;
+                    try { f.Position = fallbackPos; } catch { }
+                    try { Game1.server?.kick(id); } catch { }
+                    GetMonitor()?.Log($"[小屋生成] 玩家 {f.Name} 挡在选址处 已踢至 ({fallbackTile.X},{fallbackTile.Y})", LogLevel.Info);
+                }
+            }
+        }
+    }
+
+    /// <summary>找小屋旁边一块可通行的空地 当墙边落脚点</summary>
+    private static Vector2 FindAdjacentOpenTile(Farm farm, Vector2 anchor, int width, int height)
+    {
+        Vector2[] candidates =
+        {
+            new Vector2(anchor.X - 1, anchor.Y + 1),
+            new Vector2(anchor.X + width, anchor.Y + 1),
+            new Vector2(anchor.X + 1, anchor.Y - 1),
+            new Vector2(anchor.X + 1, anchor.Y + height),
+        };
+        foreach (var c in candidates)
+        {
+            if (farm.isTileOnMap(c) && farm.isTilePassable(c))
+                return c;
+        }
+        return new Vector2(anchor.X + width / 2, anchor.Y + height);
     }
 }
