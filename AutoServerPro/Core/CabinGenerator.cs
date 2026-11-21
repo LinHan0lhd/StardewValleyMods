@@ -591,6 +591,10 @@ public class CabinGenerator
             foreach (var f in Game1.otherFarmers.Values)
             {
                 if (f == null) continue;
+
+                // 只处理农场地面上的 屋内的不管 他们能自己走出来
+                if (f.currentLocation != farm) continue;
+
                 if (Inside(f.Tile))
                 {
                     long id = f.UniqueMultiplayerID;
