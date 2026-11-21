@@ -157,7 +157,8 @@ public class CabinGenerator
             return null;
         }
 
-        GetMonitor()?.Log($"联机小屋（{CabinSkins[skinIndex]}）在 ({position.Value.X}, {position.Value.Y}) 生成", LogLevel.Info);
+        // 小屋实际先建在 999 999 等玩家上线再搬 这里只是预留位置
+        GetMonitor()?.Log($"联机小屋（{CabinSkins[skinIndex]}）已预留空地 ({position.Value.X}, {position.Value.Y})，等待玩家上线后搬迁", LogLevel.Info);
         return newFarmhand;
     }
 
@@ -227,7 +228,10 @@ public class CabinGenerator
         farm.buildStructure(building, land.Value, Game1.player, true);
         building.removeOverlappingBushes(farm);
 
-        GetMonitor()?.Log($"[小屋生成] 新玩家 {cabin.owner.Name} 上线，小屋搬至 ({land.Value.X}, {land.Value.Y})", LogLevel.Info);
+        string ownerName = string.IsNullOrEmpty(cabin.owner.Name)
+            ? $"ID:{cabin.owner.UniqueMultiplayerID}"
+            : cabin.owner.Name;
+        GetMonitor()?.Log($"[小屋生成] 新玩家 {ownerName} 上线，小屋搬至 ({land.Value.X}, {land.Value.Y})", LogLevel.Info);
     }
 
     /// <summary>
