@@ -459,7 +459,7 @@ public class CabinGenerator
         if (o is Furniture) return true;
         if (o.bigCraftable.Value) return true;
         if (o.IsWeeds() || o.IsBreakableStone() || o.IsTwig()) return false;
-        if (o.isSpawnedObject.Value) return false; // 系统刷新的觅食物
+        if (o.IsSpawnedObject) return false; // 系统刷新的觅食物
         return true;
     }
 
