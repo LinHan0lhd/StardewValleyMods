@@ -2,6 +2,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
@@ -50,6 +51,15 @@ public class CabinGenerator
                 return;
             }
             _harmony.Patch(method, prefix: new HarmonyMethod(typeof(CabinGenerator), nameof(SendAvailableFarmhandsPrefix)));
+
+            // 连接介绍包出异常时记录现场 方便定位
+            var introMethod = AccessTools.Method(typeof(GameServer), "sendServerIntroduction");
+            if (introMethod != null)
+            {
+                _harmony.Patch(introMethod,
+                    prefix: new HarmonyMethod(typeof(CabinGenerator), nameof(SendServerIntroductionPrefix)),
+                    finalizer: new HarmonyMethod(typeof(CabinGenerator), nameof(SendServerIntroductionFinalizer)));
+            }
         }
         catch (Exception ex)
         {
@@ -93,6 +103,42 @@ public class CabinGenerator
         {
             monitor?.Log($"联机小屋生成异常: {ex.Message}", LogLevel.Error);
         }
+    }
+
+    /// <summary>发送介绍包前记录一次现场</summary>
+    private static void SendServerIntroductionPrefix(long peer)
+    {
+        LogNetStats("发送前", peer, null);
+    }
+
+    /// <summary>介绍包抛异常时记录现场并原样返回异常 不改变原版行为</summary>
+    private static Exception SendServerIntroductionFinalizer(Exception __exception, long peer)
+    {
+        if (__exception != null) LogNetStats("发送失败", peer, __exception);
+        return __exception;
+    }
+
+    private static void LogNetStats(string tag, long peer, Exception ex)
+    {
+        try
+        {
+            int farmhands = Game1.netWorldState?.Value?.farmhandData?.FieldDict.Count ?? -1;
+            int online = Game1.otherFarmers?.Count ?? -1;
+            long gcMb = GC.GetTotalMemory(false) / (1024 * 1024);
+            long processMb = 0;
+            using (Process p = Process.GetCurrentProcess())
+            {
+                processMb = p.WorkingSet64 / (1024 * 1024);
+            }
+
+            string extra = ex == null
+                ? ""
+                : $" 异常:{ex.GetType().Name} {ex.Message}";
+            GetMonitor()?.Log(
+                $"[连接包] {tag} 目标:{peer} 农场助手:{farmhands} 在线:{online} GC:{gcMb}MB 进程:{processMb}MB{extra}",
+                ex == null ? LogLevel.Trace : LogLevel.Error);
+        }
+        catch { }
     }
 
     private static Farmer CreateCabinAndFarmhand()
