@@ -9,8 +9,11 @@ using Microsoft.Xna.Framework;
 using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Buildings;
+using StardewValley.Characters;
 using StardewValley.Locations;
 using StardewValley.Network;
+using StardewValley.Objects;
+using StardewValley.TerrainFeatures;
 
 namespace AutoServerPro.Core;
 
@@ -105,11 +108,19 @@ public class CabinGenerator
             return null;
         }
 
-        // 有没有空地 有地才建 但先建在地图外 等玩家上线再搬
-        Vector2? position = FindUnusedCabinPosition(farm);
+        // 取小屋尺寸和门位置 用来判断占位
+        if (!Building.TryGetData("Cabin", out var cabinData) || cabinData == null)
+        {
+            GetMonitor()?.Log("[小屋生成] 读取小屋数据失败", LogLevel.Warn);
+            return null;
+        }
+
+        // 先确认没有玩家物品的空地 再建在地图外 等玩家上线再搬
+        Vector2? position = FindUnusedCabinPosition(
+            farm, cabinData.Size.X, cabinData.Size.Y, cabinData.HumanDoor.X, cabinData.HumanDoor.Y);
         if (position == null)
         {
-            GetMonitor()?.Log("未找到可用的联机小屋位置", LogLevel.Warn);
+            GetMonitor()?.Log("[小屋生成] 没有空余位置，无法创建联机小屋", LogLevel.Warn);
             return null;
         }
 
@@ -189,32 +200,32 @@ public class CabinGenerator
         Cabin cabin = building.GetIndoors() as Cabin;
         if (cabin?.owner == null) return;
 
-        Vector2? land = FindUnusedCabinPosition(farm);
+        Vector2? land = FindUnusedCabinPosition(
+            farm, building.tilesWide.Value, building.tilesHigh.Value, building.humanDoor.X, building.humanDoor.Y);
         if (land == null)
         {
             long ownerId = cabin.owner.UniqueMultiplayerID;
-            GetMonitor()?.Log($"[小屋生成] 暂无空地，踢出玩家 {cabin.owner.Name} [ID:{ownerId}] 并销毁小屋", LogLevel.Warn);
+            GetMonitor()?.Log($"[小屋生成] 没有空余位置，踢出玩家 {cabin.owner.Name} [ID:{ownerId}] 并销毁小屋", LogLevel.Warn);
+            try
+            {
+                Game1.Multiplayer.sendChatMessage(LocalizedContentManager.CurrentLanguageCode,
+                    "农场没有空余位置，暂时无法入住", Multiplayer.AllPlayers);
+            }
+            catch { }
             try { Game1.server?.kick(ownerId); } catch { }
             farm.destroyStructure(building);
             return;
         }
 
-        building.tileX.Value = (int)land.Value.X;
-        building.tileY.Value = (int)land.Value.Y;
+        // 清掉选址处的系统杂物 玩家物品不动
+        ClearSystemDebrisInFootprint(farm, land.Value, building.tilesWide.Value, building.tilesHigh.Value, building.humanDoor.X, building.humanDoor.Y);
 
-        // 更新室内出口 warp
-        GameLocation interior = building.GetIndoors();
-        if (interior != null)
-        {
-            foreach (Warp warp in interior.warps)
-            {
-                if (warp.TargetName == farm.NameOrUniqueName)
-                {
-                    warp.TargetX = building.humanDoor.X + building.tileX.Value;
-                    warp.TargetY = building.humanDoor.Y + building.tileY.Value + 1;
-                }
-            }
-        }
+        // 把选址处的玩家踢出并改离线位置 动物 NPC 挪到墙边
+        EvictCharactersInFootprint(farm, land.Value, building.tilesWide.Value, building.tilesHigh.Value, cabin.owner.UniqueMultiplayerID);
+
+        // 用原版搬迁逻辑同步坐标和室内出口
+        farm.buildStructure(building, land.Value, Game1.player, true);
+        building.removeOverlappingBushes(farm);
 
         GetMonitor()?.Log($"[小屋生成] 新玩家 {cabin.owner.Name} 上线，小屋搬至 ({land.Value.X}, {land.Value.Y})", LogLevel.Info);
     }
@@ -256,12 +267,15 @@ public class CabinGenerator
     }
 
     /// <summary>
-    /// 在农场地图上扫描未使用的预设小屋位置。
-    /// 预设位置是 "Paths" 图层中带有 "Order" 属性的 tile。
-    /// 通过反射访问地图数据，避免 xTile 类型依赖。
+    /// 在农场找没有玩家物品的联机小屋位置
+    /// 预设位是 Paths 图层带 Order 属性的格
+    /// 建筑范围和门口格允许系统杂物 搬迁时清除
+    /// 通过反射访问地图数据 避免 xTile 类型依赖
     /// </summary>
-    private static Vector2? FindUnusedCabinPosition(Farm farm)
+    private static Vector2? FindUnusedCabinPosition(Farm farm, int width, int height, int doorX, int doorY)
     {
+        if (farm == null || width <= 0 || height <= 0) return null;
+
         // 通过反射获取 Paths 图层尺寸
         int mapWidth = 0, mapHeight = 0;
         try
@@ -309,29 +323,315 @@ public class CabinGenerator
                 if (!int.TryParse(order, out int orderNum)) continue;
 
                 Vector2 pos = new Vector2(x, y);
+                if (!IsFootprintFreeOfPlayerItems(farm, pos, width, height, doorX, doorY)) continue;
 
-                // 检查该位置是否已有建筑
-                bool occupied = false;
-                foreach (var b in farm.buildings)
-                {
-                    if (b != null && b.tileX.Value == (int)pos.X && b.tileY.Value == (int)pos.Y)
-                    {
-                        occupied = true;
-                        break;
-                    }
-                }
-
-                if (!occupied)
-                {
-                    candidates.Add((pos, orderNum));
-                }
+                candidates.Add((pos, orderNum));
             }
         }
 
-        if (candidates.Count == 0) return null;
+        if (candidates.Count > 0)
+        {
+            // 按 Order 从小到大使用
+            candidates.Sort((a, b) => a.order.CompareTo(b.order));
+            return candidates[0].pos;
+        }
 
-        // 按 Order 从小到大使用
-        candidates.Sort((a, b) => a.order.CompareTo(b.order));
-        return candidates[0].pos;
+        // 预设位不可用 退回全农场找可建造的空地
+        return ScanFarmForEmptySpace(farm, width, height, doorX, doorY, mapWidth, mapHeight);
+    }
+
+    /// <summary>全农场逐行扫描没有玩家物品的可建造区域</summary>
+    private static Vector2? ScanFarmForEmptySpace(Farm farm, int width, int height, int doorX, int doorY, int mapWidth, int mapHeight)
+    {
+        for (int y = 0; y <= mapHeight - height; y++)
+        {
+            for (int x = 0; x <= mapWidth - width; x++)
+            {
+                Vector2 anchor = new Vector2(x, y);
+
+                // 先看锚点 快速排除大部分格子
+                if (!IsTileFreeOfPlayerItems(farm, anchor, true)) continue;
+
+                if (!IsFootprintFreeOfPlayerItems(farm, anchor, width, height, doorX, doorY, true)) continue;
+                if (CoversWarpOrDoor(farm, anchor, width, height)) continue;
+                return anchor;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>建筑范围加门口格都不能有玩家放置的物品 系统杂物可清</summary>
+    private static bool IsFootprintFreeOfPlayerItems(Farm farm, Vector2 anchor, int width, int height, int doorX, int doorY, bool requireBuildable = false)
+    {
+        for (int x = 0; x < width; x++)
+        {
+            for (int y = 0; y < height; y++)
+            {
+                Vector2 tile = new Vector2(anchor.X + x, anchor.Y + y);
+                if (!IsTileFreeOfPlayerItems(farm, tile, requireBuildable)) return false;
+            }
+        }
+
+        // 门口格要能站人 只要求可通行且无玩家物品
+        if (doorX < 0 || doorY < 0) return true;
+
+        Vector2 doorTile = new Vector2(anchor.X + doorX, anchor.Y + doorY + 1);
+        if (!farm.isTileOnMap(doorTile)) return false;
+        if (!farm.isTilePassable(doorTile)) return false;
+        if (farm.getBuildingAt(doorTile) != null) return false;
+
+        return !HasPlayerItemAtTile(farm, doorTile);
+    }
+
+    /// <summary>
+    /// 单格是否没有玩家物品
+    /// 玩家物品包括 家具 耕地 地板 果树 巨型作物 制作物品
+    /// 系统杂物 杂草 石头 树枝 草 树 灌木 树桩 不算 会在搬迁时清掉
+    /// </summary>
+    private static bool IsTileFreeOfPlayerItems(Farm farm, Vector2 tile, bool requireBuildable)
+    {
+        if (!farm.isTileOnMap(tile)) return false;
+
+        // 地图层必须可通行 排除水面和碰撞格
+        if (!farm.isTilePassable(tile)) return false;
+
+        // 禁止建造的图块
+        if (!farm.isTilePlaceable(tile, false)) return false;
+
+        // 不能有已有建筑
+        foreach (var b in farm.buildings)
+        {
+            if (b != null && b.occupiesTile(tile)) return false;
+        }
+
+        // 玩家放的物体
+        if (farm.objects.TryGetValue(tile, out var obj) && IsPlayerPlacedObject(obj)) return false;
+
+        // 玩家地形 耕地 地板 果树等
+        if (farm.terrainFeatures.TryGetValue(tile, out var tf) && IsPlayerTerrainFeature(tf)) return false;
+
+        Rectangle tileBounds = new Rectangle((int)tile.X * 64, (int)tile.Y * 64, 64, 64);
+
+        // 玩家大型地形 按实际占地判断
+        foreach (var ltf in farm.largeTerrainFeatures)
+        {
+            if (ltf != null && IsPlayerLargeTerrainFeature(ltf) && ltf.getBoundingBox().Intersects(tileBounds)) return false;
+        }
+
+        // 巨型作物也是玩家设施 不能当普通树桩清掉
+        foreach (var rc in farm.resourceClumps)
+        {
+            if (rc is GiantCrop && rc.occupiesTile((int)tile.X, (int)tile.Y)) return false;
+        }
+
+        // 家具按实际占地判断
+        foreach (var f in farm.furniture)
+        {
+            if (f != null && f.GetBoundingBox().Intersects(tileBounds)) return false;
+        }
+
+        // 全农场扫描时只挑可建造的农田格
+        if (requireBuildable && !IsBuildableTile(farm, tile)) return false;
+
+        return true;
+    }
+
+    /// <summary>门口格有没有玩家物品</summary>
+    private static bool HasPlayerItemAtTile(Farm farm, Vector2 tile)
+    {
+        if (farm.objects.TryGetValue(tile, out var obj) && IsPlayerPlacedObject(obj)) return true;
+        if (farm.terrainFeatures.TryGetValue(tile, out var tf) && IsPlayerTerrainFeature(tf)) return true;
+
+        Rectangle tileBounds = new Rectangle((int)tile.X * 64, (int)tile.Y * 64, 64, 64);
+        foreach (var ltf in farm.largeTerrainFeatures)
+            if (ltf != null && IsPlayerLargeTerrainFeature(ltf) && ltf.getBoundingBox().Intersects(tileBounds)) return true;
+        foreach (var rc in farm.resourceClumps)
+            if (rc is GiantCrop && rc.occupiesTile((int)tile.X, (int)tile.Y)) return true;
+        foreach (var f in farm.furniture)
+            if (f != null && f.GetBoundingBox().Intersects(tileBounds)) return true;
+        return false;
+    }
+
+    /// <summary>是不是玩家放置的物体 系统生成的杂草石头树枝觅食物不算</summary>
+    private static bool IsPlayerPlacedObject(StardewValley.Object o)
+    {
+        if (o == null) return false;
+        if (o is Furniture) return true;
+        if (o.bigCraftable.Value) return true;
+        if (o.IsWeeds() || o.IsBreakableStone() || o.IsTwig()) return false;
+        if (o.isSpawnedObject.Value) return false; // 系统刷新的觅食物
+        return true;
+    }
+
+    /// <summary>草和树可清 其他地形都保留 避免误删模组内容</summary>
+    private static bool IsPlayerTerrainFeature(TerrainFeature tf)
+    {
+        return !(tf is Grass || tf is Tree);
+    }
+
+    /// <summary>灌木是系统的 其他大型地形保留</summary>
+    private static bool IsPlayerLargeTerrainFeature(LargeTerrainFeature ltf)
+    {
+        return !(ltf is Bush);
+    }
+
+    /// <summary>图块是否可建造 对齐原版 isBuildable 判定</summary>
+    private static bool IsBuildableTile(Farm farm, Vector2 tile)
+    {
+        Rectangle rect = farm.GetBuildableRectangle();
+        if (rect != Rectangle.Empty && !rect.Contains((int)tile.X, (int)tile.Y)) return false;
+
+        string buildable = farm.doesTileHavePropertyNoNull((int)tile.X, (int)tile.Y, "Buildable", "Back");
+        if (string.Equals(buildable, "f", StringComparison.OrdinalIgnoreCase)) return false;
+        if (string.Equals(buildable, "t", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(buildable, "true", StringComparison.OrdinalIgnoreCase)) return true;
+
+        return farm.doesTileHaveProperty((int)tile.X, (int)tile.Y, "Diggable", "Back", false) != null;
+    }
+
+    /// <summary>不能压住地图出口和已有建筑门口</summary>
+    private static bool CoversWarpOrDoor(Farm farm, Vector2 anchor, int width, int height)
+    {
+        foreach (Warp warp in farm.warps)
+        {
+            if (IsInsideFootprint(warp.X, warp.Y, anchor, width, height)) return true;
+            if (IsInsideFootprint(warp.X, warp.Y + 1, anchor, width, height)) return true;
+        }
+
+        foreach (var building in farm.buildings)
+        {
+            if (building == null) continue;
+            Point door = building.getPointForHumanDoor();
+            if (IsInsideFootprint(door.X, door.Y, anchor, width, height)) return true;
+            if (IsInsideFootprint(door.X, door.Y + 1, anchor, width, height)) return true;
+        }
+        return false;
+    }
+
+    private static bool IsInsideFootprint(int x, int y, Vector2 anchor, int width, int height)
+    {
+        return x >= anchor.X && x < anchor.X + width && y >= anchor.Y && y < anchor.Y + height;
+    }
+
+    /// <summary>清除 5x3 范围和门口格里的系统杂物 玩家物品不动</summary>
+    private static void ClearSystemDebrisInFootprint(Farm farm, Vector2 anchor, int width, int height, int doorX, int doorY)
+    {
+        for (int x = 0; x < width; x++)
+        {
+            for (int y = 0; y < height; y++)
+            {
+                ClearSystemDebrisAtTile(farm, new Vector2(anchor.X + x, anchor.Y + y));
+            }
+        }
+
+        if (doorX >= 0 && doorY >= 0)
+            ClearSystemDebrisAtTile(farm, new Vector2(anchor.X + doorX, anchor.Y + doorY + 1));
+    }
+
+    /// <summary>单格清除系统杂物</summary>
+    private static void ClearSystemDebrisAtTile(Farm farm, Vector2 tile)
+    {
+        // 系统物体 杂草 石头 树枝 觅食物
+        if (farm.objects.TryGetValue(tile, out var obj))
+        {
+            if (!IsPlayerPlacedObject(obj))
+                farm.objects.Remove(tile);
+        }
+
+        // 系统地形 草 树
+        if (farm.terrainFeatures.TryGetValue(tile, out var tf))
+        {
+            if (tf is Grass || tf is Tree)
+                farm.terrainFeatures.Remove(tile);
+        }
+
+        Rectangle tileBounds = new Rectangle((int)tile.X * 64, (int)tile.Y * 64, 64, 64);
+
+        // 灌木按实际占地清除
+        for (int i = farm.largeTerrainFeatures.Count - 1; i >= 0; i--)
+        {
+            var ltf = farm.largeTerrainFeatures[i];
+            if (ltf is Bush && ltf.getBoundingBox().Intersects(tileBounds))
+                farm.largeTerrainFeatures.RemoveAt(i);
+        }
+
+        // 树桩 圆木 巨石可清 巨型作物保留
+        for (int i = farm.resourceClumps.Count - 1; i >= 0; i--)
+        {
+            var rc = farm.resourceClumps[i];
+            if (rc != null && !(rc is GiantCrop) && rc.occupiesTile((int)tile.X, (int)tile.Y))
+                farm.resourceClumps.RemoveAt(i);
+        }
+    }
+
+    /// <summary>
+    /// 把目标范围里的角色处理掉
+    /// 玩家 踢出并把离线位置设到小屋墙边 避免上线卡在屋里
+    /// 动物 NPC 直接挪到墙边
+    /// </summary>
+    private static void EvictCharactersInFootprint(Farm farm, Vector2 anchor, int width, int height, long relocatingOwnerId)
+    {
+        Vector2 fallbackTile = FindAdjacentOpenTile(farm, anchor, width, height);
+        Vector2 fallbackPos = fallbackTile * 64f;
+
+        bool Inside(Vector2 tile) =>
+            tile.X >= anchor.X && tile.X < anchor.X + width && tile.Y >= anchor.Y && tile.Y < anchor.Y + height;
+
+        // NPC 挪到墙边
+        foreach (var c in farm.characters)
+        {
+            if (c != null && Inside(c.Tile))
+            {
+                try { c.Position = fallbackPos; } catch { }
+            }
+        }
+
+        // 农场动物单独存放 也要挪到墙边
+        foreach (var animal in farm.animals.Values)
+        {
+            if (animal != null && Inside(animal.Tile))
+            {
+                try { animal.Position = fallbackPos; } catch { }
+            }
+        }
+
+        // 联机玩家 踢出并改离线位置 避免下次上线卡在屋里
+        if (Game1.otherFarmers != null)
+        {
+            // 先快照 部分联机通道踢人时会立即改在线集合
+            foreach (var f in Game1.otherFarmers.Values.ToArray())
+            {
+                if (f == null || f.UniqueMultiplayerID == relocatingOwnerId) continue;
+
+                // 只处理农场地面上的 屋内的不管 他们能自己走出来
+                if (f.currentLocation != farm) continue;
+
+                if (Inside(f.Tile))
+                {
+                    long id = f.UniqueMultiplayerID;
+                    try { f.Position = fallbackPos; } catch { }
+                    try { Game1.server?.kick(id); } catch { }
+                    GetMonitor()?.Log($"[小屋生成] 玩家 {f.Name} 挡在选址处 已踢至 ({fallbackTile.X},{fallbackTile.Y})", LogLevel.Info);
+                }
+            }
+        }
+    }
+
+    /// <summary>找小屋旁边一块可通行的空地 当墙边落脚点</summary>
+    private static Vector2 FindAdjacentOpenTile(Farm farm, Vector2 anchor, int width, int height)
+    {
+        Vector2[] candidates =
+        {
+            new Vector2(anchor.X - 1, anchor.Y + 1),
+            new Vector2(anchor.X + width, anchor.Y + 1),
+            new Vector2(anchor.X + 1, anchor.Y - 1),
+            new Vector2(anchor.X + 1, anchor.Y + height),
+        };
+        foreach (var c in candidates)
+        {
+            if (farm.CanSpawnCharacterHere(c))
+                return c;
+        }
+        return new Vector2(anchor.X + width / 2, anchor.Y + height);
     }
 }
