@@ -34,11 +34,6 @@ public class ModEntry : Mod
 
     private bool _hasTeleportedAfterLoad = false;
 
-    // 上一次统计到的在线农场助手 ID 用来识别刚上线的玩家
-    private readonly HashSet<long> _knownActiveFarmhands = new HashSet<long>();
-    // 本帧在线集合 复用避免每帧分配
-    private readonly HashSet<long> _currentActiveFarmhands = new HashSet<long>();
-
     public override void Entry(IModHelper helper)
     {
         Instance = this;
@@ -224,9 +219,6 @@ public class ModEntry : Mod
 
         if (!Context.IsWorldReady) return;
 
-        // 识别刚上线的玩家 新玩家若拥有隐藏小屋就搬回空地
-        DetectNewlyOnlineFarmhands();
-
         _saveManager.TickFestivalSaveFlow();
 
         if (_saveManager.IsWaitingFestivalEnd) return;
@@ -245,9 +237,6 @@ public class ModEntry : Mod
         }
 
         if (Game1.ticks % 60 != 0) return;
-
-        // 无任何连接时清理一直没人认领的隐藏小屋
-        CabinGenerator.CleanupAbandonedCabins();
 
         _sleepManager.FixPetName();
 
@@ -357,30 +346,6 @@ public class ModEntry : Mod
             saveMenu.hasDrawn = true;
         }
         _festivalManager.HandleFestivalEndDialog(e);
-    }
-
-    /// <summary>识别刚上线的农场助手 通知小屋生成器搬隐藏小屋</summary>
-    private void DetectNewlyOnlineFarmhands()
-    {
-        _currentActiveFarmhands.Clear();
-        if (Game1.otherFarmers != null)
-        {
-            foreach (var farmer in Game1.otherFarmers.Values)
-            {
-                if (farmer == null || farmer.IsMainPlayer || !farmer.isActive()) continue;
-                _currentActiveFarmhands.Add(farmer.UniqueMultiplayerID);
-            }
-        }
-
-        foreach (long id in _currentActiveFarmhands)
-        {
-            if (_knownActiveFarmhands.Contains(id)) continue;
-            if (Game1.otherFarmers.TryGetValue(id, out Farmer farmer))
-                CabinGenerator.OnPlayerOnline(farmer);
-        }
-
-        // 交换两个集合 下帧 _currentActiveFarmhands 复用旧快照内存 无需 Clear+Union
-        (_knownActiveFarmhands, _currentActiveFarmhands) = (_currentActiveFarmhands, _knownActiveFarmhands);
     }
 
     private void OnPeerConnected(object _, PeerConnectedEventArgs e)

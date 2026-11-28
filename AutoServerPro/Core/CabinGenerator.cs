@@ -158,70 +158,12 @@ public class CabinGenerator
         return newFarmhand;
     }
 
-    /// <summary>
-    /// 玩家上线时调用
-    /// 先判断是否新玩家 是的话把 999 隐藏小屋搬到空地
-    /// </summary>
-    public static void OnPlayerOnline(Farmer farmer)
-    {
-        Farm farm = Game1.getFarm();
-        if (farm == null || farmer == null || farmer.IsMainPlayer) return;
-
-        Building hidden = FindHiddenCabinOwnedBy(farm, farmer);
-        if (hidden == null) return; // 不是新玩家 没有预留给他的隐藏小屋
-
-        RelocateCabin(farm, hidden);
-    }
-
-    /// <summary>查找停在 999 且 owner 是该玩家的隐藏小屋</summary>
-    private static Building FindHiddenCabinOwnedBy(Farm farm, Farmer farmer)
-    {
-        foreach (var building in farm.buildings)
-        {
-            if (building == null) continue;
-            if (building.buildingType.Value != "Cabin") continue;
-            if (building.tileX.Value != 999 || building.tileY.Value != 999) continue;
-
-            Cabin cabin = building.GetIndoors() as Cabin;
-            if (cabin?.owner == null) continue;
-            if (cabin.owner.UniqueMultiplayerID != farmer.UniqueMultiplayerID) continue;
-
-            return building;
-        }
-        return null;
-    }
-
-    /// <summary>旧版 999 预留屋上线时并入公共槽位</summary>
-    private static void RelocateCabin(Farm farm, Building building)
-    {
-        Cabin cabin = building.GetIndoors() as Cabin;
-        if (cabin?.owner == null) return;
-        if (EnsureSharedCabinPosition(farm, out _)) return;
-
-        long ownerId = cabin.owner.UniqueMultiplayerID;
-        GetMonitor()?.Log($"[小屋生成] 没有空余位置，踢出玩家 {cabin.owner.Name} [ID:{ownerId}] 并销毁小屋", LogLevel.Warn);
-        try
-        {
-            Game1.Multiplayer.sendChatMessage(LocalizedContentManager.CurrentLanguageCode,
-                "农场没有空余位置，暂时无法入住", Multiplayer.AllPlayers);
-        }
-        catch { }
-        try { Game1.server?.kick(ownerId); } catch { }
-        farm.destroyStructure(building);
-    }
-
     /// <summary>返回现有公共槽位 没有则找第一块空地</summary>
     public static Vector2? GetSharedCabinPosition(Farm farm)
     {
         if (farm == null) return null;
-        foreach (Building building in farm.buildings)
-        {
-            if (building?.buildingType.Value == "Cabin" &&
-                (building.tileX.Value != 999 || building.tileY.Value != 999))
-            {
-                return new Vector2(building.tileX.Value, building.tileY.Value);
-            }
-        }
+        Building existing = farm.buildings.FirstOrDefault(building => building?.buildingType.Value == "Cabin");
+        if (existing != null) return new Vector2(existing.tileX.Value, existing.tileY.Value);
 
         if (!Building.TryGetData("Cabin", out var data) || data == null) return null;
         return FindUnusedCabinPosition(farm, data.Size.X, data.Size.Y, data.HumanDoor.X, data.HumanDoor.Y);
@@ -235,10 +177,9 @@ public class CabinGenerator
         var cabins = farm.buildings.Where(building => building?.buildingType.Value == "Cabin").ToList();
         if (cabins.Count == 0) return true;
 
-        Building visible = cabins.FirstOrDefault(building => building.tileX.Value != 999 || building.tileY.Value != 999);
-        Vector2? anchor = visible == null ? null : new Vector2(visible.tileX.Value, visible.tileY.Value);
+        Vector2? anchor = new Vector2(cabins[0].tileX.Value, cabins[0].tileY.Value);
         bool prepareLand = false;
-        if (anchor == null || !CanPlaceSharedCabins(farm, anchor.Value))
+        if (!CanPlaceSharedCabins(farm, anchor.Value))
         {
             anchor = FindUnusedCabinPosition(farm,
                 cabins[0].tilesWide.Value, cabins[0].tilesHigh.Value, cabins[0].humanDoor.X, cabins[0].humanDoor.Y);
@@ -285,7 +226,7 @@ public class CabinGenerator
                !CoversWarpOrDoor(farm, anchor, template.tilesWide.Value, template.tilesHigh.Value);
     }
 
-    private static void UpdateCabinWarps(Farm farm, Building building)
+    internal static void UpdateCabinWarps(Farm farm, Building building)
     {
         GameLocation interior = building.GetIndoors();
         if (interior == null) return;
@@ -296,42 +237,6 @@ public class CabinGenerator
                 warp.TargetX = building.humanDoor.X + building.tileX.Value;
                 warp.TargetY = building.humanDoor.Y + building.tileY.Value + 1;
             }
-        }
-    }
-
-    /// <summary>
-    /// 每秒调用 清理一直没人认领的隐藏小屋
-    /// 只在没有任何连接时执行 避免误删正在选角色的
-    /// </summary>
-    public static void CleanupAbandonedCabins()
-    {
-        Farm farm = Game1.getFarm();
-        if (farm == null) return;
-
-        // 还有连接时不动 包括正在选角色的玩家
-        if (Game1.server != null && Game1.server.connectionsCount > 0) return;
-
-        var abandoned = new List<Building>();
-        foreach (var building in farm.buildings)
-        {
-            if (building == null) continue;
-            if (building.buildingType.Value != "Cabin") continue;
-            if (building.tileX.Value != 999 || building.tileY.Value != 999) continue;
-
-            Cabin cabin = building.GetIndoors() as Cabin;
-            Farmer owner = cabin?.owner;
-            if (owner != null && owner.isActive()) continue; // 正在使用
-            if (owner != null && !string.IsNullOrEmpty(owner.userID.Value)) continue; // 已绑定玩家 留给本人
-
-            abandoned.Add(building);
-        }
-
-        foreach (var building in abandoned)
-        {
-            Cabin cabin = building.GetIndoors() as Cabin;
-            string ownerName = cabin?.owner?.Name ?? "无";
-            farm.destroyStructure(building);
-            GetMonitor()?.Log($"[小屋生成] 已清理未认领的隐藏小屋（owner: {ownerName}）", LogLevel.Info);
         }
     }
 

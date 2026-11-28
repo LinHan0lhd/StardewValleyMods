@@ -29,6 +29,7 @@ public class CabinSyncManager
     [ThreadStatic] private static long? _fullSyncPeer;
     [ThreadStatic] private static bool _filterDelta;
     [ThreadStatic] private static long _teamMessageSource;
+    [ThreadStatic] private static long _demolishedOwner;
     private static bool _snapshotQueued;
     private static readonly HashSet<long> _pendingFarmSnapshots = new();
 
@@ -74,7 +75,8 @@ public class CabinSyncManager
                 nameof(ProcessTeamMessagePostfix));
             Patch(
                 AccessTools.Method(typeof(FarmerTeam), "OnBuildingDemolishedEvent"),
-                nameof(BuildingDemolishedPrefix));
+                nameof(BuildingDemolishedPrefix),
+                nameof(BuildingDemolishedFinalizer));
 
             var collection = typeof(NetCollection<Building>);
             _harmony.Patch(
@@ -177,21 +179,24 @@ public class CabinSyncManager
         {
             bool isStructure = message.Reader.ReadBoolean();
             string name = message.Reader.ReadString();
-            message.Reader.BaseStream.Position = position;
 
             if (isStructure)
             {
                 Cabin cabin = Game1.getLocationFromName(name, true) as Cabin;
                 if (cabin == null) return true;
                 if (cabin.OwnerId == message.FarmerID)
+                {
+                    message.Reader.BaseStream.Position = position;
                     Game1.multiplayer.processIncomingMessage(message);
+                }
                 return false;
             }
 
             Farm farm = Game1.getFarm();
-            if (farm == null || name != farm.NameOrUniqueName || !MessageTouchesBuildings(message, farm))
+            if (farm == null || name != farm.NameOrUniqueName || !DeltaTouchesBuildings(message.Reader, farm))
                 return true;
 
+            message.Reader.BaseStream.Position = position;
             HandleFarmMessage(message, farm);
             return false;
         }
@@ -253,8 +258,7 @@ public class CabinSyncManager
                 CollectionId = farm.buildings.GuidOf(building),
                 OwnerId = GetOwnerId(building),
                 X = building.tileX.Value,
-                Y = building.tileY.Value,
-                Data = SerializeBuilding(building)
+                Y = building.tileY.Value
             });
         }
         return states;
@@ -267,7 +271,7 @@ public class CabinSyncManager
         foreach (CabinState state in states)
         {
             if (!farm.buildings.Contains(state.Building)) return false;
-            if (!SerializeBuilding(state.Building).AsSpan().SequenceEqual(state.Data)) return false;
+            if (state.Building.tileX.Value != state.X || state.Building.tileY.Value != state.Y) return false;
         }
         return true;
     }
@@ -303,54 +307,31 @@ public class CabinSyncManager
                 farm.buildings.Add(state.Building);
             }
 
-            if (!SerializeBuilding(state.Building).AsSpan().SequenceEqual(state.Data))
+            // 只恢复位置 客户端不能改小屋坐标
+            if (state.Building.tileX.Value != state.X || state.Building.tileY.Value != state.Y)
             {
-                GameLocation oldInterior = state.Building.GetIndoors();
-                ApplyBuildingData(state.Building, state.Data);
-                RemapFarmers(oldInterior, state.Building.GetIndoors());
+                state.Building.tileX.Value = state.X;
+                state.Building.tileY.Value = state.Y;
+                CabinGenerator.UpdateCabinWarps(farm, state.Building);
             }
         }
     }
 
-    private static void RemapFarmers(GameLocation oldInterior, GameLocation newInterior)
+    /// <summary>reader 已越过地点头 判断增量是否包含建筑集合</summary>
+    private static bool DeltaTouchesBuildings(BinaryReader reader, Farm farm)
     {
-        if (oldInterior == null || newInterior == null || oldInterior == newInterior) return;
-        foreach (Farmer farmer in Game1.getAllFarmers())
-        {
-            if (farmer.currentLocation == oldInterior)
-                farmer.currentLocation = newInterior;
-        }
-        if (Game1.currentLocation == oldInterior)
-            Game1.currentLocation = newInterior;
-    }
-
-    private static bool MessageTouchesBuildings(IncomingMessage message, Farm farm)
-    {
-        long position = message.Reader.BaseStream.Position;
+        long position = reader.BaseStream.Position;
         try
         {
-            if (_buildingsFieldIndex < 0)
-            {
-                int index = 0;
-                foreach (var field in farm.NetFields.GetFields())
-                {
-                    if (ReferenceEquals(field, farm.buildings))
-                    {
-                        _buildingsFieldIndex = index;
-                        break;
-                    }
-                    index++;
-                }
-            }
-
             NetVersion version = default;
-            version.Read(message.Reader);
-            byte deltaType = message.Reader.ReadByte();
-            message.Reader.ReadUInt32();
-            if (deltaType == 1) return true;
+            version.Read(reader);
+            byte deltaType = reader.ReadByte();
+            reader.ReadUInt32();
+            if (deltaType == 1) return true; // 整体替换 必含建筑
 
-            var bits = message.Reader.ReadBitArray();
-            return _buildingsFieldIndex < 0 || (_buildingsFieldIndex < bits.Length && bits[_buildingsFieldIndex]);
+            var bits = reader.ReadBitArray();
+            int index = GetBuildingsFieldIndex(farm);
+            return index < 0 || (index < bits.Length && bits[index]);
         }
         catch
         {
@@ -358,8 +339,24 @@ public class CabinSyncManager
         }
         finally
         {
-            message.Reader.BaseStream.Position = position;
+            reader.BaseStream.Position = position;
         }
+    }
+
+    private static int GetBuildingsFieldIndex(Farm farm)
+    {
+        if (_buildingsFieldIndex >= 0) return _buildingsFieldIndex;
+        int index = 0;
+        foreach (var field in farm.NetFields.GetFields())
+        {
+            if (ReferenceEquals(field, farm.buildings))
+            {
+                _buildingsFieldIndex = index;
+                break;
+            }
+            index++;
+        }
+        return _buildingsFieldIndex;
     }
 
     private static void ProcessTeamMessagePrefix(IncomingMessage msg)
@@ -376,32 +373,29 @@ public class CabinSyncManager
 
     private static bool BuildingDemolishedPrefix(BinaryReader reader)
     {
+        _demolishedOwner = 0;
         if (!Game1.IsMasterGame || _teamMessageSource == 0) return true;
 
         long position = reader.BaseStream.Position;
         string locationName = reader.ReadString();
         string buildingType = reader.ReadString();
         Guid buildingId = reader.ReadGuid();
-        if (buildingType != "Cabin")
-        {
-            reader.BaseStream.Position = position;
-            return true;
-        }
+        reader.BaseStream.Position = position;
+        if (buildingType != "Cabin") return true;
 
-        GameLocation location = Game1.getLocationFromName(locationName);
-        Building building = location?.getBuildingById(buildingId);
+        Building building = Game1.getLocationFromName(locationName)?.getBuildingById(buildingId);
         if (building?.buildingType.Value != "Cabin" || GetOwnerId(building) != _teamMessageSource)
-            return false;
+            return false; // 只能拆自己的小屋
 
-        long ownerId = _teamMessageSource;
-        DelayedAction.functionAfterDelay(() =>
-        {
-            Building current = location.getBuildingById(buildingId);
-            if (current?.buildingType.Value != "Cabin" || GetOwnerId(current) != ownerId) return;
-            location.destroyStructure(current);
-            SendFarmSnapshot(ownerId);
-        }, 0);
-        return false;
+        _demolishedOwner = _teamMessageSource;
+        return true;
+    }
+
+    private static void BuildingDemolishedFinalizer()
+    {
+        if (_demolishedOwner == 0) return;
+        SendFarmSnapshot(_demolishedOwner);
+        _demolishedOwner = 0;
     }
 
     internal static void QueueFarmSnapshots()
@@ -474,22 +468,6 @@ public class CabinSyncManager
         return (building?.GetIndoors() as Cabin)?.OwnerId ?? 0;
     }
 
-    private static byte[] SerializeBuilding(Building building)
-    {
-        using var stream = new MemoryStream();
-        using var writer = new BinaryWriter(stream);
-        building.NetFields.WriteFull(writer);
-        writer.Flush();
-        return stream.ToArray();
-    }
-
-    private static void ApplyBuildingData(Building building, byte[] data)
-    {
-        using var stream = new MemoryStream(data, false);
-        using var reader = new BinaryReader(stream);
-        building.NetFields.ReadFull(reader, building.NetFields.Root?.Clock.netVersion ?? default);
-    }
-
     private static FilterState EnterFullSync(long peer)
     {
         var state = new FilterState(_fullSyncPeer, _filterDelta, true);
@@ -521,7 +499,6 @@ public class CabinSyncManager
         public long OwnerId;
         public int X;
         public int Y;
-        public byte[] Data;
     }
 
     private readonly struct FilterState

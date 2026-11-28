@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using Netcode;
+using StardewModdingAPI;
 using StardewValley.Buildings;
 
 namespace AutoServerPro.Core;
@@ -26,27 +27,37 @@ internal static class CabinCollectionPatches
     private static readonly FieldInfo IncomingKeyField;
     private static readonly FieldInfo IncomingFieldField;
     private static readonly FieldInfo IncomingRemovalField;
+    private static readonly bool Available;
 
     static CabinCollectionPatches()
     {
-        Type elementsType = typeof(NetGuidDictionary<Building, NetRef<Building>>);
-        ChangesField = AccessToolsField(elementsType, "outgoingChanges");
-        ReassignsField = AccessToolsField(elementsType, "dictReassigns");
-        Type changeType = ChangesField.FieldType.GetGenericArguments()[0];
-        ChangeKeyField = AccessToolsField(changeType, "Key");
-        ChangeFieldField = AccessToolsField(changeType, "Field");
-        ChangeRemovalField = AccessToolsField(changeType, "Removal");
-        ChangeReassignedField = AccessToolsField(changeType, "Reassigned");
+        try
+        {
+            Type elementsType = typeof(NetGuidDictionary<Building, NetRef<Building>>);
+            ChangesField = AccessToolsField(elementsType, "outgoingChanges");
+            ReassignsField = AccessToolsField(elementsType, "dictReassigns");
+            Type changeType = ChangesField.FieldType.GetGenericArguments()[0];
+            ChangeKeyField = AccessToolsField(changeType, "Key");
+            ChangeFieldField = AccessToolsField(changeType, "Field");
+            ChangeRemovalField = AccessToolsField(changeType, "Removal");
+            ChangeReassignedField = AccessToolsField(changeType, "Reassigned");
 
-        IncomingChangesField = AccessToolsField(elementsType, "incomingChanges");
-        Type incomingType = IncomingChangesField.FieldType.GetGenericArguments()[0];
-        IncomingKeyField = AccessToolsField(incomingType, "Key");
-        IncomingFieldField = AccessToolsField(incomingType, "Field");
-        IncomingRemovalField = AccessToolsField(incomingType, "Removal");
+            IncomingChangesField = AccessToolsField(elementsType, "incomingChanges");
+            Type incomingType = IncomingChangesField.FieldType.GetGenericArguments()[0];
+            IncomingKeyField = AccessToolsField(incomingType, "Key");
+            IncomingFieldField = AccessToolsField(incomingType, "Field");
+            IncomingRemovalField = AccessToolsField(incomingType, "Removal");
+            Available = true;
+        }
+        catch (Exception ex)
+        {
+            ModEntry.Instance?.Monitor.Log($"[小屋同步] 建筑集合字段不匹配: {ex.Message}", LogLevel.Error);
+        }
     }
 
     internal static bool RemoveIncomingCabins(NetCollection<Building> collection, HashSet<Guid> cabinKeys)
     {
+        if (!Available) return false;
         bool removedAny = false;
         var elements = GetElements(collection);
         var incoming = (IList)IncomingChangesField.GetValue(elements);
@@ -66,7 +77,7 @@ internal static class CabinCollectionPatches
 
     public static bool WriteFullPrefix(NetCollection<Building> __instance, BinaryWriter writer)
     {
-        if (!CabinSyncManager.FilterActive) return true;
+        if (!Available || !CabinSyncManager.FilterActive) return true;
 
         var elements = GetElements(__instance);
         var fields = elements.FieldDict;
@@ -85,7 +96,7 @@ internal static class CabinCollectionPatches
 
     public static bool WritePrefix(NetCollection<Building> __instance, BinaryWriter writer)
     {
-        if (!CabinSyncManager.FilterActive) return true;
+        if (!Available || !CabinSyncManager.FilterActive) return true;
 
         var elements = GetElements(__instance);
         var reassigns = GetReassigns(elements);
@@ -96,7 +107,7 @@ internal static class CabinCollectionPatches
         foreach (object change in changes)
         {
             bool removal = (bool)ChangeRemovalField.GetValue(change);
-            writer.Write(removal ? (byte)1 : (byte)0);
+            writer.Write(removal ? 1 : 0);
             writer.WriteGuid((Guid)ChangeKeyField.GetValue(change));
             ((NetVersion)ChangeReassignedField.GetValue(change)).Write(writer);
             if (!removal)
@@ -148,7 +159,7 @@ internal static class CabinCollectionPatches
 
     private static Building GetBuilding(object change)
     {
-        return GetField(change).Value;
+        return GetField(change)?.Value;
     }
 
     private static FieldInfo AccessToolsField(Type type, string name)
