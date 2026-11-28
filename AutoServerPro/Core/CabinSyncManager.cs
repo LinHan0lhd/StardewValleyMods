@@ -38,6 +38,21 @@ public class CabinSyncManager
         _monitor = monitor;
         InstallPatches();
         helper.Events.GameLoop.OneSecondUpdateTicked += OnOneSecondUpdateTicked;
+        helper.Events.GameLoop.SaveLoaded += OnSaveLoaded;
+    }
+
+    /// <summary>读档时合并一次老存档小屋位置 之后不再轮询</summary>
+    private void OnSaveLoaded(object sender, SaveLoadedEventArgs e)
+    {
+        if (!Game1.IsMasterGame) return;
+        try
+        {
+            CabinGenerator.EnsureSharedCabinPosition(Game1.getFarm(), out _);
+        }
+        catch (Exception ex)
+        {
+            _monitor.Log($"[小屋同步] 读档合并小屋失败: {ex.Message}", LogLevel.Error);
+        }
     }
 
     internal static bool FilterActive => _fullSyncPeer.HasValue || _filterDelta;
@@ -106,7 +121,6 @@ public class CabinSyncManager
         if (!Game1.IsMasterGame || !Context.IsWorldReady) return;
         try
         {
-            CabinGenerator.EnsureSharedCabinPosition(Game1.getFarm(), out _);
             _pendingFarmSnapshots.RemoveWhere(peer => !Game1.otherFarmers.ContainsKey(peer));
             foreach (long peer in _pendingFarmSnapshots.ToList())
                 SendFarmSnapshot(peer);
