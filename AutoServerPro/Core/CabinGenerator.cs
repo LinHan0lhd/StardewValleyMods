@@ -115,18 +115,15 @@ public class CabinGenerator
             return null;
         }
 
-        // 必须完全空地 有地才建 但先建在地图外 等玩家上线再搬
-        Vector2? position = FindUnusedCabinPosition(
-            farm, cabinData.Size.X, cabinData.Size.Y, cabinData.HumanDoor.X, cabinData.HumanDoor.Y);
+        // 所有小屋共用一个真实槽位
+        Vector2? position = GetSharedCabinPosition(farm);
         if (position == null)
         {
             GetMonitor()?.Log("[小屋生成] 没有空余位置，无法创建联机小屋", LogLevel.Warn);
             return null;
         }
 
-        // 建在 999 999 不占可见地块
-        Vector2 hiddenPos = new Vector2(999, 999);
-        Building cabinBuilding = new Building("Cabin", hiddenPos);
+        Building cabinBuilding = new Building("Cabin", position.Value);
         cabinBuilding.magical.Value = true;
         cabinBuilding.daysOfConstructionLeft.Value = 0;
 
@@ -135,7 +132,7 @@ public class CabinGenerator
 
         cabinBuilding.load();
 
-        if (!farm.buildStructure(cabinBuilding, hiddenPos, Game1.player, true))
+        if (!farm.buildStructure(cabinBuilding, position.Value, Game1.player, true))
         {
             GetMonitor()?.Log("建造小屋失败", LogLevel.Warn);
             return null;
@@ -194,53 +191,112 @@ public class CabinGenerator
         return null;
     }
 
-    /// <summary>把隐藏小屋搬到空地 没空地则踢人并销毁</summary>
+    /// <summary>旧版 999 预留屋上线时并入公共槽位</summary>
     private static void RelocateCabin(Farm farm, Building building)
     {
         Cabin cabin = building.GetIndoors() as Cabin;
         if (cabin?.owner == null) return;
+        if (EnsureSharedCabinPosition(farm, out _)) return;
 
-        Vector2? land = FindUnusedCabinPosition(
-            farm, building.tilesWide.Value, building.tilesHigh.Value, building.humanDoor.X, building.humanDoor.Y);
-        if (land == null)
+        long ownerId = cabin.owner.UniqueMultiplayerID;
+        GetMonitor()?.Log($"[小屋生成] 没有空余位置，踢出玩家 {cabin.owner.Name} [ID:{ownerId}] 并销毁小屋", LogLevel.Warn);
+        try
         {
-            long ownerId = cabin.owner.UniqueMultiplayerID;
-            GetMonitor()?.Log($"[小屋生成] 没有空余位置，踢出玩家 {cabin.owner.Name} [ID:{ownerId}] 并销毁小屋", LogLevel.Warn);
-            try
+            Game1.Multiplayer.sendChatMessage(LocalizedContentManager.CurrentLanguageCode,
+                "农场没有空余位置，暂时无法入住", Multiplayer.AllPlayers);
+        }
+        catch { }
+        try { Game1.server?.kick(ownerId); } catch { }
+        farm.destroyStructure(building);
+    }
+
+    /// <summary>返回现有公共槽位 没有则找第一块空地</summary>
+    public static Vector2? GetSharedCabinPosition(Farm farm)
+    {
+        if (farm == null) return null;
+        foreach (Building building in farm.buildings)
+        {
+            if (building?.buildingType.Value == "Cabin" &&
+                (building.tileX.Value != 999 || building.tileY.Value != 999))
             {
-                Game1.Multiplayer.sendChatMessage(LocalizedContentManager.CurrentLanguageCode,
-                    "农场没有空余位置，暂时无法入住", Multiplayer.AllPlayers);
+                return new Vector2(building.tileX.Value, building.tileY.Value);
             }
-            catch { }
-            try { Game1.server?.kick(ownerId); } catch { }
-            farm.destroyStructure(building);
-            return;
         }
 
-        // 清掉选址处的系统杂物 玩家物品不动
-        ClearSystemDebrisInFootprint(farm, land.Value, building.tilesWide.Value, building.tilesHigh.Value, building.humanDoor.X, building.humanDoor.Y);
+        if (!Building.TryGetData("Cabin", out var data) || data == null) return null;
+        return FindUnusedCabinPosition(farm, data.Size.X, data.Size.Y, data.HumanDoor.X, data.HumanDoor.Y);
+    }
 
-        // 把选址处的玩家踢出并改离线位置 动物 NPC 挪到墙边
-        EvictCharactersInFootprint(farm, land.Value, building.tilesWide.Value, building.tilesHigh.Value);
+    /// <summary>读档或旧存档迁移后统一所有小屋位置</summary>
+    public static bool EnsureSharedCabinPosition(Farm farm, out bool moved)
+    {
+        moved = false;
+        if (farm == null) return false;
+        var cabins = farm.buildings.Where(building => building?.buildingType.Value == "Cabin").ToList();
+        if (cabins.Count == 0) return true;
 
-        building.tileX.Value = (int)land.Value.X;
-        building.tileY.Value = (int)land.Value.Y;
+        Building visible = cabins.FirstOrDefault(building => building.tileX.Value != 999 || building.tileY.Value != 999);
+        Vector2? anchor = visible == null ? null : new Vector2(visible.tileX.Value, visible.tileY.Value);
+        bool prepareLand = false;
+        if (anchor == null || !CanPlaceSharedCabins(farm, anchor.Value))
+        {
+            anchor = FindUnusedCabinPosition(farm,
+                cabins[0].tilesWide.Value, cabins[0].tilesHigh.Value, cabins[0].humanDoor.X, cabins[0].humanDoor.Y);
+            prepareLand = true;
+        }
+        if (anchor == null) return false;
 
-        // 更新室内出口 warp
+        moved = cabins.Any(building => building.tileX.Value != (int)anchor.Value.X || building.tileY.Value != (int)anchor.Value.Y);
+        return !moved || MoveAllCabinsTo(farm, anchor.Value, prepareLand);
+    }
+
+    /// <summary>服务器权威移动整组小屋</summary>
+    public static bool MoveAllCabinsTo(Farm farm, Vector2 anchor, bool prepareLand)
+    {
+        if (farm == null || !CanPlaceSharedCabins(farm, anchor)) return false;
+        var cabins = farm.buildings.Where(building => building?.buildingType.Value == "Cabin").ToList();
+        if (cabins.Count == 0) return false;
+
+        if (prepareLand)
+        {
+            Building template = cabins[0];
+            ClearSystemDebrisInFootprint(farm, anchor, template.tilesWide.Value, template.tilesHigh.Value,
+                template.humanDoor.X, template.humanDoor.Y);
+            EvictCharactersInFootprint(farm, anchor, template.tilesWide.Value, template.tilesHigh.Value);
+        }
+
+        foreach (Building building in cabins)
+        {
+            building.tileX.Value = (int)anchor.X;
+            building.tileY.Value = (int)anchor.Y;
+            UpdateCabinWarps(farm, building);
+        }
+        GetMonitor()?.Log($"[小屋同步] 所有小屋统一至 ({anchor.X}, {anchor.Y})", LogLevel.Info);
+        CabinSyncManager.QueueFarmSnapshots();
+        return true;
+    }
+
+    private static bool CanPlaceSharedCabins(Farm farm, Vector2 anchor)
+    {
+        Building template = farm.buildings.FirstOrDefault(building => building?.buildingType.Value == "Cabin");
+        if (template == null) return false;
+        return IsFootprintFreeOfPlayerItems(farm, anchor, template.tilesWide.Value, template.tilesHigh.Value,
+                   template.humanDoor.X, template.humanDoor.Y) &&
+               !CoversWarpOrDoor(farm, anchor, template.tilesWide.Value, template.tilesHigh.Value);
+    }
+
+    private static void UpdateCabinWarps(Farm farm, Building building)
+    {
         GameLocation interior = building.GetIndoors();
-        if (interior != null)
+        if (interior == null) return;
+        foreach (Warp warp in interior.warps)
         {
-            foreach (Warp warp in interior.warps)
+            if (warp.TargetName == farm.NameOrUniqueName)
             {
-                if (warp.TargetName == farm.NameOrUniqueName)
-                {
-                    warp.TargetX = building.humanDoor.X + building.tileX.Value;
-                    warp.TargetY = building.humanDoor.Y + building.tileY.Value + 1;
-                }
+                warp.TargetX = building.humanDoor.X + building.tileX.Value;
+                warp.TargetY = building.humanDoor.Y + building.tileY.Value + 1;
             }
         }
-
-        GetMonitor()?.Log($"[小屋生成] 新玩家 {cabin.owner.Name} 上线，小屋搬至 ({land.Value.X}, {land.Value.Y})", LogLevel.Info);
     }
 
     /// <summary>
@@ -413,6 +469,7 @@ public class CabinGenerator
         // 不能有已有建筑
         foreach (var b in farm.buildings)
         {
+            if (b?.buildingType.Value == "Cabin") continue;
             if (b != null && b.occupiesTile(tile)) return false;
         }
 
@@ -500,7 +557,7 @@ public class CabinGenerator
 
         foreach (var building in farm.buildings)
         {
-            if (building == null) continue;
+            if (building == null || building.buildingType.Value == "Cabin") continue;
             Point door = building.getPointForHumanDoor();
             if (IsInsideFootprint(door.X, door.Y, anchor, width, height)) return true;
             if (IsInsideFootprint(door.X, door.Y + 1, anchor, width, height)) return true;

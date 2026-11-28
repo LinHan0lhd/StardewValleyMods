@@ -25,6 +25,7 @@ public class ModEntry : Mod
     private ChatLogger _chatLogger;
     private CPUDispatcher _cpuDispatcher;
     private CabinGenerator _cabinGenerator;
+    private CabinSyncManager _cabinSyncManager;
 
     private bool _hasAutoLoaded = false;
     private bool _hasAutoCreated = false;
@@ -57,6 +58,7 @@ public class ModEntry : Mod
             _cpuDispatcher.Install();
 
         _cabinGenerator = new CabinGenerator(Monitor);
+        _cabinSyncManager = new CabinSyncManager(helper, Monitor);
 
         RegisterCommands();
         BindEvents();
