@@ -158,18 +158,30 @@ public class CabinGenerator
         return newFarmhand;
     }
 
-    /// <summary>返回现有公共槽位 没有则找第一块空地</summary>
+    /// <summary>返回现有公共槽位 优先 1 号位 没有则找第一块空地</summary>
     public static Vector2? GetSharedCabinPosition(Farm farm)
     {
         if (farm == null) return null;
-        Building existing = farm.buildings.FirstOrDefault(building => building?.buildingType.Value == "Cabin");
-        if (existing != null) return new Vector2(existing.tileX.Value, existing.tileY.Value);
+        var cabins = farm.buildings.Where(building => building?.buildingType.Value == "Cabin").ToList();
+        Building anchor = FindAnchorCabin(farm, cabins);
+        if (anchor != null) return new Vector2(anchor.tileX.Value, anchor.tileY.Value);
 
         if (!Building.TryGetData("Cabin", out var data) || data == null) return null;
         return FindUnusedCabinPosition(farm, data.Size.X, data.Size.Y, data.HumanDoor.X, data.HumanDoor.Y);
     }
 
-    /// <summary>读档或旧存档迁移后统一所有小屋位置</summary>
+    /// <summary>老存档合并锚点 取 1 号位 即第一间在地图上的小屋</summary>
+    private static Building FindAnchorCabin(Farm farm, List<Building> cabins)
+    {
+        foreach (Building cabin in cabins)
+        {
+            if (farm.isTileOnMap(new Vector2(cabin.tileX.Value, cabin.tileY.Value)))
+                return cabin;
+        }
+        return null; // 全是旧的 999 隐藏屋
+    }
+
+    /// <summary>读档或旧存档迁移后统一所有小屋位置 合到 1 号位</summary>
     public static bool EnsureSharedCabinPosition(Farm farm, out bool moved)
     {
         moved = false;
@@ -177,9 +189,12 @@ public class CabinGenerator
         var cabins = farm.buildings.Where(building => building?.buildingType.Value == "Cabin").ToList();
         if (cabins.Count == 0) return true;
 
-        Vector2? anchor = new Vector2(cabins[0].tileX.Value, cabins[0].tileY.Value);
+        Building anchorCabin = FindAnchorCabin(farm, cabins);
+        Vector2? anchor = anchorCabin == null
+            ? null
+            : new Vector2(anchorCabin.tileX.Value, anchorCabin.tileY.Value);
         bool prepareLand = false;
-        if (!CanPlaceSharedCabins(farm, anchor.Value))
+        if (anchor == null || !CanPlaceSharedCabins(farm, anchor.Value))
         {
             anchor = FindUnusedCabinPosition(farm,
                 cabins[0].tilesWide.Value, cabins[0].tilesHigh.Value, cabins[0].humanDoor.X, cabins[0].humanDoor.Y);
@@ -188,7 +203,12 @@ public class CabinGenerator
         if (anchor == null) return false;
 
         moved = cabins.Any(building => building.tileX.Value != (int)anchor.Value.X || building.tileY.Value != (int)anchor.Value.Y);
-        return !moved || MoveAllCabinsTo(farm, anchor.Value, prepareLand);
+        if (!moved) return true;
+
+        GetMonitor()?.Log(anchorCabin != null
+            ? $"[小屋同步] 老存档小屋合并到 1 号位 ({anchor.Value.X}, {anchor.Value.Y})"
+            : $"[小屋同步] 老存档小屋合并到空位 ({anchor.Value.X}, {anchor.Value.Y})", LogLevel.Info);
+        return MoveAllCabinsTo(farm, anchor.Value, prepareLand);
     }
 
     /// <summary>服务器权威移动整组小屋</summary>
